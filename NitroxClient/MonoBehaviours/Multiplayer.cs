@@ -41,6 +41,7 @@ namespace NitroxClient.MonoBehaviours
         private PacketReceiver packetReceiver;
         private IPacketSender packetSender;
         private ThrottledPacketSender throttledPacketSender;
+        private CreatureHealthManager creatureHealthManager;
         private GameLogic.Terrain terrain;
 
         public bool InitialSyncCompleted { get; set; }
@@ -62,6 +63,7 @@ namespace NitroxClient.MonoBehaviours
             packetReceiver = NitroxServiceLocator.LocateService<PacketReceiver>();
             packetSender = NitroxServiceLocator.LocateService<IPacketSender>();
             throttledPacketSender = NitroxServiceLocator.LocateService<ThrottledPacketSender>();
+            creatureHealthManager = NitroxServiceLocator.LocateService<CreatureHealthManager>();
             terrain = NitroxServiceLocator.LocateService<GameLogic.Terrain>();
             packetProcessorContext = new ClientProcessorContext(packetSender);
             processorInvoker = NitroxServiceLocator.LocateService<PacketProcessorsInvoker>();
@@ -85,6 +87,7 @@ namespace NitroxClient.MonoBehaviours
             {
                 ProcessPackets();
                 throttledPacketSender.Update();
+                creatureHealthManager.Update();
 
                 // Loading up shouldn't be bothered by entities spawning in the surroundings
                 if (multiplayerSession.CurrentState.CurrentStage == MultiplayerSessionConnectionStage.SESSION_JOINED &&
