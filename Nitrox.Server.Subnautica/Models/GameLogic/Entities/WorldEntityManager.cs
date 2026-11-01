@@ -45,6 +45,12 @@ internal sealed class WorldEntityManager
     /// </summary>
     internal Dictionary<AbsoluteEntityCell, Dictionary<NitroxId, WorldEntity>> worldEntitiesByCell = [];
 
+    /// <summary>
+    ///     Cell in which each entity of <see cref="worldEntitiesByCell" /> is registered, so it can be removed by id even when
+    ///     its current record no longer tells where it was (e.g. it became an inventory item).
+    /// </summary>
+    private Dictionary<NitroxId, AbsoluteEntityCell> cellsByEntityId = [];
+
     public WorldEntityManager(IPacketSender packetSender, EntityRegistry entityRegistry, BatchEntitySpawner batchEntitySpawner, PlayerManager playerManager, IProgressReporter progressReporter, ILogger<WorldEntityManager> logger)
     {
         this.packetSender = packetSender;
@@ -91,13 +97,35 @@ internal sealed class WorldEntityManager
     {
         lock (worldEntitiesLock)
         {
-            if (worldEntitiesByCell.TryGetValue(cell, out Dictionary<NitroxId, WorldEntity> batchEntities))
+            if (!worldEntitiesByCell.TryGetValue(cell, out Dictionary<NitroxId, WorldEntity> batchEntities))
             {
-                return batchEntities.Values.ToList();
+                return [];
             }
-        }
 
-        return [];
+            List<WorldEntity> entities = new(batchEntities.Count);
+            List<NitroxId> staleIds = null;
+            foreach (WorldEntity entity in batchEntities.Values)
+            {
+                // An entry whose entity was removed or isn't a cell entity anymore would make players respawn it in this cell
+                if (!entityRegistry.TryGetEntityById(entity.Id, out Entity current) || current is not WorldEntity || current is GlobalRootEntity)
+                {
+                    logger.ZLogWarning($"Removing stale entry of {entity.Id} ({entity.TechType}) from cell {cell}, it is now registered as {current?.GetType().Name ?? "nothing"}");
+                    (staleIds ??= []).Add(entity.Id);
+                    continue;
+                }
+                entities.Add(entity);
+            }
+
+            if (staleIds != null)
+            {
+                foreach (NitroxId staleId in staleIds)
+                {
+                    UnregisterWorldEntityFromCell(staleId, cell);
+                }
+            }
+
+            return entities;
+        }
     }
 
     public bool TryUpdateEntityPosition(NitroxId id, NitroxVector3 position, NitroxQuaternion rotation, out AbsoluteEntityCell? newCell, out WorldEntity worldEntity)
@@ -196,29 +224,64 @@ internal sealed class WorldEntityManager
     {
         lock (worldEntitiesLock)
         {
+            // An entity is only in one cell, drop the entry it may have left elsewhere
+            if (cellsByEntityId.TryGetValue(entity.Id, out AbsoluteEntityCell previousCell) && previousCell != cell)
+            {
+                UnregisterWorldEntityFromCell(entity.Id, previousCell);
+            }
             if (!worldEntitiesByCell.TryGetValue(cell, out Dictionary<NitroxId, WorldEntity> worldEntitiesInCell))
             {
                 worldEntitiesInCell = worldEntitiesByCell[cell] = [];
             }
             worldEntitiesInCell[entity.Id] = entity;
+            cellsByEntityId[entity.Id] = cell;
         }
     }
 
     /// <summary>
-    ///     Automatically unregisters a WorldEntity in its AbsoluteEntityCell
+    ///     Replaces all cell registrations, used when loading a save.
+    /// </summary>
+    public void SetWorldEntities(IEnumerable<WorldEntity> entities)
+    {
+        lock (worldEntitiesLock)
+        {
+            worldEntitiesByCell = [];
+            cellsByEntityId = [];
+            foreach (WorldEntity entity in entities)
+            {
+                RegisterWorldEntity(entity);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Unregisters a WorldEntity from the cell it was registered in
     /// </summary>
     public void UnregisterWorldEntity(WorldEntity entity)
     {
-        UnregisterWorldEntityFromCell(entity.Id, entity.AbsoluteEntityCell);
+        UnregisterWorldEntity(entity.Id);
+    }
+
+    /// <inheritdoc cref="UnregisterWorldEntity(WorldEntity)" />
+    public void UnregisterWorldEntity(NitroxId entityId)
+    {
+        lock (worldEntitiesLock)
+        {
+            if (cellsByEntityId.TryGetValue(entityId, out AbsoluteEntityCell cell))
+            {
+                UnregisterWorldEntityFromCell(entityId, cell);
+            }
+        }
     }
 
     public void UnregisterWorldEntityFromCell(NitroxId entityId, AbsoluteEntityCell cell)
     {
         lock (worldEntitiesLock)
         {
-            if (worldEntitiesByCell.TryGetValue(cell, out Dictionary<NitroxId, WorldEntity> worldEntitiesInCell))
+            if (worldEntitiesByCell.TryGetValue(cell, out Dictionary<NitroxId, WorldEntity> worldEntitiesInCell) && worldEntitiesInCell.Remove(entityId) &&
+                cellsByEntityId.TryGetValue(entityId, out AbsoluteEntityCell registeredCell) && registeredCell == cell)
             {
-                worldEntitiesInCell.Remove(entityId);
+                cellsByEntityId.Remove(entityId);
             }
         }
     }
@@ -307,6 +370,18 @@ internal sealed class WorldEntityManager
         }
     }
 
+    /// <summary>
+    ///     Stops tracking the entity with this id in the open world, whatever its current record is.
+    /// </summary>
+    public void StopTrackingEntity(NitroxId entityId)
+    {
+        lock (globalRootEntitiesLock)
+        {
+            globalRootEntitiesById.Remove(entityId);
+        }
+        UnregisterWorldEntity(entityId);
+    }
+
     public bool TryDestroyEntity(NitroxId entityId, [NotNullWhen(true)] out Entity? entity)
     {
         Optional<Entity> optEntity = entityRegistry.RemoveEntity(entityId);
@@ -318,10 +393,7 @@ internal sealed class WorldEntityManager
         }
         entity = optEntity.Value;
 
-        if (entity is WorldEntity worldEntity)
-        {
-            StopTrackingEntity(worldEntity);
-        }
+        StopTrackingEntity(entityId);
 
         return true;
     }

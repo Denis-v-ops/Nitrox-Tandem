@@ -334,9 +334,7 @@ internal class WorldService : IHostedService
             // TODO: hacky code - see WorldEntityManager for more information.
             List<WorldEntity> worldEntities = entityRegistry.GetEntities<WorldEntity>();
             worldEntityManager.globalRootEntitiesById = entityRegistry.GetEntities<GlobalRootEntity>().ToDictionary(entity => entity.Id);
-            worldEntityManager.worldEntitiesByCell = worldEntities.Where(entity => entity is not GlobalRootEntity)
-                                                                  .GroupBy(entity => entity.AbsoluteEntityCell)
-                                                                  .ToDictionary(group => group.Key, group => group.ToDictionary(entity => entity.Id, entity => entity));
+            worldEntityManager.SetWorldEntities(worldEntities.Where(entity => entity is not GlobalRootEntity));
 
             foreach (Player player in pWorldData.PlayerData.GetPlayers())
             {

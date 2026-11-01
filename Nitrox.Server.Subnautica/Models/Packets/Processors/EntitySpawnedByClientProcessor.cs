@@ -22,6 +22,8 @@ internal sealed class EntitySpawnedByClientProcessor(PlayerManager playerManager
         // If the entity already exists in the registry, it is fine to update.  This is a normal case as the player
         // may have an item in their inventory (that the registry knows about) then wants to spawn it into the world.
         entityRegistry.AddOrUpdate(entity);
+        // The previous record may have been tracked in the world (e.g. an item moved from the world into a planter)
+        worldEntityManager.StopTrackingEntity(entity.Id);
 
         SimulatedEntity simulatedEntity = null;
         if (entity is WorldEntity worldEntity)

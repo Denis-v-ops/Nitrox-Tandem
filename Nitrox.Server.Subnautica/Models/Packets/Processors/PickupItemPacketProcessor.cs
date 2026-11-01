@@ -24,22 +24,12 @@ internal sealed class PickupItemPacketProcessor(EntityRegistry entityRegistry, W
             await context.SendToAllAsync(simulationOwnershipChange);
         }
 
-        StopTrackingExistingWorldEntity(id);
+        // Do not track this entity in the open world anymore, even if it isn't recorded as a world entity
+        worldEntityManager.StopTrackingEntity(id);
 
         entityRegistry.AddOrUpdate(packet.Item);
 
         // Have other players respawn the item inside the inventory.
         await context.SendToOthersAsync(new SpawnEntities(packet.Item, forceRespawn: true));
-    }
-
-    private void StopTrackingExistingWorldEntity(NitroxId id)
-    {
-        Optional<Entity> entity = entityRegistry.GetEntityById(id);
-
-        if (entity is { HasValue: true, Value: WorldEntity worldEntity })
-        {
-            // Do not track this entity in the open world anymore.
-            worldEntityManager.StopTrackingEntity(worldEntity);
-        }
     }
 }
