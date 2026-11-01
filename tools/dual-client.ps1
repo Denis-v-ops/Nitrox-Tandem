@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Builds the solution (Debug), optionally copies a fixture save into the Nitrox saves folder, then runs the
-    Debug-only "Nitrox.Launcher.exe instantlaunch <save> <players...>". The launcher starts the server for that save
+    Debug-only "Nitrox.Launcher.exe instantlaunch --save <save> --players <players...>". The launcher starts the server for that save
     and one game per player name; each game joins 127.0.0.1:11000 from the main menu by itself.
 
     With -WaitForJoin it watches the server log until every player has finished joining and exits 0 (PASS) or 1 (FAIL).
@@ -122,17 +122,47 @@ if ($Fixture) {
     Write-Host "Copied fixture $Fixture to $saveDir"
 }
 
-# Recorded so -Stop and the log search only look at what this run started.
+# Recorded so -Stop only closes what this run started.
 $startedAt = (Get-Date).AddSeconds(-2)
-@{ StartedAt = $startedAt.ToString('o'); SaveName = $SaveName; Players = $Players } | ConvertTo-Json | Set-Content $stateFile
+$runId = [guid]::NewGuid().ToString()
+@{ RunId = $runId; StartedAt = $startedAt.ToString('o'); SaveName = $SaveName; Players = $Players } | ConvertTo-Json | Set-Content $stateFile
 
-Write-Host "Starting: $launcherExe instantlaunch $SaveName $($Players -join ' ')"
-Start-Process -FilePath $launcherExe -ArgumentList (@('instantlaunch', $SaveName) + $Players) -WorkingDirectory (Split-Path $launcherExe) | Out-Null
+# The server appends to an existing log file for the same save and day, so only text written after this point counts.
+# (LastWriteTime and Length from a directory listing are stale while the server holds the file open.)
+function Read-SharedFile([string]$path, [long]$offset) {
+    $stream = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite, Delete')
+    try {
+        if ($offset -gt $stream.Length) {
+            $offset = 0
+        }
+        $stream.Seek($offset, 'Begin') | Out-Null
+        return (New-Object IO.StreamReader($stream)).ReadToEnd()
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+function Get-FileLength([string]$path) {
+    $stream = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite, Delete')
+    try { return $stream.Length } finally { $stream.Dispose() }
+}
+$serverLogPattern = "*_server_${SaveName}_*.log"
+$serverLogOffsets = @{}
+foreach ($file in Get-ChildItem -Path $logsDir -Filter $serverLogPattern -ErrorAction SilentlyContinue) {
+    $serverLogOffsets[$file.FullName] = Get-FileLength $file.FullName
+}
+
+# ConsoleAppFramework only binds named options here; "instantlaunch <save> <players>" is silently ignored.
+$quotedPlayers = $Players | ForEach-Object { '"' + $_ + '"' }
+$launcherArgs = "instantlaunch --save `"$SaveName`" --players $($quotedPlayers -join ' ')"
+Write-Host "Starting: $launcherExe $launcherArgs"
+Start-Process -FilePath $launcherExe -ArgumentList $launcherArgs -WorkingDirectory (Split-Path $launcherExe) | Out-Null
 
 Write-Host ''
 Write-Host "Save:          $saveDir"
-Write-Host "Nitrox logs:   $logsDir  (launcher-*.log, game*.log per player, <date>_server_${SaveName}_NNN.log)"
-Write-Host "Unity log:     $playerLog"
+Write-Host "Nitrox logs:   $logsDir"
+Write-Host "               launcher-<date>.log, game[<player>]-<date>.log, <date>_server_${SaveName}_NNN.log,"
+Write-Host "               Player-<player>.log (Unity log of each game; $playerLog is not used by instant launch)"
 Write-Host "Bug reports:   $reportsDir  (/report or F4 in game)"
 Write-Host "Stop all:      tools\dual-client.ps1 -Stop"
 
@@ -144,24 +174,20 @@ Write-Host ''
 Write-Host "Waiting up to $TimeoutSeconds s for $($Players -join ', ') to join..."
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 $joined = @{}
-$serverLog = $null
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 5
-    if (-not $serverLog) {
-        $serverLog = Get-ChildItem -Path $logsDir -Filter "*_server_${SaveName}_*.log" -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -ge $startedAt } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($serverLog) {
-            Write-Host "Server log:    $($serverLog.FullName)"
+    # A newer run or -Stop replaced the state file: the logs aren't ours to judge any more.
+    if (-not (Test-Path $stateFile) -or (Get-Content $stateFile -Raw | ConvertFrom-Json).RunId -ne $runId) {
+        Write-Host 'FAIL: this run was stopped or replaced by a newer run'
+        exit 1
+    }
+    $text = ''
+    foreach ($file in Get-ChildItem -Path $logsDir -Filter $serverLogPattern -ErrorAction SilentlyContinue) {
+        $offset = 0
+        if ($serverLogOffsets.ContainsKey($file.FullName)) {
+            $offset = $serverLogOffsets[$file.FullName]
         }
-        continue
-    }
-    # The server keeps its log open for writing, so read it with shared access.
-    $stream = [IO.File]::Open($serverLog.FullName, 'Open', 'Read', 'ReadWrite, Delete')
-    try {
-        $text = (New-Object IO.StreamReader($stream)).ReadToEnd()
-    }
-    finally {
-        $stream.Dispose()
+        $text += Read-SharedFile $file.FullName $offset
     }
     foreach ($player in $Players) {
         if (-not $joined[$player] -and $text.Contains("Player $player joined successfully")) {

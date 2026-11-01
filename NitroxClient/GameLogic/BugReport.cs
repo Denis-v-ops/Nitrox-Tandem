@@ -62,7 +62,8 @@ public static class BugReport
         session.Send(new ServerCommand(string.IsNullOrWhiteSpace(text) ? COMMAND_NAME : $"{COMMAND_NAME} {text}"));
 
         string zipPath = Path.Combine(NitroxDirectory.ReportsPath, $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{ToFileName(playerName)}.zip");
-        List<string> files = GetFilesToInclude().ToList();
+        // Instant launch puts each game's Unity log into the logs folder, so it can be found twice.
+        List<string> files = GetFilesToInclude().Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         Task saveTask = Task.Run(() => WriteZip(zipPath, details, files));
         CoroutineHost.StartCoroutine(ReportWhenSaved(saveTask, zipPath));
     }

@@ -208,10 +208,11 @@ internal partial class LaunchGameViewModel(DialogService dialogService, ServerSe
             server.Name = App.InstantLaunch.SaveName;
             Task serverStartTask = Dispatcher.UIThread.InvokeAsync(async () => await serverService.StartServerAsync(server)).ContinueWithHandleError();
 
-            // Start a game in multiplayer for each player
+            // Start a game in multiplayer for each player. Each gets its own Unity log, otherwise all games share Player.log.
             foreach (string playerName in App.InstantLaunch.PlayerNames)
             {
-                await StartMultiplayerAsync(["--instantlaunch", playerName]).ContinueWithHandleError();
+                string unityLogFile = Path.Combine(NitroxDirectory.LogsPath, $"Player-{playerName}.log");
+                await StartMultiplayerAsync(["--instantlaunch", playerName, "-logFile", $"\"{unityLogFile}\""]).ContinueWithHandleError();
             }
 
             await serverStartTask;

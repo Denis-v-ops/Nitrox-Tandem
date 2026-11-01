@@ -72,7 +72,12 @@ internal sealed class ReportCommand(Func<WorldService> worldServiceProvider, IOp
         {
             return;
         }
-        IEnumerable<string> lines = File.ReadLines(configPath).Select(line => line.Split('=')[0].Contains("Password", StringComparison.OrdinalIgnoreCase) ? $"{line.Split('=')[0]}=<removed>" : line);
+        IEnumerable<string> lines = File.ReadLines(configPath).Select(line =>
+        {
+            string key = line.Split('=')[0];
+            bool isPasswordSetting = !line.TrimStart().StartsWith('#') && line.Contains('=') && key.Contains("Password", StringComparison.OrdinalIgnoreCase);
+            return isPasswordSetting ? $"{key}=<removed>" : line;
+        });
         File.WriteAllLines(Path.Combine(targetDir, Path.GetFileName(configPath)), lines);
     }
 
