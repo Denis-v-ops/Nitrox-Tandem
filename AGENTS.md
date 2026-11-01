@@ -80,8 +80,9 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
 - **Output:** `Nitrox.Launcher/bin/<Config>/net10.0/` contains the launcher; the game-side DLLs are copied into its
   `lib/net472/`; the server is bundled alongside. **Run `Nitrox.Launcher.exe` from there** to start a server and the game
   with your build.
-- **CI does not run on this fork.** Every upstream workflow is gated on `github.repository_owner == 'SubnauticaNitrox'`
-  and uses self-hosted Linux runners. Build and test locally before pushing.
+- **CI does not run on this fork.** The build and test workflows (`buildingMaster.yml`, `buildingPullRequest.yml`,
+  `testingPullRequest.yml`) gate their first job on `github.repository_owner == 'SubnauticaNitrox'` and run on
+  self-hosted Linux runners. `testResults.yml` only runs after them. Build and test locally before pushing.
 
 ## 4. Running, debugging and logs
 
@@ -90,7 +91,8 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
   `Nitrox.Model/Constants/SubnauticaServerConstants.cs`).
 - **Two clients on one PC, no clicking (Debug builds):**
   `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe instantlaunch <SaveName> Alice Bob` starts the server for that
-  save and one game per name, and each game auto-joins localhost. By hand: launcher **Options → Allow multiple game
+  save and one game per name, and each game auto-joins localhost. *Confirmed in code but not yet run on this machine;
+  running it once is the first step of S0.1.* By hand: launcher **Options → Allow multiple game
   instances** (Steam). See [docs/fork/TESTING.md](docs/fork/TESTING.md) for the automated test plan. Upstream has no CI
   for gameplay and the players don't do per-fix playtests, so **automated verification is your job**.
 - **Logs:** Nitrox (launcher, server, client) → `%APPDATA%\Nitrox\logs`. Game →

@@ -41,7 +41,8 @@ we copy.
   starts one game per player name with `--instantlaunch <name>`. Each game auto-joins `127.0.0.1:11000` from the main menu.
   Multiple game instances are allowed automatically when more than one name is given.
   (`Nitrox.Launcher/App.axaml.cs`, `Nitrox.Launcher/ViewModels/LaunchGameViewModel.cs` `HandleInstantLaunchForDevelopment`,
-  `NitroxPatcher/Patches/Persistent/uGUI_MainMenu_Start_Patch.cs`.)
+  `NitroxPatcher/Patches/Persistent/uGUI_MainMenu_Start_Patch.cs`.) *Confirmed by reading the code, but not yet run on
+  the dev PC.* Running it once is the first step of S0.1.
 - Server scenario commands already exist: `warp`, `teleport`, `sunbeam`, `aurora`, `time`, `save`, `restart`, `query`
   (`Nitrox.Server.Subnautica/Models/Commands`).
 - Missing today: any in-game test runner, any way to pass scenario arguments through `instantlaunch`, any bug-report bundle.

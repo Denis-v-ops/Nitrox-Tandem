@@ -216,8 +216,9 @@ for the next `ProtoInclude` tag.
    changing anything.
 
 **Automated check:**
-- L1: a unit test for the patch logic (key match → flag set).
-- L3 scenario `GunDisableSyncs`: give A the cure goal (console `cureplayergoaltrigger` triggers `Infection_Progress5`,
+- L1 can't cover this: `StoryGoalCustomEventHandler` is a MonoBehaviour that MSTest can't construct. If you extract the
+  key comparison into a static helper, unit-test only that.
+- **The real check is L3.** Scenario `GunDisableSyncs`: give A the cure goal (console `cureplayergoaltrigger` triggers `Infection_Progress5`,
   which is assumed to be the terminal's cure goal, *[asset]*). Teleport both near the terminal and A uses it. Assert
   `StoryGoalCustomEventHandler.main.gunDisabled` on B, and that `LaunchRocket.OnHandClick` on B passes the gun check.
   Don't use `forcerocketready`, which bypasses the check.
@@ -302,13 +303,51 @@ Implement the described design ourselves (or adopt it if the author pushes it):
 
 ## S6: Player stuck "swimming" inside the Cyclops or precursor bases (#2712, #2306)
 
-<!-- S6 -->
+**Symptoms** (#2712, verified):
+- Sometimes after entering the Cyclops the player keeps swimming and using oxygen, and can drown.
+- The same happens inside precursor bases (e.g. past the Lost River waterfall entrance), and after rejoining inside an
+  alien base (#2306).
+- A server restart clears it, but it comes back at random.
+
+**Root cause:** *code investigation pending.* Areas to check:
+- `Player.currentSub` / `SetCurrentSub`, `precursorOutOfWater`, and the Cyclops entry hatch / `PlayerCinematicController`
+  paths that Nitrox patches.
+- Whether the **remote player object's** colliders can enter or leave interior triggers and flip the *local* player's
+  state.
+- Initial-sync restore of the sub / precursor flag.
+
+**Plan:** Build, after the root cause is found.
+
+**Automated check:** L3 `InteriorStateHolds`: A enters the Cyclops while B swims around and through it. A has
+`Player.main.IsUnderwater() == false` and oxygen isn't dropping. Repeat in a precursor base, and after a B rejoin while
+A is inside.
 
 ---
 
 ## S7: Containers overfill, duplicate, or items keep respawning (#2495, #2494, #2047, #2691)
 
-<!-- S7 -->
+**Symptoms:**
+- #2495 (verified): a Water Filtration Machine overflows (4 salt + 4 water instead of 2 + 2), and the overflow comes
+  back after looting.
+- #2494: storages overfill with message spam, and items sometimes disappear (e.g. big eggs in a Bioreactor).
+- #2047 (2023, to verify): a wall locker duplicated food every time it was opened.
+- #2691 (verified): resources float inside the base, respawn for one player when they approach, and differ between
+  players. They appear to be items removed from the non-host player's inventory, appearing where that player stood.
+
+**Root cause:** *code investigation pending.* Areas to check:
+- Who spawns machine output (one simulating player or every client).
+- Whether a remote `ItemsContainer` add enforces capacity.
+- Add-without-remove on container transfers.
+- How the server handles an item that leaves a player's inventory without being dropped. That may create a world
+  entity in the base cell that respawns on cell load (#2691).
+
+**Plan:** Build. Reproduce #2047 on current master first.
+
+**Automated check:**
+- L3 `FiltrationNoOverflow`: run a filtration machine for N cycles with both players nearby. Contents never exceed the
+  container size and match on both clients and on the server (`query`).
+- L3 `NoFloatingLeftovers`: B moves items between inventory and lockers inside the base, A leaves and returns. No
+  world-entity items appear in the base cell.
 
 ---
 
