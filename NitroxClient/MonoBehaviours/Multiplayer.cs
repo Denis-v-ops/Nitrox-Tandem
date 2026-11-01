@@ -233,8 +233,14 @@ namespace NitroxClient.MonoBehaviours
 
         private void OnPlayerCommand(string command)
         {
+            if (BugReport.TryHandleCommand(command, multiplayerSession))
+            {
+                return;
+            }
             multiplayerSession.Send(new ServerCommand(command));
         }
+
+        public void CreateBugReport(string text) => BugReport.Create(text, multiplayerSession);
 
         public void RegisterConnectedDelegates()
         {
