@@ -1,6 +1,7 @@
 using System.Reflection;
 using NitroxClient.Communication.Abstract;
 using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.PlayerLogic;
 using NitroxClient.MonoBehaviours;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.Packets;
@@ -28,6 +29,13 @@ public sealed partial class LiveMixin_Kill_Patch : NitroxPatch, IDynamicPatch
             return;
         }
 
+        // Creature deaths are synced by CreatureDeath_OnKillAsync_Patch and destroying them here would remove the corpse.
+        // Players (local or remote) carry the player's id, so EntityDestroyed would delete the player on the server.
+        if (__instance.GetComponent<CreatureDeath>() || IsPlayer(__instance))
+        {
+            return;
+        }
+
         if (__instance.destroyOnDeath || 
             __instance.broadcastKillOnDeath || 
             __instance.passDamageDataOnDeath || 
@@ -35,5 +43,12 @@ public sealed partial class LiveMixin_Kill_Patch : NitroxPatch, IDynamicPatch
         {
             Resolve<IPacketSender>().Send(new EntityDestroyed(objectId));
         }
+    }
+
+    private static bool IsPlayer(LiveMixin liveMixin)
+    {
+        return liveMixin.GetComponent<Player>() ||
+               (Player.main && Player.main.liveMixin == liveMixin) ||
+               liveMixin.GetComponent<RemotePlayerIdentifier>();
     }
 }
