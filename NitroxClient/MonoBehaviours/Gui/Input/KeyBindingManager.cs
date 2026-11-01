@@ -12,6 +12,7 @@ public static class KeyBindingManager
     [
         new ChatKeyBindingAction(),
         new DiscordFocusBindingAction(),
-        new PingKeyBindingAction()
+        new PingKeyBindingAction(),
+        new ReportKeyBindingAction()
     ];
 }

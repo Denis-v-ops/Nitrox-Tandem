@@ -59,8 +59,20 @@ Merge-order facts from a trial merge of all candidate PRs on `62ef043a` (no buil
 ## S0: Test rig (prerequisite, not a bug)
 
 See [TESTING.md](TESTING.md#build-order-spec-item-s0). Minimum before Phase 1: S0.1 (one-command dual client through the
-existing Debug-only `Nitrox.Launcher.exe instantlaunch <save> A B`), S0.5 (save → load round-trip test helper) and
+existing Debug-only `Nitrox.Launcher.exe instantlaunch --save <save> --players A B`), S0.5 (save → load round-trip test helper) and
 S0.6 (`/report` bundle). Minimum before Phase 3: S0.4 (scenario runner).
+
+**Status (branch `fix/s0-test-rig`):**
+- S0.1 `tools/dual-client.ps1`, **run on the dev PC**: both players join in about 20 s, `-WaitForJoin` prints PASS, and
+  `-Stop` cleans up. It needed two launcher fixes. Upstream's `instantlaunch` with two names refused to start the second
+  game unless *Allow multiple game instances* was on. And all games shared one `Player.log`, so each now gets
+  `Player-<name>.log`. Our docs also had the wrong argument syntax (it's `--save … --players …`).
+- S0.5 `Nitrox.Test/Helper/SaveLoadRoundTrip.cs` plus `WorldServiceSaveLoadTest` (base with chargers and a scanner room).
+  The charger test passes on current code, as expected: S2's root cause is client-side resync deletion, not the save
+  format. So the test guards against future format changes; it doesn't reproduce S2. Finding: `BuildEntity`'s JSON
+  constructor forces `SpawnedByServer = true` on load (same pattern as `ModuleEntity`, intended for simulation locks).
+- S0.6 `/report` + F4 (client bundle on each player's PC, server bundle with a save snapshot on the server's PC),
+  **verified in game** from both players. No packet ring buffer yet.
 
 ---
 
@@ -590,7 +602,15 @@ the description is empty):
 
 ## Verify-first list (play-testing or bot runs, before planning)
 
-- #2761 vehicle movement regression: probably fixed by #2864. **Phase 0.**
+- #2761 vehicle movement regression: probably fixed by #2864. **Phase 0.** From code and PR history (2026-11-01):
+  #2864 (merge `c5eda87f`, in our base) is a maintainer's replacement for #2753, which was closed as "Superseded by
+  #2864". The #2761 reporter had confirmed that #2753 fixed the symptom. #2864's author found the cause on the server: since
+  #2314, `RealTimeElapsed` was coupled to game time, so the movement timestamps clients compare could shift. #2864
+  decouples them again. That fits #2753's observation that it depended on join order. Upstream #2761 is still open and
+  nobody has confirmed it in game on the current build. An in-game check on 2026-11-01 got as far as both players in one
+  world with the dev console. It stopped there because the game ignores synthetic mouse-look, so a Seamoth can't be
+  aimed at or driven by UI automation. **Still unverified in game:** do it with the S0.4 runner (A drives a Seamoth by
+  script, B asserts its position), or ask the players to watch for it on their first session.
 - Possible item or vehicle loss: #2768 (2nd Seamoth despawns 1st), #2448 (lockers vanish in Cyclops), #2538
   (eggs vanish in containment).
 - #2800 birds doubling per restart.
@@ -609,3 +629,4 @@ See ISSUE_TRIAGE.md for the full verify list.
 | 2026-11-01 | S4 | Merged #2902, then #2867, then the fix in `LiveMixin_Kill_Patch`. Players return early: a `Player` component, `Player.main.liveMixin`, or a `RemotePlayerIdentifier`. For creatures (`CreatureDeath`), only #2867's new `broadcastKillOnDeath`/`passDamageDataOnDeath` case is skipped. **Deviation from the spec:** a full early return for creatures would also have dropped master's `destroyOnDeath` / `ShouldBroadcastDeath` path (e.g. the whitelisted Crash fish). #2902's `ReplayRemoteKill` skips those because it expects that `EntityDestroyed`. `GetComponent<CreatureDeath>()` assumes the component sits on the LiveMixin's own GameObject (`Kill` uses `BroadcastMessage`, which also reaches children): *[asset]*, unverified. Findings (Nitrox code): `Player.mainObject` carries the player's NitroxId (`PlayerInitialSyncProcessor`). Remote bodies carry the remote player's id and get their own `LiveMixin` (`RemotePlayer`). So unfixed #2867 could send `EntityDestroyed(playerId)`. IL: `LiveMixin.Kill` broadcasts `OnKill` for `passDamageDataOnDeath`/`broadcastKillOnDeath`. `Player.liveMixin` is a serialized field, so which GameObject holds it is *[asset]*; both checks are kept. Vehicles and the Cyclops already return earlier (`IsWhitelistedUpdateType`), so there's no double send for them. tornac1234's review question on #2867 (do these flags mean the object is destroyed?) is still open upstream. | Build + test (256 pass). L3 `CreatureDeathSyncs` and the player-death regression check: not run. |
 | 2026-11-01 | S3 | New `StoryGoalCustomEventHandler_NotifyGoalComplete_Patch` (Prefix). Sets `gunDisabled = true` when `key` matches `gunDeactivate.key` (ordinal ignore-case). Verified in decompiled IL (game 83031): `NotifyGoalComplete(string)`; `gunDeactivate` is a `StoryGoal` with `key`; remote `StoryGoalExecuted` → `StoryGoal.Execute` → `StoryGoalManager.OnGoalComplete` (only for newly completed keys) → `customEventHandler.NotifyGoalComplete`. The method itself also compares against the literal `"Goal_Disable_Gun"`. Optional step 2 (close the partner's open terminal) and step 3 (gun animation) not done. | Build + test (258 pass, +2: target method exists, key comparison). L3 `GunDisableSyncs`: not run. |
 | 2026-11-01 | S7 step 1 | `WorldEntityManager` now has an id → cell index. Registering in a new cell drops the old entry, and entries can be removed by id whatever the current record is (`StopTrackingEntity(NitroxId)`, `UnregisterWorldEntity(NitroxId)`, `SetWorldEntities` used by `WorldService` on load). `EntitySpawnedByClient`, `EntityReparented` (non-global-root entities), `PickupItem` and `TryDestroyEntity` remove entries by id. `GetEntities` skips and removes, with a warning, entries whose entity is gone or is no longer a cell entity. `GetEntities` does *not* check whether a record still lies in the same cell: children of moving global roots can legitimately drift. Steps 2–4 not started. | Build + test (270 pass, +12 in `WorldEntityCellTrackingTest`). With the processor changes reverted, 5 of them fail. L3 `NoFloatingLeftovers`: not run. |
+| 2026-11-01 | S0.1, S0.5, S0.6 | Branch `fix/s0-test-rig`: `tools/dual-client.ps1` + instantlaunch fixes (second game, per-game Unity log), `SaveLoadRoundTrip` helper + 3 tests, `/report` + F4 bug bundle (client + server `report` command). #2761 assessed from code: probably fixed by #2864 | `dotnet build` + `dotnet test` (259 pass, 13 skipped). 3 dual-client runs that started the games (a 4th used the wrong syntax and started nothing): both joined every time, PASS; `/report` (both players) and F4 in game. #2761 **not** verified in game (mouse-look can't be automated) |

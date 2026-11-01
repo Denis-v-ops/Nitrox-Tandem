@@ -26,6 +26,7 @@ public static class NitroxDirectory
     public static string CachePath => implementation.CachePath;
     public static string SavesPath => implementation.SavesPath;
     public static string LogsPath => implementation.LogsPath;
+    public static string ReportsPath => implementation.ReportsPath;
 
     /// <summary>
     ///     Gets the path to Nitrox application backups. Note: not server save backups.
@@ -142,6 +143,7 @@ public static class NitroxDirectory
         public virtual string CachePath => Path.Combine(ConfigPath, "cache");
         public virtual string SavesPath => Path.Combine(ConfigPath, "saves");
         public virtual string LogsPath => Path.Combine(ConfigPath, "logs");
+        public virtual string ReportsPath => Path.Combine(ConfigPath, "reports");
         public virtual string BackupsPath => Path.Combine(ConfigPath, "backups");
 
         protected string GetAsNitroxPath(string path)
@@ -253,6 +255,18 @@ public static class NitroxDirectory
                     return field;
                 }
                 return field = GetXdgPathIfNotUserGiven(XdgDirectory.STATE, "logs");
+            }
+        }
+
+        public override string ReportsPath
+        {
+            get
+            {
+                if (field != null)
+                {
+                    return field;
+                }
+                return field = GetXdgPathIfNotUserGiven(XdgDirectory.STATE, "reports");
             }
         }
 

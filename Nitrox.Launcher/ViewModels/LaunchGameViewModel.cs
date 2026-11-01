@@ -114,7 +114,8 @@ internal partial class LaunchGameViewModel(DialogService dialogService, ServerSe
                     LauncherNotifier.Error("Aarrr! Nitrox has walked the plank :(");
                     return false;
                 }
-                if (GameInspect.WarnIfGameProcessExists(GameInfo.Subnautica) && !keyValueStore.GetIsMultipleGameInstancesAllowed())
+                // Instant launch with several players starts one game per player, so it implies multiple instances.
+                if (App.InstantLaunch is not { PlayerNames.Length: > 1 } && GameInspect.WarnIfGameProcessExists(GameInfo.Subnautica) && !keyValueStore.GetIsMultipleGameInstancesAllowed())
                 {
                     return false;
                 }
@@ -207,10 +208,11 @@ internal partial class LaunchGameViewModel(DialogService dialogService, ServerSe
             server.Name = App.InstantLaunch.SaveName;
             Task serverStartTask = Dispatcher.UIThread.InvokeAsync(async () => await serverService.StartServerAsync(server)).ContinueWithHandleError();
 
-            // Start a game in multiplayer for each player
+            // Start a game in multiplayer for each player. Each gets its own Unity log, otherwise all games share Player.log.
             foreach (string playerName in App.InstantLaunch.PlayerNames)
             {
-                await StartMultiplayerAsync(["--instantlaunch", playerName]).ContinueWithHandleError();
+                string unityLogFile = Path.Combine(NitroxDirectory.LogsPath, $"Player-{playerName}.log");
+                await StartMultiplayerAsync(["--instantlaunch", playerName, "-logFile", $"\"{unityLogFile}\""]).ContinueWithHandleError();
             }
 
             await serverStartTask;
