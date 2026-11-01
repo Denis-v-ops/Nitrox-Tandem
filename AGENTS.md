@@ -90,16 +90,18 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
   game, then use **Multiplayer** on the main menu and join `127.0.0.1` (default port `11000`, from
   `Nitrox.Model/Constants/SubnauticaServerConstants.cs`).
 - **Two clients on one PC, no clicking (Debug builds):** `tools\dual-client.ps1 -WaitForJoin` builds, runs
-  `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe instantlaunch <SaveName> Alice Bob` (server for that save plus
-  one game per name, each auto-joining localhost), prints PASS once both have joined, and `tools\dual-client.ps1 -Stop`
-  closes it all. `-Fixture <save folder|zip>` starts from a prepared world. This opens game windows, so tell the user
-  before running it. By hand: launcher **Options → Allow multiple game instances** (Steam). See
-  [docs/fork/TESTING.md](docs/fork/TESTING.md) for the automated test plan. Upstream has no CI for gameplay and the
-  players don't do per-fix playtests, so **automated verification is your job**.
+  `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe instantlaunch --save <SaveName> --players Alice Bob` (server for
+  that save plus one game per name, each auto-joining localhost; the positional form is silently ignored), prints PASS
+  once both have joined (about 20 s on this PC), and `tools\dual-client.ps1 -Stop` closes it all. `-Fixture <save
+  folder|zip>` starts from a prepared world. This opens game windows, so tell the user before running it. Driving the
+  windows with computer use has quirks (QWERTZ keys, no mouse-look); see TESTING.md. By hand: launcher **Options → Allow
+  multiple game instances** (Steam). See [docs/fork/TESTING.md](docs/fork/TESTING.md) for the automated test plan.
+  Upstream has no CI for gameplay and the players don't do per-fix playtests, so **automated verification is your job**.
 - **Persistence tests:** `Nitrox.Test/Helper/SaveLoadRoundTrip.cs` (`AssertSurvivesSaveAndLoad(entityTrees…)`) runs
   entities through the server's real save and load code. Use it for every "gone after restart" fix.
 - **Logs:** Nitrox (launcher, server, client) → `%APPDATA%\Nitrox\logs`. Game →
-  `%UserProfile%\AppData\LocalLow\Unknown Worlds\Subnautica\Player.log`. Always ask for or collect both sides when
+  `%UserProfile%\AppData\LocalLow\Unknown Worlds\Subnautica\Player.log` (instant-launched games:
+  `%APPDATA%\Nitrox\logs\Player-<name>.log`). Always ask for or collect both sides when
   debugging a desync. **Bug reports** from the players (F4 or `/report <text>`) are zips in `%APPDATA%\Nitrox\reports`:
   collect them from both PCs (the server's PC also has a save snapshot taken at that moment).
 - **Attaching a debugger to the game:** dnSpyEx + Unity debug Mono DLL (`MonoBleedingEdge/EmbedRuntime/mono-2.0-bdwgc.dll`

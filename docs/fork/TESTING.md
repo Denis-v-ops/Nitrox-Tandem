@@ -37,21 +37,36 @@ we copy.
 - The game-side code runs through Harmony patches inside the real game. A test runner injected the same way can call real
   game methods (e.g. a terminal's `OnHandClick`), and those calls go through the same Nitrox patches a player's input would.
 - **A multi-client auto-launch exists (Debug builds only):**
-  `Nitrox.Launcher.exe instantlaunch <SaveName> <Player1> <Player2> …` creates or starts the server for that save, then
-  starts one game per player name with `--instantlaunch <name>`. Each game auto-joins `127.0.0.1:11000` from the main menu.
+  `Nitrox.Launcher.exe instantlaunch --save <SaveName> --players <Player1> <Player2> …` creates or starts the server for
+  that save (embedded), then starts one game per player name with `--instantlaunch <name>`. Each game auto-joins
+  `127.0.0.1:11000` from the main menu. The positional form `instantlaunch <save> <players>` is silently ignored
+  (ConsoleAppFramework only binds the named options), and the launcher just opens normally.
   (`Nitrox.Launcher/App.axaml.cs`, `Nitrox.Launcher/ViewModels/LaunchGameViewModel.cs` `HandleInstantLaunchForDevelopment`,
-  `NitroxPatcher/Patches/Persistent/uGUI_MainMenu_Start_Patch.cs`.) Upstream only skipped the Steam bootstrap for several
-  names; the second game was still refused unless *Allow multiple game instances* was on. The fork fixes that in
-  `StartMultiplayerAsync` (S0.1).
+  `NitroxPatcher/Patches/Persistent/uGUI_MainMenu_Start_Patch.cs`.) Two fork fixes (S0.1): upstream refused to start the
+  second game unless *Allow multiple game instances* was on, and all games shared one `Player.log`. Now each game logs to
+  `%APPDATA%\Nitrox\logs\Player-<name>.log` (Unity `-logFile`).
 - **`tools/dual-client.ps1`** (S0.1) wraps it: Debug build, optional fixture save (`-Fixture <folder|zip>`, `-Force` moves an
   existing save aside), launch, log locations, `-WaitForJoin` (PASS/FAIL from the server log line
-  `Player <name> joined successfully`) and `-Stop` (closes only what the last run started). Needs Steam running.
+  `Player <name> joined successfully`, read only from what the log gained after launch) and `-Stop` (closes only what the
+  last run started). Needs Steam running. **Run on the dev PC 2026-11-01:** both players join about 20 s after launch, and
+  a run uses about 3 GB RAM per game.
+- **Driving the game windows from an agent** (learned 2026-11-01, computer-use tools):
+  - The app name for `request_access` is `Subnautica.exe`; "Subnautica" isn't found.
+  - The dev PC has a German **QWERTZ** layout, and the Input System binds by physical key, so Nitrox's chat key `y` is
+    sent as **`z`**. Escape, Enter, F-keys and typing through the clipboard work as usual.
+  - **Mouse-look can't be automated:** neither absolute cursor moves nor relative `SendInput` turn the camera. So aiming
+    and driving (e.g. the #2761 vehicle check) need the S0.4 in-game runner, not UI automation.
+  - Both games run fullscreen on one monitor. `WScript.Shell.AppActivate(<pid>)` switches between them, and `PrintWindow`
+    (with `PW_RENDERFULLCONTENT`) captures the background game's frame. So one instance can act while the other is
+    observed.
+  - Both test players are admins (`LocalhostIsAdmin=True`), so dev-console commands (`warp`, `spawn`) work and are synced.
 - **Save → load round trip** (S0.5): `Nitrox.Test/Helper/SaveLoadRoundTrip.cs`. `AssertSurvivesSaveAndLoad(roots…)` runs
   entity trees through the server's real `WorldService.Save`/`LoadPersistedWorld` (JSON) and deep-compares every entity.
   Example: `Nitrox.Test/Server/Serialization/World/WorldServiceSaveLoadTest.cs`.
 - **Bug report** (S0.6): `/report <text>` in chat or **F4** writes `%APPDATA%\Nitrox\reports\<time>_<player>.zip` (Nitrox
-  logs from the last 24 h, `Player.log`, position) on the player's PC, and the server's `report` command writes
+  logs from the last 24 h, the Unity log, position) on the player's PC, and the server's `report` command writes
   `<time>_server_<player>.zip` (fresh save snapshot, server logs, `server.cfg` without passwords) on the server's PC.
+  Verified in game 2026-11-01 (`/report` from both players, F4).
 - Server scenario commands already exist: `warp`, `teleport`, `sunbeam`, `aurora`, `time`, `save`, `restart`, `query`
   (`Nitrox.Server.Subnautica/Models/Commands`).
 - Missing today: any in-game test runner, any way to pass scenario arguments through `instantlaunch`, a packet ring buffer
@@ -120,7 +135,7 @@ coming back) often show up only then.
 
 | Step | What | Effort | Unlocks |
 |---|---|---|---|
-| S0.1 | `tools/dual-client.ps1`: Debug build + copy fixture save + `Nitrox.Launcher.exe instantlaunch <save> A B` (**done**) | hours (`instantlaunch` exists) | One-command dual-client runs |
+| S0.1 | `tools/dual-client.ps1`: Debug build + copy fixture save + `Nitrox.Launcher.exe instantlaunch --save <save> --players A B` (**done**) | hours (`instantlaunch` exists) | One-command dual-client runs |
 | S0.2 | Forward `--nitrox-scenario/--nitrox-role` through `instantlaunch`; clients quit on scenario end | small | Unattended runs |
 | S0.3 | `tools/Nitrox.Bot` (idle/follow/script + packet log) | 1–2 days | L2 |
 | S0.4 | Scenario runner + `run-scenario.ps1` + first scenario (S2 charger/scanner-room persistence) | 3–5 days | L3, the per-fix gate |
