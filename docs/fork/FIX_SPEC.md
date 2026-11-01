@@ -62,6 +62,16 @@ See [TESTING.md](TESTING.md#build-order-spec-item-s0). Minimum before Phase 1: S
 existing Debug-only `Nitrox.Launcher.exe instantlaunch <save> A B`), S0.5 (save → load round-trip test helper) and
 S0.6 (`/report` bundle). Minimum before Phase 3: S0.4 (scenario runner).
 
+**Status (branch `fix/s0-test-rig`):**
+- S0.1 `tools/dual-client.ps1` written. It also needed a launcher fix: upstream's `instantlaunch` with two names refused to
+  start the second game unless *Allow multiple game instances* was on.
+- S0.5 `Nitrox.Test/Helper/SaveLoadRoundTrip.cs` plus `WorldServiceSaveLoadTest` (base with chargers and a scanner room).
+  The charger test passes on current code, as expected: S2's root cause is client-side resync deletion, not the save
+  format. So the test guards against future format changes; it doesn't reproduce S2. Finding: `BuildEntity`'s JSON
+  constructor forces `SpawnedByServer = true` on load (same pattern as `ModuleEntity`, intended for simulation locks).
+- S0.6 `/report` + F4 (client bundle on each player's PC, server bundle with a save snapshot on the server's PC). No packet
+  ring buffer yet.
+
 ---
 
 ## S1: Cyclops damage, leaks and fires persist (#2220, #2230), p/0
@@ -590,7 +600,12 @@ the description is empty):
 
 ## Verify-first list (play-testing or bot runs, before planning)
 
-- #2761 vehicle movement regression: probably fixed by #2864. **Phase 0.**
+- #2761 vehicle movement regression: probably fixed by #2864. **Phase 0.** From code and PR history (2026-11-01):
+  #2864 (merge `c5eda87f`, in our base) is a maintainer's replacement for #2753, which was closed as "Superseded by
+  #2864". The #2761 reporter had confirmed that #2753 fixed the symptom. #2864's author found the cause on the server: since
+  #2314, `RealTimeElapsed` was coupled to game time, so the movement timestamps clients compare could shift. #2864
+  decouples them again. That fits #2753's observation that it depended on join order. Upstream #2761 is still open and
+  nobody has confirmed it in game on the current build. **Verify in a dual-client run** (A drives a Seamoth, B watches).
 - Possible item or vehicle loss: #2768 (2nd Seamoth despawns 1st), #2448 (lockers vanish in Cyclops), #2538
   (eggs vanish in containment).
 - #2800 birds doubling per restart.
@@ -602,3 +617,4 @@ See ISSUE_TRIAGE.md for the full verify list.
 | Date | Item | Change | Verified by |
 |---|---|---|---|
 | 2026-11-01 | — | Spec created from upstream snapshot `62ef043a` | — |
+| 2026-11-01 | S0.1, S0.5, S0.6 | Branch `fix/s0-test-rig`: `tools/dual-client.ps1` + instantlaunch multi-instance fix, `SaveLoadRoundTrip` helper + 3 tests, `/report` + F4 bug bundle (client + server `report` command). #2761 assessed from code: probably fixed by #2864 | `dotnet build` + `dotnet test` (259 pass, 13 skipped). Dual-client run and in-game `/report`: not yet run |

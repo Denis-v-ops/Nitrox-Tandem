@@ -36,16 +36,26 @@ we copy.
   So a bot that never reports cells should own nothing. *Needs verification*: check `JoiningManager`.
 - The game-side code runs through Harmony patches inside the real game. A test runner injected the same way can call real
   game methods (e.g. a terminal's `OnHandClick`), and those calls go through the same Nitrox patches a player's input would.
-- **A multi-client auto-launch already exists (Debug builds only):**
+- **A multi-client auto-launch exists (Debug builds only):**
   `Nitrox.Launcher.exe instantlaunch <SaveName> <Player1> <Player2> …` creates or starts the server for that save, then
   starts one game per player name with `--instantlaunch <name>`. Each game auto-joins `127.0.0.1:11000` from the main menu.
-  Multiple game instances are allowed automatically when more than one name is given.
   (`Nitrox.Launcher/App.axaml.cs`, `Nitrox.Launcher/ViewModels/LaunchGameViewModel.cs` `HandleInstantLaunchForDevelopment`,
-  `NitroxPatcher/Patches/Persistent/uGUI_MainMenu_Start_Patch.cs`.) *Confirmed by reading the code, but not yet run on
-  the dev PC.* Running it once is the first step of S0.1.
+  `NitroxPatcher/Patches/Persistent/uGUI_MainMenu_Start_Patch.cs`.) Upstream only skipped the Steam bootstrap for several
+  names; the second game was still refused unless *Allow multiple game instances* was on. The fork fixes that in
+  `StartMultiplayerAsync` (S0.1).
+- **`tools/dual-client.ps1`** (S0.1) wraps it: Debug build, optional fixture save (`-Fixture <folder|zip>`, `-Force` moves an
+  existing save aside), launch, log locations, `-WaitForJoin` (PASS/FAIL from the server log line
+  `Player <name> joined successfully`) and `-Stop` (closes only what the last run started). Needs Steam running.
+- **Save → load round trip** (S0.5): `Nitrox.Test/Helper/SaveLoadRoundTrip.cs`. `AssertSurvivesSaveAndLoad(roots…)` runs
+  entity trees through the server's real `WorldService.Save`/`LoadPersistedWorld` (JSON) and deep-compares every entity.
+  Example: `Nitrox.Test/Server/Serialization/World/WorldServiceSaveLoadTest.cs`.
+- **Bug report** (S0.6): `/report <text>` in chat or **F4** writes `%APPDATA%\Nitrox\reports\<time>_<player>.zip` (Nitrox
+  logs from the last 24 h, `Player.log`, position) on the player's PC, and the server's `report` command writes
+  `<time>_server_<player>.zip` (fresh save snapshot, server logs, `server.cfg` without passwords) on the server's PC.
 - Server scenario commands already exist: `warp`, `teleport`, `sunbeam`, `aurora`, `time`, `save`, `restart`, `query`
   (`Nitrox.Server.Subnautica/Models/Commands`).
-- Missing today: any in-game test runner, any way to pass scenario arguments through `instantlaunch`, any bug-report bundle.
+- Missing today: any in-game test runner, any way to pass scenario arguments through `instantlaunch`, a packet ring buffer
+  in the bug report.
 
 ## The plan
 
@@ -87,10 +97,12 @@ screenshots of both windows during the run and compare them. Use this rarely; sc
 
 ### Human layer: the playthrough *is* the acceptance test
 - **No per-fix sessions.** Fixes reach the players in **batches** as new `coop` builds, each one gated by L1–L3.
-- **One-key bug report** (S0.6): a client hotkey and chat command `/report <text>` that zips the client log, the server log,
-  the last N minutes of packets (from a ring buffer) and a server-side save snapshot into
-  `%APPDATA%\Nitrox\reports\<timestamp>.zip`. When something looks wrong, a player presses the key and keeps playing. An
-  agent turns the bundle into a reproduction (L2 replay or a new L3 scenario) and a fix.
+- **One-key bug report** (S0.6, built): **F4** or `/report <text>` in chat. When something looks wrong, a player presses the
+  key and keeps playing. Collect `%APPDATA%\Nitrox\reports\` from **both** PCs: each player's PC has
+  `<time>_<player>.zip` (Nitrox logs, `Player.log`, position), and the server's PC also has `<time>_server_<player>.zip`
+  (save snapshot taken at that moment, server logs, `server.cfg`). An agent turns the bundles into a reproduction (L1
+  round-trip test with the snapshot, L2 replay or a new L3 scenario) and a fix. Still missing: the last N minutes of
+  packets (ring buffer).
 - **Safety nets, so skipping manual tests is acceptable:**
   - Back up the world before every build update. Nitrox keeps world backups (the launcher can find them); the update
     script also copies the save folder.
@@ -108,12 +120,12 @@ coming back) often show up only then.
 
 | Step | What | Effort | Unlocks |
 |---|---|---|---|
-| S0.1 | `tools/dual-client.ps1`: Debug build + copy fixture save + `Nitrox.Launcher.exe instantlaunch <save> A B` | hours (`instantlaunch` exists) | One-command dual-client runs |
+| S0.1 | `tools/dual-client.ps1`: Debug build + copy fixture save + `Nitrox.Launcher.exe instantlaunch <save> A B` (**done**) | hours (`instantlaunch` exists) | One-command dual-client runs |
 | S0.2 | Forward `--nitrox-scenario/--nitrox-role` through `instantlaunch`; clients quit on scenario end | small | Unattended runs |
 | S0.3 | `tools/Nitrox.Bot` (idle/follow/script + packet log) | 1–2 days | L2 |
 | S0.4 | Scenario runner + `run-scenario.ps1` + first scenario (S2 charger/scanner-room persistence) | 3–5 days | L3, the per-fix gate |
-| S0.5 | Save → load round-trip test helper | small | L1 for persistence bugs |
-| S0.6 | `/report` bundle hotkey + packet ring buffer | 1 day | Playthrough-as-testing |
+| S0.5 | Save → load round-trip test helper (**done**) | small | L1 for persistence bugs |
+| S0.6 | `/report` bundle hotkey (**done**) + packet ring buffer (open) | 1 day | Playthrough-as-testing |
 | S0.7 | Save fixtures for S1–S10 | grows with use | Fast scenario setup |
 
 S0.1, S0.2, S0.5 and S0.6 are worth doing before any bug fix. S0.4 should be done before the "Build" items in the spec. The

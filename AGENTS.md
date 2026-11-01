@@ -59,7 +59,7 @@ Visual Studio or Rider are optional. Solution file: `Nitrox.slnx`.
 
 ```bash
 dotnet build Nitrox.slnx                                    # Debug, about 40 s cold / 12 s warm
-dotnet test Nitrox.Test/Nitrox.Test.csproj                  # MSTest; 256 pass, 13 Linux-only skipped (about 6 s)
+dotnet test Nitrox.Test/Nitrox.Test.csproj                  # MSTest; 259 pass, 13 Linux-only skipped (about 6 s)
 dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for Windows
 ```
 
@@ -89,15 +89,19 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
 - **Play/test a build:** run `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe`, create or start a server, launch the
   game, then use **Multiplayer** on the main menu and join `127.0.0.1` (default port `11000`, from
   `Nitrox.Model/Constants/SubnauticaServerConstants.cs`).
-- **Two clients on one PC, no clicking (Debug builds):**
-  `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe instantlaunch <SaveName> Alice Bob` starts the server for that
-  save and one game per name, and each game auto-joins localhost. *Confirmed in code but not yet run on this machine;
-  running it once is the first step of S0.1.* By hand: launcher **Options → Allow multiple game
-  instances** (Steam). See [docs/fork/TESTING.md](docs/fork/TESTING.md) for the automated test plan. Upstream has no CI
-  for gameplay and the players don't do per-fix playtests, so **automated verification is your job**.
+- **Two clients on one PC, no clicking (Debug builds):** `tools\dual-client.ps1 -WaitForJoin` builds, runs
+  `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe instantlaunch <SaveName> Alice Bob` (server for that save plus
+  one game per name, each auto-joining localhost), prints PASS once both have joined, and `tools\dual-client.ps1 -Stop`
+  closes it all. `-Fixture <save folder|zip>` starts from a prepared world. This opens game windows, so tell the user
+  before running it. By hand: launcher **Options → Allow multiple game instances** (Steam). See
+  [docs/fork/TESTING.md](docs/fork/TESTING.md) for the automated test plan. Upstream has no CI for gameplay and the
+  players don't do per-fix playtests, so **automated verification is your job**.
+- **Persistence tests:** `Nitrox.Test/Helper/SaveLoadRoundTrip.cs` (`AssertSurvivesSaveAndLoad(entityTrees…)`) runs
+  entities through the server's real save and load code. Use it for every "gone after restart" fix.
 - **Logs:** Nitrox (launcher, server, client) → `%APPDATA%\Nitrox\logs`. Game →
   `%UserProfile%\AppData\LocalLow\Unknown Worlds\Subnautica\Player.log`. Always ask for or collect both sides when
-  debugging a desync.
+  debugging a desync. **Bug reports** from the players (F4 or `/report <text>`) are zips in `%APPDATA%\Nitrox\reports`:
+  collect them from both PCs (the server's PC also has a save snapshot taken at that moment).
 - **Attaching a debugger to the game:** dnSpyEx + Unity debug Mono DLL (`MonoBleedingEdge/EmbedRuntime/mono-2.0-bdwgc.dll`
   swap), then *Debug → Start Debugging → Unity (Connect)* on `127.0.0.1:5555`. Debug builds raise the network timeout to
   5 min so breakpoints don't disconnect you. Full steps:
