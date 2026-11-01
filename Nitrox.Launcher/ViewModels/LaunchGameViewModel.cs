@@ -114,7 +114,8 @@ internal partial class LaunchGameViewModel(DialogService dialogService, ServerSe
                     LauncherNotifier.Error("Aarrr! Nitrox has walked the plank :(");
                     return false;
                 }
-                if (GameInspect.WarnIfGameProcessExists(GameInfo.Subnautica) && !keyValueStore.GetIsMultipleGameInstancesAllowed())
+                // Instant launch with several players starts one game per player, so it implies multiple instances.
+                if (App.InstantLaunch is not { PlayerNames.Length: > 1 } && GameInspect.WarnIfGameProcessExists(GameInfo.Subnautica) && !keyValueStore.GetIsMultipleGameInstancesAllowed())
                 {
                     return false;
                 }
