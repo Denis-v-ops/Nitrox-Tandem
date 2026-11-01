@@ -29,16 +29,17 @@ public sealed partial class LiveMixin_Kill_Patch : NitroxPatch, IDynamicPatch
             return;
         }
 
-        // Creature deaths are synced by CreatureDeath_OnKillAsync_Patch and destroying them here would remove the corpse.
-        // Players (local or remote) carry the player's id, so EntityDestroyed would delete the player on the server.
-        if (__instance.GetComponent<CreatureDeath>() || IsPlayer(__instance))
+        // Players (local or remote) carry the player's id, so EntityDestroyed would delete the player on the server
+        if (IsPlayer(__instance))
         {
             return;
         }
 
-        if (__instance.destroyOnDeath || 
-            __instance.broadcastKillOnDeath || 
-            __instance.passDamageDataOnDeath || 
+        // Creature corpses are synced by CreatureDeath_OnKillAsync_Patch, destroying them here would remove the corpse.
+        // Creatures still use the destroyOnDeath and ShouldBroadcastDeath cases, which LiveMixinManager.ReplayRemoteKill skips.
+        bool broadcastsKill = (__instance.broadcastKillOnDeath || __instance.passDamageDataOnDeath) && !__instance.GetComponent<CreatureDeath>();
+        if (__instance.destroyOnDeath ||
+            broadcastsKill ||
             Resolve<LiveMixinManager>().ShouldBroadcastDeath(__instance))
         {
             Resolve<IPacketSender>().Send(new EntityDestroyed(objectId));
