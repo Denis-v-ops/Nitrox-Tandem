@@ -59,7 +59,7 @@ Visual Studio or Rider are optional. Solution file: `Nitrox.slnx`.
 
 ```bash
 dotnet build Nitrox.slnx                                    # Debug, about 40 s cold / 12 s warm
-dotnet test Nitrox.Test/Nitrox.Test.csproj                  # MSTest; 259 pass, 13 Linux-only skipped (about 6 s)
+dotnet test Nitrox.Test/Nitrox.Test.csproj                  # MSTest; 273 pass, 13 Linux-only skipped (about 6 s)
 dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for Windows
 ```
 
