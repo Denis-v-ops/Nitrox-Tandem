@@ -31,6 +31,12 @@ public static class BatteryChildEntityHelper
     /// </summary>
     private static readonly Dictionary<(NitroxId ParentId, int ComponentIndex), InstalledBatteryEntity> pendingInstalledBatteries = [];
 
+    static BatteryChildEntityHelper()
+    {
+        // Entries from a previous session would otherwise leak into the next one
+        Multiplayer.OnAfterMultiplayerEnd += pendingInstalledBatteries.Clear;
+    }
+
     /// <summary>
     /// Overload for callers (e.g. vehicle construction) that don't have an <see cref="EntityMetadataManager"/> instance at hand.
     /// </summary>
