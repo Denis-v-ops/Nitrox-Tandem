@@ -11,6 +11,11 @@ An open-source, multiplayer modification for the game <a href="https://unknownwo
 [![Discord](https://img.shields.io/discord/525437013403631617?logo=discord&logoColor=white)](https://discord.gg/E8B4X9s)
 [![Build](https://github.com/SubnauticaNitrox/Nitrox/actions/workflows/buildingMaster.yml/badge.svg)](https://github.com/SubnauticaNitrox/Nitrox/actions/workflows/buildingMaster.yml)
 
+> [!NOTE]
+> **This is a personal fork** ([Denis-v-ops/Nitrox](https://github.com/Denis-v-ops/Nitrox)) of [SubnauticaNitrox/Nitrox](https://github.com/SubnauticaNitrox/Nitrox), focused on making a two-player co-op story playthrough stable.
+> The `coop` branch carries our fixes; `master` mirrors upstream. Start with [AGENTS.md](AGENTS.md) (build, architecture, workflows),
+> then [docs/fork/ISSUE_TRIAGE.md](docs/fork/ISSUE_TRIAGE.md) and [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md).
+
 ## FAQ
 
 ### What is the current status?
