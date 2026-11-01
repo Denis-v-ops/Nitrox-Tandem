@@ -41,8 +41,9 @@ Rank is severity × likelihood for our run. **Execution order is different, chea
 
 1. **Phase 0, baseline (before anything else):** S0.1 + S0.5 + S0.6 from TESTING.md. Verify the vehicle-movement
    regression #2761 is fixed on master (fix #2864 merged 2026-09-06). Set up world backups.
-2. **Phase 1, adopt batch:** S9 (#2899) → S5a (#2798) → S8 (#2809) → S4 (#2902, then #2867 with fix) → S3 (small
-   build). The players can start the run on this build.
+2. **Phase 1, adopt batch + small builds:** S9 (#2899) → S5a (#2798) → S8 (#2809) → S4 (#2902, then #2867 with fix)
+   → S3 (small build) → S7 step 1 (ghost cell entries; pure server logic, L1-testable). The players can start the run on
+   this build.
 3. **Phase 2:** S1 (#2881). This is a **one-way save-format change**, so back up the world first.
 4. **Phase 3, builds (after S0.4, the scenario runner):** S2 → S7 → S6 → S5b → S10.
    S3 must be in before the players reach the Disable-Gun terminal. S10 is the biggest and least urgent.
@@ -309,18 +310,71 @@ Implement the described design ourselves (or adopt it if the author pushes it):
   alien base (#2306).
 - A server restart clears it, but it comes back at random.
 
-**Root cause:** *code investigation pending.* Areas to check:
-- `Player.currentSub` / `SetCurrentSub`, `precursorOutOfWater`, and the Cyclops entry hatch / `PlayerCinematicController`
-  paths that Nitrox patches.
-- Whether the **remote player object's** colliders can enter or leave interior triggers and flip the *local* player's
-  state.
-- Initial-sync restore of the sub / precursor flag.
+**Vanilla mechanics** (IL):
+- Swimming and oxygen loss inside a sub happen only when `Player.currentSub == null`: `IsUnderwater`, the walk/swim
+  switch and `CanBreathe` all key off it.
+- Hatch entry ends in `SetCurrentSub(sub, false)`. That call **silently does nothing** if the sub changed within the
+  last 2 physics ticks (`CanChangeSub()`).
+- The sub is cleared by `EnterExitHelper.Exit`, by `ValidateCurrentSub` (every 1 s, if the player is more than 35 m from
+  the sub's origin) and by `OnPlayerPositionCheat`.
+- Inside precursor bases the state is `precursorOutOfWater`. Only triggers set it, `OnPlayerPositionCheat` clears it,
+  `waterPlaneOverride` takes priority, and nothing ever recomputes it.
 
-**Plan:** Build, after the root cause is found.
+**Nitrox defects:**
+- *Confirmed:* `NitroxPatcher/Patches/Dynamic/Player_SetCurrentSub_Patch.cs` broadcasts the sub change in a **Prefix**,
+  before vanilla's `CanChangeSub` check. The server and the partner record "inside" even when the local game rejected
+  it, and nothing re-checks, which hides the mismatch.
+- *Confirmed:* `NitroxClient/MonoBehaviours/Cyclops/NitroxCyclops.cs` makes the local player a child of the Cyclops
+  (vanilla never does), and `CyclopsMotor.cs` turns off player collisions.
+  - Precursor and room triggers (`PrecursorDoorMotorModeSetter`, `PrecursorMoonPoolTrigger`, `RoomLinks`,
+    `DisableWaterRenderingVolume`, `PlayerSoundTrigger`) search the parent tree around whatever touched them.
+  - So while the local player is inside a Cyclops, the hull, docked vehicles or a remote body (which carries a rigidbody
+    and a trigger capsule, `RemotePlayer.cs`) can resolve to the *local* player and flip `precursorOutOfWater` /
+    `waterPlaneOverride`.
+  - Remote bodies can't change `currentSub` itself: base triggers need a `Player` component directly on the collider,
+    and remote bodies have none.
+- *Confirmed (#2306 / precursor):*
+  - `PlayerPositionInitialSyncProcessor` restores the saved `InPrecursor` *before* the world finishes loading, so
+    triggers firing during load can overwrite it.
+  - `PrecursorTracker` takes its starting value after loading and never sends it, so the server keeps a stale value
+    for the next join.
+  - `PlayerTeleportedProcessor` calls `OnPlayerPositionCheat`, which forces the flag to false, and never applies the
+    destination's value. Warping to a partner inside a precursor base leaves you swimming.
 
-**Automated check:** L3 `InteriorStateHolds`: A enters the Cyclops while B swims around and through it. A has
-`Player.main.IsUnderwater() == false` and oxygen isn't dropping. Repeat in a precursor base, and after a B rejoin while
-A is inside.
+**Root cause:** *hypothesis, ranked.*
+1. The local `currentSub` stays or becomes null while the player is physically inside: a rejected hatch entry or a
+   later exit, never corrected.
+2. Triggers reached through the Cyclops parenting flip the water flags.
+3. Precursor-flag restore and teleport ordering.
+
+Needs an instrumented two-player repro (step 3 of the plan helps).
+
+**Plan: Build:**
+1. `Player_SetCurrentSub_Patch`: record the old sub in a Prefix (`__state`) and broadcast in a **Postfix**, only if
+   `currentSub` actually changed.
+2. After `EnterExitHelper.Enter` (Postfix patch): if the target is a Cyclops hatch and `currentSub` isn't that sub, log
+   a warning and call `SetCurrentSub(sub, true)`.
+3. Log Cyclops exits (`SubRoot_OnPlayerExited_Patch`) at debug level with a stack trace, to catch the real trigger in the
+   wild. The `/report` bundle (S0.6) will capture it.
+4. In the precursor/room triggers listed above, skip the player branch when the collider belongs to a Cyclops subtree
+   and isn't the local player's own collider. Keep the vehicle branch unchanged (Exosuit inside a Cyclops).
+5. Precursor flag:
+   - Restore `InPrecursor` *after* the world has loaded.
+   - Send the current value once when `PrecursorTracker` starts.
+   - Add `InPrecursor` to the `PlayerTeleported` packet (server `Models/Player.cs`, `WarpCommand`, `BackCommand`) and
+     apply it after `OnPlayerPositionCheat`.
+6. Drive-by bug, confirmed: `CyclopsPawn.cs` sets `Handle.layer = 1 << PLAYER_LAYER`, but `PLAYER_LAYER` is already
+   shifted, so the pawn ends up on the wrong layer.
+
+**Automated check:**
+- L3 `InteriorStateHolds`: A enters and leaves the Cyclops by hatch about 50 times while B is inside, the sub is moving,
+  and vehicles dock and undock.
+  - A's `currentSub` matches the server's `SubRootId` (`query`).
+  - Oxygen never drops inside.
+- L3 `PrecursorRejoin`: A relogs inside an alien-base antechamber, and B warps to A inside a precursor base. Both are
+  walking, not swimming.
+
+**Risks:** forcing the sub could fire in the middle of a cinematic, so skip it while `cinematicModeActive`.
 
 ---
 
@@ -334,20 +388,79 @@ A is inside.
 - #2691 (verified): resources float inside the base, respawn for one player when they approach, and differ between
   players. They appear to be items removed from the non-host player's inventory, appearing where that player stood.
 
-**Root cause:** *code investigation pending.* Areas to check:
-- Who spawns machine output (one simulating player or every client).
-- Whether a remote `ItemsContainer` add enforces capacity.
-- Add-without-remove on container transfers.
-- How the server handles an item that leaves a player's inventory without being dropped. That may create a world
-  entity in the base cell that respawns on cell load (#2691).
+**#2495, filtration overflow: root cause confirmed.**
+- Nitrox has **no code for the filtration machine**, so every client near the base runs it.
+- Each time it produces an item (IL), it:
+  1. checks for room only in its *own* copy of the container,
+  2. calls `Pickupable.Pickup`, so Nitrox's `Pickupable_Pickup_Patch` sends a `PickupItem` "by the local player",
+  3. adds the item, which sends `EntityReparented(item, machine)` (`ItemContainers.cs`).
+- Other clients apply the add with `UnsafeAdd`, which has **no capacity check** (`EntityReparentedProcessor`,
+  `InventoryItemEntitySpawner`, `ItemContainers`).
+- Two players therefore get 4 + 4, and the extras are persisted.
 
-**Plan:** Build. Reproduce #2047 on current master first.
+**#2494, bioreactor overfill / vanishing: root cause confirmed.**
+- Each client's `BaseBioReactor.ProducePower` burns (removes and destroys) items on its own (IL), and Nitrox sends
+  nothing.
+- So items vanish on one client and come back on reload, while adds from the other client still overfill through
+  `UnsafeAdd`.
+- The source of the text spam wasn't found.
+
+**#2047, storage duplication: likely stale.**
+- The 2023 report is against 1.7.x, and that code path was replaced in `e95a78b2` (1.8.0.0).
+- The "storage version" text isn't Nitrox's. It probably comes from vanilla `StorageContainer.CleanUpDuplicatedStorage`
+  (*verify*).
+- A related live risk remains: `UnsafeAdd` (IL) never removes the item from its previous container. On the receiving
+  client, the source container (e.g. the partner's inventory copy) keeps a stale reference.
+
+**#2691, floating resources respawn: server side confirmed.**
+- The server's per-cell list of world items is in-memory and rebuilt only at startup (`WorldService`).
+- Only `PickupItemPacketProcessor` removes items from it, and only while the item is still recorded as a world item.
+- `EntitySpawnedByClientProcessor` (`AddOrUpdate` + `TrackEntityInTheWorld`) and `EntityReparentedProcessor` replace
+  or move an item's record **without removing its old cell entry**.
+- When a player loads a cell, `CellVisibilityChangedProcessor` re-sends everything on the list and forces it to spawn.
+- So a world item that later moves into a container leaves a **ghost entry** in its old cell. That explains every
+  symptom:
+  - it respawns per player on approach,
+  - pickups don't stick,
+  - the count grows over a session,
+  - a restart clears it.
+- *Hypothesis:* the client action that first puts the item into the world where the non-host player stood. A suspect
+  is `EntityReparentedProcessor` silently ignoring a move while the item is still spawning.
+- #2665 is unrelated: it only touched the prefab cache.
+
+**Plan: Build:**
+1. **Ghost cell entries (#2691):**
+   - Remove the old cell entry in `EntitySpawnedByClientProcessor`, and in `EntityReparentedProcessor` when an item is
+     moved under a parent.
+   - Make `PickupItemPacketProcessor` remove the entry by id, whatever the item is currently recorded as.
+   - In `WorldEntityManager.GetEntities` (cell list), skip and log entries that no longer match the item's current
+     record. This doubles as a diagnostic.
+   - Add Nitrox.Test cases for these processors. **This part is pure server logic, so L1 covers it.**
+2. **One producer per machine (#2495, #2494):**
+   - Only the client holding a simulation lock on the machine or its base produces or burns (pattern:
+     `WaterParkCreature_ManagedUpdate_Patch` for water parks).
+   - Design how that lock is granted for base modules, including handover when the holder leaves.
+   - Suppress `PickupItem` while the machine produces.
+   - The bioreactor sends `EntityDestroyed` for each burned item (as `ItemsContainer_DestroyItem_Patch` does for
+     crafting).
+3. **Remote adds:**
+   - Before `UnsafeAdd`, remove the item from its old container (`pickupable.inventoryItem?.container?.RemoveItem(pickupable, true)`).
+   - Log a warning when the target container has no room.
+4. **#2047:** mark it stale, unless a scenario reproduces it on current master.
 
 **Automated check:**
-- L3 `FiltrationNoOverflow`: run a filtration machine for N cycles with both players nearby. Contents never exceed the
-  container size and match on both clients and on the server (`query`).
-- L3 `NoFloatingLeftovers`: B moves items between inventory and lockers inside the base, A leaves and returns. No
-  world-entity items appear in the base cell.
+- L1: processor tests for ghost-entry removal (spawn into world → reparent into locker → the cell list no longer
+  contains it).
+- L3 `FiltrationNoOverflow`: 1–4 filtration machines with both players nearby. At most 2 + 2 each, on both clients, on
+  the server, and after relog.
+- L3 `BioreactorSync`: both clients add big eggs. Counts never exceed capacity and burned items are gone everywhere.
+- L3 `NoFloatingLeftovers`: B moves a full inventory into a locker, and A leaves and returns. Nothing floats, and the
+  server log shows no ghost warnings.
+
+**Risks:**
+- If the lock holder leaves without handing over the lock, production stops.
+- `RemoveItem` on the old container notifies its listeners (planters, trash cans).
+- Removing cell entries at the wrong moment could hide real world items.
 
 ---
 
