@@ -477,6 +477,47 @@ decides whether it bites; check before building, and age the server clock in the
 - **Tests:** L2, a `save` sends start and end to every player; windowless, the indicator's `CanvasGroup` alpha is 1
   during a save on both games and 0 after; negative control without the Postfix.
 
+**Findings (2026-11-02):**
+- *Held:* `SavingIndicator.Update` sets `canvasGroup.alpha` from `SaveLoadManager.main.isSaving`, and the text is
+  `Language.main.Get("SavingGame")` (`game:SavingIndicator.cs`). *Held:* a Nitrox game never saves locally. The only
+  game code that saves is `IngameMenu.SaveGameAsync` (`game:IngameMenu.cs`, from the save button and the permadeath
+  branch of `QuitGameAsync`), and `isSaving` is set only in `SaveLoadManager`'s save coroutines. Nitrox hides the save
+  button (`IngameMenu_OnSelect_Patch`) and skips the permadeath save (`IngameMenu_QuitGameAsync_Patch`).
+- *Held (theirs):* the timed autosave (`AutoSaveService`), the `save` command (`SaveCommand`) and the save when the last
+  player leaves (`IHibernate` sleep) all go through `SaveService`'s queue, which runs one save at a time. The server also
+  saves once right after it starts, because it starts asleep (`HibernateService.StartingAsync`).
+- *Still open (H):* whether a `SavingIndicator` instance runs in the play scene. No game code references the type. The
+  pause-menu save sets `isSaving`, and `SavingIndicator` is the only code that shows it, which suggests one does
+  (unverified). The scene bundles are compressed and weren't searched. Both paths are built, and the scenario prints
+  which one each game used.
+- **Built.** `SaveService` sends `ServerSaving(number, STARTED)` to every connected player before it writes the world,
+  then `FINISHED` or `FAILED` once the world and the `ISaveState` files (bans, config) are written. A failed or cancelled
+  save also sends its end, and a packet that can't be sent is only logged. The post-save command and the backup run
+  after the end. The packet has no server processor: a copy a game sends is dropped (`DefaultServerPacketProcessor`
+  blacklist), so it is never relayed or stored. On the client, `ServerSaveIndicator` (pure rules, one per session) shows
+  a save from its start for at least 2 s, until its end, at most 60 s if the end never arrives. It ignores an end without
+  its start (a player who joined during the save), and a new start replaces the running one. `SavingIndicator_Update_Patch`
+  (Postfix) sets alpha 1 while it shows. The path is chosen at the start: if a `SavingIndicator.Update` ran in the last
+  2 frames, the indicator path is used. Otherwise, in the world, the game's notice shows `ErrorMessage.AddMessage(
+  Language.main.Get(SavingIndicator.savingGameMessage))` once per save. While the player still loads, nothing is shown;
+  the indicator picks the save up if it starts running before the save ends. The path is logged once per session.
+- **Left out of theirs:** their own ring and Arial text (§2 principle 1), their harness console command, their packet
+  test (`PacketsSerializableTest` round-trips every packet). **No new strings** (the game's `SavingGame` key), and no
+  `ProtoInclude` tags used.
+- **Open:** a failed save only hides the indicator. The players aren't told that it failed (the game's own
+  `SaveFailedFormat` dialog would fit; not decided). There is no client switch for it (§2 principle 8; it's the game's
+  own indicator). It isn't checked whether a canvas that switches off windowless hides the indicator (TESTING.md
+  windowless differences); the scenario reads the alpha. An indicator on an active object with its component disabled
+  counts as not running (its `Update` doesn't run), so the notice shows; the scenario checks `isActiveAndEnabled` the
+  same way. The server's own save right after it starts announces its start before the world has loaded, when no
+  player can have joined yet (harmless).
+- **Tests:** unit `ServerSaveIndicatorTest` (10). Each of these fails with its rule reverted: the 2 s minimum (2
+  tests), the 60 s timeout, the start/end number match (2 tests), the "ran in the last 2 frames" check (2 tests). Three
+  are guards. L2 `ServerSavingTest` (3), each failing with its line reverted: `save` sends start then end with the same
+  number to both players (no announcements), a failed save (a folder where the serializer writes `Version.tmp`) still
+  sends `FAILED` and the next save `FINISHED` (end sent only on success), and a game's copy isn't relayed (blacklist
+  line). Scenario `tools/scenarios/M7-SavingIndicator.ps1`, written, not run.
+
 ## M8: Crafting from base and Cyclops lockers (M–L)
 
 - **What players get (their design):** the Fabricator, the Modification Station, the moonpool upgrade console's
@@ -652,3 +693,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | M8 | Implemented, not verified in game: crafting stations of a base or Cyclops also use its lockers (menu counts, tooltip, claims at the server, one retry, the same items go back if the craft can't start); `CraftFromLockers` (true) via `CoopSettings`; a game's `CraftingClaimResponse` isn't relayed. No ProtoInclude tags | Unit: `CraftingClaimArbiterTest` (35, incl. the 50-round race; each fails with its line reverted: gate, player and item exclusions, return once), `LockerCraftingRulesTest` (32). L2: `LockerCraftingTest` (4: race over the protocol + restart, return once + restart, option off, no relay; each fails with its line reverted). Transpilers registered (delta 0). Scenario written, not run |
 | 2026-11-02 | M4 | Implemented, not verified in game: the Reaper's grab and release are replayed in every game that sees it (20 s fallback; the pilot's game applies the grip); the Crabsquid's EMP is replayed at each game's copy and skips other players' bodies; the victim's game takes a Bleeder's exclusive lock and world bleeders are simulated (whitelist, duplicates removed); crash fish are no longer deleted when their area unloads, the holder waits for the home's saved state and makes no second fish, and the loader keeps a fish's world position; creature actions are sent on change plus every 5 s, null included; a crash fish blast hurts the partner's vehicle. Their `CrashHomeStates` save normalisation left out | L2 `CreatureAttackGapsTest` (3, each fails with its fix reverted: loader, whitelist line, server processors). Unit `CreatureActionBroadcastRulesTest`, `BleederClaimRulesTest`, `CrashHomeRulesTest` (pure helpers). Scenario written, not run |
 | 2026-11-02 | M2 | Implemented, not verified in game: babies of the server swim to the mother and teleported ones are destroyed on the server, incubator metadata applied once; radiation radius for a joiner from all leaks, stale leak health dropped (both sides); the pod respawn keeps the player in the pod, a new player's entity transform is parented (S13 finding); story and Aurora packets wait for the initial sync; goals completed outside `StoryGoal.Execute` (door keys) are sent, teleporter pairs persist as `Nitrox_TeleporterActive:<id>` goals, only a teleporter that opened reports; the server drops `RadioSunbeam4` on `Goal_Disable_Gun`, the partner's open gun terminal closes; double fragment scan; rocket reports merged, a launch for an unloaded rocket ignored, stage before elevator; beacon keys compared ignoring case. Hypothesis "goals lost while loading" only partly held (see Findings) | L2 (headless): `StoryProgressTest` (6 fail with their fix reverted, 1 guard). Unit: `RadiationRadiusModelTest` (fails with the old `Max()` rule), `RocketMetadataTest`, `SeaEmperorBabyRulesTest`, `DirectGoalCompletionsTest`, `TeleporterGoalKeyTest`, `InitialSyncDeferralTest`. Scenario `M2-StoryProgress.ps1` written, not run |
+| 2026-11-02 | M7 | Implemented, not verified in game: the server tells every player when a save starts and ends (finished or failed); the game's own `SavingIndicator` shows it (Postfix on `Update`) for at least 2 s, at most 60 s without an end; where no indicator runs in the play scene, the game's notice shows `SavingGame` once per save. A game's copy of the packet is dropped. No new strings, no `ProtoInclude` tags | Unit `ServerSaveIndicatorTest` (10; 7 fail with their rule reverted, 3 guards). L2 `ServerSavingTest` (3, each fails with its line reverted). Scenario written, not run |

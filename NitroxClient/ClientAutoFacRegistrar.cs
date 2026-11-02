@@ -129,6 +129,7 @@ namespace NitroxClient
                             .As<PartnerAction>()
                             .InstancePerLifetimeScope();
             containerBuilder.RegisterType<PartnerActions>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<ServerSaveIndicator>().InstancePerLifetimeScope();
         }
 
         private void RegisterMetadataDependencies(ContainerBuilder containerBuilder)

@@ -72,6 +72,9 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 - **The launcher knows it's Tandem.** It shows "Nitrox Tandem" in the window title and in game, sends crash reports to
   this repo, and never offers to "update" to official Nitrox. That would remove these fixes and can't load your
   Tandem world.
+- **Small comforts:**
+  - The game's own "Saving game" notice shows on both screens while the server saves the world (the autosave or
+    `/save`).
 
 ### Planned co-op features
 Not built yet; designed in [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md). The idea: Subnautica
