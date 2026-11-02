@@ -62,6 +62,17 @@ public class RemotePlayer : INitroxPlayer
 
     public CyclopsPawn Pawn { get; set; }
 
+    /// <summary>
+    ///     The body lies in the downed pose (COOP_FEATURES_SPEC T1, <see cref="DownedPose" />).
+    /// </summary>
+    public bool IsDowned { get; private set; }
+
+    /// <summary>
+    ///     Something holds the body's pose, so movement must not drive its animator. Only the downed pose today; upstream
+    ///     #2859's cinematic lock belongs in this test too (COOP_FEATURES_SPEC R1b, A2).
+    /// </summary>
+    public bool IsPoseLocked => IsDowned;
+
     public RemotePlayer(PlayerContext playerContext, PlayerModelManager playerModelManager, PlayerVitalsManager playerVitalsManager, FMODWhitelist fmodWhitelist)
     {
         PlayerContext = playerContext;
@@ -159,7 +170,7 @@ public class RemotePlayer : INitroxPlayer
         SetPilotingChair(null);
 
         AnimationController.AimingRotation = aimingRotation;
-        AnimationController.UpdatePlayerAnimations = true;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         AnimationController.Velocity = MovementHelper.GetCorrectedVelocity(position, velocity, Body, Time.fixedDeltaTime);
 
         // If in a subroot the position will be relative to the subroot
@@ -186,7 +197,7 @@ public class RemotePlayer : INitroxPlayer
         SetVehicle(null);
 
         AnimationController.AimingRotation = localRotation;
-        AnimationController.UpdatePlayerAnimations = true;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         AnimationController.Velocity = (localPosition - Pawn.Handle.transform.localPosition) / Time.fixedDeltaTime;
 
         Pawn.Handle.transform.localPosition = localPosition;
@@ -348,6 +359,28 @@ public class RemotePlayer : INitroxPlayer
     }
 
     /// <summary>
+    ///     Lays the body down or lets it get up (COOP_FEATURES_SPEC T1). Its position still follows the player's movement
+    ///     packets: a downed player can be pushed out of a vehicle, and the rescuer has to find the body where it is.
+    /// </summary>
+    public void SetDownedPose(bool downed)
+    {
+        if (IsDowned == downed || !Body)
+        {
+            return;
+        }
+        IsDowned = downed;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
+        if (downed)
+        {
+            Body.EnsureComponent<DownedPose>().Begin(this);
+        }
+        else if (Body.TryGetComponent(out DownedPose pose))
+        {
+            pose.End();
+        }
+    }
+
+    /// <summary>
     /// Drops the remote player, swimming where he is. Resets its animator.
     /// </summary>
     public void ResetStates()
@@ -355,7 +388,7 @@ public class RemotePlayer : INitroxPlayer
         SetPilotingChair(null);
         SetVehicle(null);
         SetSubRoot(null);
-        AnimationController.UpdatePlayerAnimations = true;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         AnimationController.Reset();
         ArmsController.SetWorldIKTarget(null, null);
     }

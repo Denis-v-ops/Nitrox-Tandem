@@ -19,6 +19,13 @@ public sealed partial class LiveMixin_TakeDamage_Patch : NitroxPatch, IDynamicPa
         // Persist the previous health value
         __state = __instance.health;
 
+        // COOP_FEATURES_SPEC T1: lava and heat still kill a downed player, whose invincibility would ignore them
+        if (type == DamageType.Heat && RescueWindow.IsLocalPlayerDowned && Player.main && __instance == Player.main.liveMixin)
+        {
+            __instance.Kill(type);
+            return false;
+        }
+
         if (!Resolve<LiveMixinManager>().IsWhitelistedUpdateType(__instance))
         {
             return true; // everyone should process this locally

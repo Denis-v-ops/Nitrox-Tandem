@@ -4,7 +4,7 @@ namespace Nitrox.Test.Client.GameLogic.PlayerLogic;
 
 /// <summary>
 ///     COOP_FEATURES_SPEC F1: how the partner's marker and name tag look by distance, sight and setting; D2: the last
-///     contact while the line is cut (L1).
+///     contact while the line is cut; D3: the distress call (L1).
 /// </summary>
 [TestClass]
 public class PartnerSignalRulesTest
@@ -129,10 +129,58 @@ public class PartnerSignalRulesTest
     }
 
     [TestMethod]
-    public void D2_LastContactRuleComesBeforeFaint()
+    public void D2_LastContactRuleComesBeforeFaint_D3DistressBeforeBoth()
     {
-        PartnerSignalRules.Rules[0].Should().BeOfType<LastContactRule>();
+        PartnerSignalRules.Rules[0].Should().BeOfType<DistressRule>();
+        PartnerSignalRules.Rules[1].Should().BeOfType<LastContactRule>();
         PartnerSignalRules.Rules[^1].Should().BeOfType<FaintSignalRule>();
+    }
+
+    private static PartnerSignalLook DistressLook(PartnerSignalMode mode, float distance, bool linkCut = false, bool inSight = false) =>
+        PartnerSignalRules.GetLook(new PartnerSignalContext(mode, distance, inSight, NAME_TAG_RANGE, PREFAB_MIN_DIST, PREFAB_RANGE, LinkCut: linkCut, SecondsSinceContact: 2.6f, Distress: true));
+
+    [TestMethod]
+    public void D3_Distress_FullAlphaAtAnyDistance_InEveryMode_ThroughInterference()
+    {
+        foreach (PartnerSignalMode mode in new[] { PartnerSignalMode.FAINT, PartnerSignalMode.ALWAYS, PartnerSignalMode.OFF })
+        {
+            foreach (float distance in new[] { 20f, 150f, 800f })
+            {
+                foreach (bool linkCut in new[] { false, true })
+                {
+                    PartnerSignalLook look = DistressLook(mode, distance, linkCut, inSight: distance < 25);
+                    look.Rule.Should().Be(DistressRule.NAME, $"{mode} at {distance} m, link cut {linkCut}");
+                    look.MarkerHidden.Should().BeFalse("not even the D2 flicker hides it (2.6 s since contact)");
+                    look.MinDist.Should().Be(DistressRule.MIN_DIST);
+                    // uGUI_Pings: alpha = Lerp(0, 0.5, (distance - minDist) / range), at its maximum from minDist + range on
+                    ((distance - look.MinDist) / look.Range).Should().BeGreaterThanOrEqualTo(1);
+                    look.Frozen.Should().BeTrue("it is placed by the pulses, not a live track");
+                }
+            }
+        }
+        DistressLook(PartnerSignalMode.FAINT, 2).NameTagVisible.Should().BeTrue();
+        DistressLook(PartnerSignalMode.FAINT, 2).MinDist.Should().BeGreaterThan(2, "right at the body the marker hides");
+    }
+
+    [TestMethod]
+    public void D3_NoDistress_TheUsualRules()
+    {
+        PartnerSignalRules.GetLook(new PartnerSignalContext(PartnerSignalMode.FAINT, 400, false, NAME_TAG_RANGE, PREFAB_MIN_DIST, PREFAB_RANGE, LinkCut: true, Distress: false))
+                          .Rule.Should().Be(LastContactRule.NAME);
+        Look(PartnerSignalMode.FAINT, 400).Rule.Should().Be("faint");
+    }
+
+    [TestMethod]
+    public void D3_PulsesEveryFiveSeconds_LabelCountsDown()
+    {
+        DistressRule.IsPulseDue(null, 100).Should().BeTrue("the first pulse comes at once");
+        DistressRule.IsPulseDue(100, 104.9f).Should().BeFalse();
+        DistressRule.IsPulseDue(100, 105).Should().BeTrue();
+        DistressRule.IsPulseDue(100, 50).Should().BeTrue("a clock that went back doesn't stop the pulses");
+        DistressRule.SecondsLabel(42.1f).Should().Be(43);
+        DistressRule.SecondsLabel(0.2f).Should().Be(1);
+        DistressRule.SecondsLabel(0).Should().Be(0);
+        DistressRule.SecondsLabel(-3).Should().Be(0);
     }
 
     [TestMethod]
