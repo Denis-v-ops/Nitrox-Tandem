@@ -301,7 +301,7 @@ internal class WorldService : IHostedService
                 {
                     parentEntity.ChildEntities.Add(entity);
 
-                    if (entity is WorldEntity worldEntity && parentEntity is WorldEntity parentWorldEntity)
+                    if (entity is WorldEntity worldEntity && parentEntity is WorldEntity parentWorldEntity && !IsCrashFishOfItsHome(worldEntity, parentWorldEntity))
                     {
                         worldEntity.Transform.SetParent(parentWorldEntity.Transform, false);
                     }
@@ -353,6 +353,16 @@ internal class WorldService : IHostedService
             }
         }
     }
+
+    /// <summary>
+    ///     MULTINAUGHTICA_SPEC M4: the game that makes a crash fish sends it with its world position and its home as parent
+    ///     (<c>CrashHome_Spawn_Patch</c>, <c>ToWorldDto</c>), and the server keeps its transform without a parent during the
+    ///     session (<see cref="EntityRegistry.AddToParent" /> only links the entities). So its saved local position is a
+    ///     world position, and hanging it under its home's transform on load (as for every other child, whose positions
+    ///     are local) moved the fish far from its home after a restart: wrong cell, wrong spot in both games.
+    /// </summary>
+    internal static bool IsCrashFishOfItsHome(WorldEntity entity, WorldEntity parent) =>
+        TechType.Crash.ToDto().Equals(entity.TechType) && TechType.CrashHome.ToDto().Equals(parent.TechType);
 
     // TODO: This method should be removed. Each service should load its own data instead of centralizing it here.
     private async Task LoadPersistedWorldIntoServicesAsync(PersistedWorldData pWorldData)

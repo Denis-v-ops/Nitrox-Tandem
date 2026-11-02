@@ -770,6 +770,10 @@ player (23.5 at infection 0.5), and a Stalker born in a containment spares the p
 **Priority:** a and d before the Lost River, b and c before the lava zones. None loses progress; each is a creature
 that is safe for one of the two players, which is what D4 is about.
 
+**a and d: implemented in [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M4** (2026-11-02, not verified in game): the
+EMP blast is replayed at each game's copy of the Crabsquid; the victim's game takes the Bleeder's exclusive lock, and
+world bleeders are simulated.
+
 ## S13: Cyclops movement and sync glitches
 
 **Report** (players, unconfirmed): "Cyclops movement / syncing is strange and can cause glitches."

@@ -14,6 +14,8 @@ internal static class SimulationWhitelist
     [
         TechType.Shocker.ToDto(),
         TechType.Biter.ToDto(),
+        // M4 (FIX_SPEC S15d): nobody simulated world bleeders, so they never attacked anyone
+        TechType.Bleeder.ToDto(),
         TechType.Blighter.ToDto(),
         TechType.BoneShark.ToDto(),
         TechType.Crabsnake.ToDto(),
@@ -57,14 +59,12 @@ internal static class SimulationWhitelist
         TechType.SeaTreader.ToDto(),
         TechType.Skyray.ToDto(),
         TechType.Spadefish.ToDto(),
-        TechType.Spinefish.ToDto(),
         TechType.BlueAmoeba.ToDto(),
         TechType.Shuttlebug.ToDto(),
         TechType.CaveCrawler.ToDto(),
         TechType.Floater.ToDto(),
         TechType.LavaLarva.ToDto(),
         TechType.Rockgrub.ToDto(),
-        TechType.Shuttlebug.ToDto(),
         TechType.Bloom.ToDto(),
         TechType.RockPuncher.ToDto(),
         TechType.Peeper.ToDto(),

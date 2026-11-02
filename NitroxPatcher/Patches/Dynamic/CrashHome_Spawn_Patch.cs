@@ -19,12 +19,31 @@ public sealed partial class CrashHome_Spawn_Patch : NitroxPatch, IDynamicPatch
 
     public static bool Prefix(CrashHome __instance)
     {
-        if (__instance.TryGetNitroxId(out NitroxId crashHomeId) &&
-            Resolve<SimulationOwnership>().HasAnyLockType(crashHomeId))
+        bool holdsLock = __instance.TryGetNitroxId(out NitroxId crashHomeId) && Resolve<SimulationOwnership>().HasAnyLockType(crashHomeId);
+
+        // M4: as in CrashHome_Update_Patch, a home that hasn't got its saved state yet has the prefab's number
+        if (holdsLock && !CrashHomeMetadataGate.MayActOnItsNumber(__instance))
         {
-            return true;
+            return false;
         }
-        return false;
+
+        switch (CrashHomeRules.DecideSpawn(holdsLock, __instance.crash))
+        {
+            case CrashHomeRules.SpawnCall.MakeFish:
+                return true;
+            case CrashHomeRules.SpawnCall.FishAlready:
+                // The number says "make one" although the home has its fish (a timer started before the server's fish
+                // arrived, or saved next to it): a second fish would stay beside the first. Set the number right and send it.
+                __instance.spawnTime = CrashHomeRules.FISH_ALIVE;
+                Optional<EntityMetadata> metadata = Resolve<EntityMetadataManager>().Extract(__instance);
+                if (metadata.HasValue)
+                {
+                    Resolve<Entities>().BroadcastMetadataUpdate(crashHomeId, metadata.Value);
+                }
+                return false;
+            default:
+                return false;
+        }
     }
 
     /*

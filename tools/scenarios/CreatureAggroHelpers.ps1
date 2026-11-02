@@ -391,3 +391,103 @@ function Test-AggroCase {
     }
 }
 
+<#
+    Shared by D4-ThreatParity.ps1 and M4-CreatureAttacks.ps1 (moved here from D4 unchanged): probe steps, the Seamoth a
+    player pilots, creatures spawned next to it. The caller defines $Only (script parameter).
+#>
+
+# A probe case that fails or throws is recorded and the next case still runs (Step alone stops the scenario).
+function Probe {
+    param([string]$Title, [scriptblock]$Body)
+    try { Step $Title $Body } catch { Write-Host "  (continuing)" -ForegroundColor DarkGray }
+}
+
+function Get-Other {
+    param([string]$Player)
+    if ($Player -eq $A) { $B } else { $A }
+}
+
+function Test-Wanted {
+    param([string[]]$Names)
+    -not $Only -or @($Names | Where-Object { $Only -contains $_ }).Count -gt 0
+}
+
+<#
+    The pilot spawns a Seamoth in front of them and gets in. Returns its id.
+#>
+function New-PilotedSeamoth {
+    param([string]$Pilot, [double[]]$Spot)
+    $other = Get-Other $Pilot
+    Invoke-Bridge $Pilot "teleport $(Format-Point $Spot)" | Out-Null
+    Invoke-Bridge $Pilot 'look 0 0' | Out-Null
+    Start-Sleep -Seconds 2
+    $before = @((Invoke-BridgeJson $Pilot 'find SeaMoth 200') | ForEach-Object { $_.id })
+    Invoke-Bridge $Pilot 'console spawn seamoth 1 6' | Out-Null
+    $new = Wait-Until { (Invoke-BridgeJson $Pilot 'find SeaMoth 200') | Where-Object { $_.id -match '^[0-9a-f-]{36}$' -and $before -notcontains $_.id } | Select-Object -First 1 } -TimeoutSeconds 15
+    if (-not $new) { throw "the Seamoth didn't spawn" }
+    $seen = Wait-Until { Test-Loaded $other $new.id } -TimeoutSeconds 15
+    Assert-True ([bool]$seen) "$other has the Seamoth $($new.id)"
+    Enter-Seamoth $Pilot $new.id
+    $new.id
+}
+
+function Enter-Seamoth {
+    param([string]$Pilot, [string]$SeamothId)
+    $seamothPos = Get-Position $Pilot $SeamothId
+    Invoke-Bridge $Pilot "teleport $(Format-Point @(($seamothPos[0]), ($seamothPos[1] + 2), ($seamothPos[2])))" | Out-Null
+    Start-Sleep -Seconds 1
+    Invoke-Bridge $Pilot "use $SeamothId" | Out-Null
+    $inside = Wait-Until { $s = Invoke-BridgeJson $Pilot 'state'; if ($s.vehicle) { $true } } -TimeoutSeconds 10
+    Assert-True ([bool]$inside) "$Pilot pilots the Seamoth $SeamothId"
+    $owner = Wait-Until { $o = Get-LockOwner $SeamothId; if ($o -eq $Pilot) { $o } } -TimeoutSeconds 10
+    Assert-Equal $Pilot $owner "$Pilot holds the Seamoth's lock"
+}
+
+function Exit-Seamoth {
+    param([string]$Pilot)
+    Invoke-Bridge $Pilot 'call player Player.ExitLockedMode false true' -AllowError | Out-Null
+    Wait-Until { -not (Invoke-BridgeJson $Pilot 'state').vehicle } -TimeoutSeconds 10 | Out-Null
+}
+
+function Get-SeamothHealth {
+    param([string]$Player, [string]$SeamothId)
+    Get-Number $Player "$SeamothId LiveMixin.health"
+}
+
+<#
+    The simulator spawns a creature about 8 m from the Seamoth (from 16 m behind it, or from the pilot's seat), then
+    leaves (30 m, invisible to creatures) unless it is the pilot. Returns the creature's id.
+#>
+function New-CreatureNearSeamoth {
+    param([string]$Simulator, [string]$Pilot, [string]$SeamothId, [string]$TechType)
+    $seamothPos = Get-Position $Pilot $SeamothId
+    if ($Simulator -ne $Pilot) {
+        Invoke-Bridge $Simulator 'call GameModeUtils.ActivateCheat NoAggression' | Out-Null
+        Invoke-Bridge $Simulator "teleport $(Format-Point @(($seamothPos[0]), ($seamothPos[1]), ($seamothPos[2] - 16)))" | Out-Null
+        Invoke-Bridge $Simulator 'look 0 0' | Out-Null
+        Start-Sleep -Seconds 2
+        $id = New-Creature $Simulator $TechType -Distance 8
+        Invoke-Bridge $Simulator "teleport $(Format-Point @(($seamothPos[0] + 30), ($seamothPos[1]), ($seamothPos[2] - 16)))" | Out-Null
+    }
+    else {
+        # The other player waits 30 m away, near enough to load the creature.
+        Invoke-Bridge (Get-Other $Pilot) "teleport $(Format-Point @(($seamothPos[0] + 30), ($seamothPos[1]), ($seamothPos[2] - 16)))" | Out-Null
+        Start-Sleep -Seconds 2
+        $id = New-Creature $Simulator $TechType -Distance 10
+    }
+    Invoke-Bridge $Simulator "set $id Creature.Hunger.Value 0.6" -AllowError | Out-Null
+    Show-Facts $Simulator $TechType $id
+    $id
+}
+
+function Remove-Creature {
+    param([string]$Id)
+    $owner = Get-LockOwner $Id
+    $killer = if ($owner -eq $B) { $B } else { $A }
+    if (Test-Loaded $killer $Id) {
+        Invoke-Bridge $killer 'set NoDamageConsoleCommand.main.noDamageCheat false' | Out-Null
+        Invoke-Bridge $killer "call $Id LiveMixin.TakeDamage 100000" -AllowError | Out-Null
+        Invoke-Bridge $killer 'set NoDamageConsoleCommand.main.noDamageCheat true' | Out-Null
+    }
+}
+
