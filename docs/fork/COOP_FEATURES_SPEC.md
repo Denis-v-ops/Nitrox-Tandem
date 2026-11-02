@@ -344,6 +344,8 @@ Client settings: partner signal Off / Faint / Always (F1; "Always" also ignores 
 - **Design:** "ready" = clicked launch while aboard. The server checks aboard from the player's position. Add a real
   `RocketLaunch` processor so it's no longer relayed before everyone is ready.
 - **Note:** the transpiler instruction count in `PatchesTranspilerTest` changes.
+- **See [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02): rocket reports are
+  merged on the server, and a launch for a rocket that isn't loaded is ignored instead of throwing.
 - **Tests:**
   - L2: no relay before both are ready; aboard check from positions.
   - L3: both aboard, both get `launchStarted`. Needs a fixture with a built rocket.
@@ -352,6 +354,8 @@ Client settings: partner signal Off / Faint / Always (F1; "Always" also ignores 
 ### G3: Sea Emperor, hatching and the cure
 
 Three beats. Size L in total.
+- **See [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02): babies of the server
+  now swim to the mother in the partner's game, teleported babies leave the server, the incubator metadata applies once.
 
 - **3a, meeting the Emperor:**
   - There's no click to gate. `PrecursorAquariumPlatformTrigger.OnTriggerEnter` (`game:` 46) starts the Emperor's
@@ -393,6 +397,8 @@ Three beats. Size L in total.
   - Message: "Wait for <name> to finish the repair together".
   - Hook: `Welder.Weld` (`game:` 38), or `LiveMixin.AddHealth` on a `LeakingRadiation` leak when it's the last one.
 - **Goal key:** `leaksFixedGoal`, read it at runtime (H).
+- **See [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02): a joiner's
+  `radiationFixed` was set by one fixed leak (it skipped `leaksFixedGoal`); fixed, and stale leak health is dropped.
 - **Tests:**
   - L2: the gate flow.
   - L3: a fixture after the explosion; the `fixleaks` console command (`game:LeakingRadiation.cs:130`) on all leaks but
@@ -1057,7 +1063,8 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     receiver can't tell them apart (`PDALog.EntryType` has no radio/found kind). Options: a "found" flag sent with
     `StoryGoalExecuted` (patch `StoryHandTarget.OnHandClick`), or leave it. Decision needed.
   - Option `PartnerDiscoveriesSilent` (default true); false restores today's behaviour (L3 negative control). Before
-    the initial sync, `CoopSettings` holds false, so packets processed then behave as today.
+    the initial sync, `CoopSettings` holds false, so packets processed then behave as today. (Since MULTINAUGHTICA_SPEC
+    M2, story goals that arrive before the initial sync wait for it, so the option applies to them too.)
   - Within one session this gives the whole effect.
   - **Verified:** L1 `ExperientialGoalsTest` (classification, option off, other types, own trigger until heard).
     L3 windowless `tools/scenarios/D5a-OwnFirsts.ps1` PASS (14 checks). Alice reaches the Kelp Forest and hears
@@ -1410,6 +1417,9 @@ and upgrade consoles; trash cans; Aurora keypads, doors, laser-cut seals and rad
 teleporters, terminals and blueprints; player stats and infection; escape pod and radio repair; the clock; vehicle
 health and power; PDA, known tech and fragments; walking, swimming, equipment, held tools and vehicle poses on the
 partner's body.
+Correction ([MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m), 2026-11-02): Precursor doors
+opened through a key's global goal and teleporter pairs weren't fine after a restart, nor for a partner who loaded them
+first; both are fixed there, not verified in game yet.
 
 **Gaps**, each an item below except two that live elsewhere: unprovoked creature attacks (fixed by FIX_SPEC S14 for the
 creatures it tested; D4 covers the rest) and the partner's body (R2).
