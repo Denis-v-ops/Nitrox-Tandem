@@ -212,7 +212,7 @@ internal sealed class JoiningManager(
             player.EquippedItems,
             player.UsedItems,
             player.QuickSlotsBindingIds,
-            pdaManager.GetInitialPDAData(),
+            pdaManager.GetInitialPDAData(OwnFirsts.UnheardBy(player.HeardGoals, playerManager.GetAllPlayers().Select(p => p.HeardGoals), options.Value.PartnerDiscoveriesSilent)),
             storyManager.GetInitialStoryGoalData(storyScheduler, player),
             player.Position,
             player.Rotation,

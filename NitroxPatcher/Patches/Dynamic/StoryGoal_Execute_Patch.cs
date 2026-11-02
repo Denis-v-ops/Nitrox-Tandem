@@ -1,5 +1,6 @@
 using System.Reflection;
 using NitroxClient.Communication.Abstract;
+using NitroxClient.GameLogic;
 using NitroxClient.MonoBehaviours;
 using Nitrox.Model.Subnautica.Packets;
 using Story;
@@ -44,12 +45,18 @@ public sealed partial class StoryGoal_Execute_Patch : NitroxPatch, IDynamicPatch
     /// <summary>
     /// Notifies the server of the execution of StoryGoals of type PDA
     /// </summary>
+    /// <remarks>
+    /// COOP_FEATURES_SPEC D5: flags a biome or location line (the server keeps it as heard by this player) and a PDA found
+    /// in the world (the partner adds it without the voice line).
+    /// </remarks>
     public static void Postfix(string key, Story.GoalType goalType, bool __state)
     {
         if (!__state || !PDALog.entries.TryGetValue(key, out PDALog.Entry entry))
         {
             return;
         }
-        Resolve<IPacketSender>().Send(new StoryGoalExecuted(key, goalType.ToDto(), entry.timestamp));
+        bool experiential = ExperientialGoals.IsExperiential(key, goalType == Story.GoalType.PDA, ExperientialGoals.Keys);
+        bool found = StoryHandTarget_OnHandClick_Patch.FoundKeys.Remove(key);
+        Resolve<IPacketSender>().Send(new StoryGoalExecuted(key, goalType.ToDto(), entry.timestamp, experiential, found));
     }
 }
