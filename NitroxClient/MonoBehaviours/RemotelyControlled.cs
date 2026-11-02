@@ -115,9 +115,10 @@ public class RemotelyControlled : MonoBehaviour
     private void StartFollowingCreatureMovement()
     {
         hasCreatureMovement = true;
-        if (swimBehaviour && swimBehaviour.splineFollowing)
+        // Also a WalkBehaviour (it derives from SwimBehaviour), whose Idle stops its OnSurfaceMovement too
+        if (swimBehaviour)
         {
-            swimBehaviour.splineFollowing.Idle();
+            swimBehaviour.Idle();
         }
         if (TryGetComponent(out Locomotion locomotion) && locomotion.enabled)
         {

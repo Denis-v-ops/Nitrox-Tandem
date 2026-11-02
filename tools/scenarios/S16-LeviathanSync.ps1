@@ -28,9 +28,9 @@ param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's16-leviathans',
     [int]$WindowSeconds = 60,
     # Players aggressive targets: the leviathan chases them (attack movement instead of patrol).
     [switch]$Chase,
-    # Also fail on the replication-quality thresholds below (planned S16b/c: snaps and stale spawns fail them today).
-    # Without it they are printed as "info" and PASS means what S16 fixed: the lock follows the leviathan, no jump at a
-    # hand-over, the partner keeps it.
+    # Also fail on the replication-quality thresholds below (S16b/c: the partner's copy within 1 m of the simulator's on
+    # average, never more than 5 m, no one-frame step over 3 m, spawned within 5 m). Without it they are printed as "info"
+    # and PASS means what S16 fixed: the lock follows the leviathan, no jump at a hand-over, the partner keeps it.
     [switch]$Strict,
     # How far the players float from the leviathan, and how far the roaming leviathan travels.
     # VeryFar entities (Reapers) load within about 500 m of a player (clipmap level 3: 8 cells of 128 m, read in game), so the
@@ -38,7 +38,8 @@ param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's16-leviathans',
     # per axis, so it travels along x. -RoamAngle is the heading in degrees (x towards z).
     [double]$Near = 40, [double]$RoamDistance = 600, [double]$RoamAngle = 0,
     # Thresholds (metres / seconds).
-    [double]$MaxMeanError = 5, [double]$MaxError = 15, [double]$MaxHandoverJump = 5, [double]$MaxLockDelaySeconds = 10,
+    # Before S16b (runs 1-7): 0.8-4.3 m mean, up to 36 m, snaps up to 16.6 m, spawns up to 34 m off.
+    [double]$MaxMeanError = 1, [double]$MaxError = 5, [double]$MaxSnap = 3, [double]$MaxHandoverJump = 5, [double]$MaxLockDelaySeconds = 10,
     [string]$OutDir = (Join-Path $env:TEMP 's16-recordings'))
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
@@ -67,6 +68,22 @@ function Now-Ms { [DateTime]::UtcNow.Ticks / 10000.0 }
 function Other { param([string]$Player) if ($Player -eq $A) { $B } else { $A } }
 
 function Get-Query { param([string]$Id) Invoke-Bridge 'server' "query $Id" -AllowError }
+
+<# S16b's send counters in a game ($null on a build without them). #>
+function Get-CreatureSent {
+    param([string]$Player)
+    $packets = Invoke-Bridge $Player 'get EntityPositionBroadcaster.CreaturePacketsSent' -AllowError
+    $poses = Invoke-Bridge $Player 'get EntityPositionBroadcaster.CreatureMovementsSent' -AllowError
+    if ($packets.StartsWith('ERR ') -or $poses.StartsWith('ERR ')) { return $null }
+    [pscustomobject]@{ packets = [double]$packets; poses = [double]$poses }
+}
+
+<# How many moving entities (creatures, thrown items) this game simulates and broadcasts. #>
+function Get-SimulatedCount {
+    param([string]$Player)
+    $reply = Invoke-Bridge $Player 'get EntityPositionBroadcaster.watchingEntityIds.Count' -AllowError
+    if ($reply.StartsWith('ERR ')) { '?' } else { $reply }
+}
 
 <# A replication-quality threshold: a check with -Strict, printed as information otherwise (see -Strict). #>
 function Assert-Measure {
@@ -162,17 +179,25 @@ function Measure-Pair {
     param([string]$Id, [string]$Owner, [int]$Seconds, [string]$Name)
     $observer = Other $Owner
     Watch-Leviathan $Id ($Seconds + 5)
+    $sentBefore = Get-CreatureSent $Owner
     Start-Recording $Owner "$Name-o" $Id
     Start-Recording $observer "$Name-r" $Id
     Start-Sleep -Seconds $Seconds
     $ownerTrack = Stop-Recording $Owner "$Name-o" -SaveTo (Join-Path $OutDir "$Name-$Owner.json")
     $observerTrack = Stop-Recording $observer "$Name-r" -SaveTo (Join-Path $OutDir "$Name-$observer.json")
+    $sentAfter = Get-CreatureSent $Owner
+    if ($sentBefore -and $sentAfter) {
+        # About 17 bytes per packet and 70 per creature (CreatureMovementPolicyTest.FullPacketFitsTheSmallestMtu)
+        $packets = ($sentAfter.packets - $sentBefore.packets) / $Seconds; $poses = ($sentAfter.poses - $sentBefore.poses) / $Seconds
+        Write-Host ('    {0} sent {1:0.0} creature poses/s in {2:0.0} packets/s, about {3:0.0} KB/s ({4} creatures simulated)' -f $Owner, $poses, $packets, (($packets * 17 + $poses * 70) / 1024), (Get-SimulatedCount $Owner))
+    }
     $t = $observerTrack.Times
     $from = [math]::Max($t[0], $ownerTrack.Times[0]) + 1000
     $to = [math]::Min($t[$t.Length - 1], $ownerTrack.Times[$ownerTrack.Times.Length - 1])
     $result = [S13Analysis]::Compare($ownerTrack, $observerTrack, $from, $to, 1500)
     $snaps = Get-Snaps $observerTrack $from $to
     Write-Host "  $Name ($Owner simulates, $observer watches): $(Format-Result $result)"
+    Assert-Measure ($snaps.max -le $MaxSnap) ('{0}: no one-frame step over {1} m for {2} ({3:0.0} m)' -f $Name, $MaxSnap, $observer, $snaps.max)
     Write-Host ('    observer snaps (one-frame steps over {0} m): {1} in {2:0} s, largest {3:0.0} m' -f $SnapMetres, $snaps.count, (($to - $from) / 1000), $snaps.max)
     Write-Host "    owner: $(Format-Result ([S13Analysis]::Frames($ownerTrack, $from, $to))) speed $(Format-Result ([S13Analysis]::Stats($ownerTrack, 'vx', $from, $to, $true)))"
     Write-Host "    observer: $(Format-Result ([S13Analysis]::Frames($observerTrack, $from, $to))) speed $(Format-Result ([S13Analysis]::Stats($observerTrack, 'vx', $from, $to, $true)))"
