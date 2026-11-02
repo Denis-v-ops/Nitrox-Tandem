@@ -1047,19 +1047,36 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
 - **Bleeders (S, H):** not in `SimulationWhitelist.cs`, so nobody simulates them and they do nothing. Add
   `TechType.Bleeder` to the movement whitelist; check the attach behaviour with D4's scenario.
 
-#### B2: Building and crafting without loss or dupes (S–M)
-- **Non-empty storage (S, confirmed):** when a module's constructed amount reaches 0, the server removes the entity and
-  its contents without checking (`BuildingManager.cs:129-133`). The game blocks deconstructing non-empty storage locally
-  (`game:Constructable.cs:639-642`), so a loss needs a game whose copy wrongly looks empty (H). The server refuses to
-  remove a storage module that still has items and tells that game to resync.
-- **Two builders on one ghost (S, H):** no lock on ghosts; the cooldown is keyed by the parent's id
-  (`BuildingHandler.cs:142`), the remote amount overwrites the local one (`:158`), and each game charges materials at its
-  own thresholds (`game:Constructable.cs:268-281`). Take an exclusive lock on the ghost when building starts, as the
-  fabricator does.
-- **Fabricator pickup (S–M, H):** taking the finished item by hand isn't locked (`game:GhostCrafter.cs:250-254`). Take the
-  exclusive lock before the pickup, or block it while the partner holds the lock.
-- **Tests:** L2 for the server refusal; one L3 run where both players build the same ghost and both click the same
-  finished item, checking materials and inventories.
+#### B2: Building and crafting without loss or dupes (S–M, done 2026-11-02)
+- **Non-empty storage (S, done):** when a module's constructed amount reached 0, the server removed the entity and its
+  contents without checking (`BuildingManager.cs:129-133`). The game blocks deconstructing non-empty storage locally
+  (`game:Constructable.cs:639-642`, chargers in `game:Charger.cs` `CanDeconstruct`), so a loss needs a game whose copy
+  wrongly looks empty (H, not reproduced). Now the server refuses to remove a module that still has items
+  (`InventoryItemEntity` or `InstalledModuleEntity` children), doesn't relay the 0 to the partner, and sends that game
+  the module with its items again (`SpawnEntities` with `ForceRespawn`). The module stays at the last amount the server
+  stored, so that game keeps the materials refunded for the last step (at most one resource), and the items are safe.
+  Not used: `BuildingResync` for a single module: its client side destroys every other loose module it isn't sent and
+  can't respawn a missing one (`BuildingResyncProcessor.UpdateEntities`). Headless: `StorageModuleDeconstructionTest`
+  (locker with an item, charger with a battery; restart), fails without the check. Not checked in game: the respawned
+  locker in the game that deconstructed it. Open (H): whether vanilla planters block deconstruction with plants in them
+  (`StorageContainer.preventDeconstructionIfNotEmpty` comes from the prefab); the server now keeps a planter with plants.
+- **Two builders on one ghost (S, confirmed in code and in game, done):** each game charges a resource when its own
+  amount crosses a step (`game:Constructable.cs:268-281`), the partner's amount overwrites the local one
+  (`BuildingHandler.cs:158`), and the cooldown is keyed by the ghost's id but checked by the parent's
+  (`BuildingHandler.cs:142`, `BuildUtils.DeconstructionAllowed`), so it never applied. In game, two players building one
+  corridor ghost (2 titanium) paid 4 titanium. Now the builder tool takes the object's exclusive lock first
+  (`ConstructionLocks`, from `BuilderTool_Construct_Patch`, for building and deconstructing) and gives it back as a
+  transient lock when the object is finished or after 1 s without building; while the partner holds it, building is
+  refused with "Another player is interacting with that object" and retried after 1 s.
+- **Fabricator pickup (S–M, confirmed in code and in game, done):** taking the finished item by hand wasn't locked
+  (`game:GhostCrafter.cs:250-254`); both games show the finished item and `CrafterLogic.TryPickup` creates a new item. In
+  game, two players clicking a finished knife at once got a knife each. Now the click takes the crafter's exclusive lock
+  first (`GhostCrafter_OnHandClick_Patch`, refused: the deny hand), and the crafting player's automatic pickup keeps its
+  lock until the item is taken (`GhostCrafter_OnCraftingEnd_Patch`) instead of dropping it before the pickup.
+- **Tests:** L2 `StorageModuleDeconstructionTest`; L3 `tools/scenarios/B2-BuildAndCraftNoDupe.ps1` (windowless): both
+  players build one corridor ghost at the same moment with real costs and pay 2 titanium between them, then both click
+  the same finished knife in the escape pod's fabricator and get one between them (server too). Negative control on the
+  unfixed client: 4 titanium paid and 2 knives (3 checks FAIL).
 
 #### B3: Base power (L)
 - **Today:** base power isn't synced and refills to full on every load: `InteriorPieceEntitySpawner.cs:81-84` and
@@ -1136,3 +1153,4 @@ prices, "keeping it scary").
 | 2026-11-02 | D4, §12, §13.1 | D4 rebased on FIX_SPEC S14 (merged): what S14 fixed and tested, the creatures left, the probe extends S14's scenario. AGENTS.md Drillable note corrected; README "Planned co-op features" rewritten per §13.1 and S13/S14 added to its fix table | FIX_SPEC S13/S14 entries; `Drillable_ManagedUpdate_Patch.cs`, `PacketSuppressorPatch.cs` read |
 | 2026-11-02 | A2, R1b | Trial merge of #2859 into `coop` (not built): no conflicts, two overlapping files merge cleanly; its hatch state is keyed by session id and has no save test; coupling table per item; decision: build R2b before #2859 | `git merge --no-commit` of `pr-2859` (aborted); PR and #2642 review comments, decompiled `Bed.cs`/`DayNightCycle.cs` read; scratch Newtonsoft check of a `SessionId`-shaped struct |
 | 2026-11-02 | A1 | Shared plumbing: the 8 co-op options in `server.cfg` (4 of them sent to the game in `InitialPlayerSync.CoopSettings`), the saved player fields for T1 and D5b, `Interfered` on `PlayerStats` | Headless: `PlayerDataSaveLoadTest` (save and load, old save without the fields), `CoopPlumbingTest` (L2: options reach the game, `Interfered` kept and relayed), `PacketsSerializableTest`; full suite green. No game run (no in-game behaviour yet) |
+| 2026-11-02 | B2 | Server keeps a module that still holds items and sends it back to the deconstructing game; exclusive lock for building a ghost or module (`ConstructionLocks`); fabricator pickup by hand under the crafter's exclusive lock, automatic pickup keeps it until the item is taken | Headless: `StorageModuleDeconstructionTest` (fails without the check). Windowless: `B2-BuildAndCraftNoDupe.ps1` PASS (25 checks); negative control on the unfixed client FAIL (4 of 2 titanium paid, 2 knives). Full test suite green. Not checked in game: the respawned module after a refused removal; planters (H) |
