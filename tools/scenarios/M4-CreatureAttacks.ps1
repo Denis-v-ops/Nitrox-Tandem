@@ -18,15 +18,19 @@
       - emp-AB: Alice's Crabsquid casts its EMP next to Bob's Seamoth (EMPAttack.CastEMPBlast). The Seamoth's electronics
         must be disabled in Bob's game, and only for about the blast's disable time (not extended by a second hit).
         Without the fix: never disabled in Bob's game (D4's emp-AB).
-      - emp-tools-AB: on foot. Bob holds a flashlight next to the Crabsquid, Alice holds one $EmpSafeDistance m away. Bob's
-        flashlight must be disabled in Bob's game (without the fix: never). Reported: the tag of Bob's body in Alice's
-        game and the blast's final radius; if the body is tagged "Player" and Alice is outside the blast, Alice's
-        flashlight must stay on (EMPBlast_OnTouch_Patch: before, the blast touching Bob's body disabled her own tool).
+      - emp-tools-AB: on foot, both players 2 m from Alice's Crabsquid, Bob holding a flashlight, Alice holding nothing.
+        After the cast (each player's own collider is touched at once), Alice draws her flashlight and her game's blast
+        is made to touch Bob's body (EMPBlast.OnTouch with the body's collider, as the growing blast did a moment
+        before). Bob's flashlight must be disabled in Bob's game (without the fix: never); Alice's must stay on. Without
+        EMPBlast_OnTouch_Patch that second check fails only if Bob's body carries the "Player" tag, which is reported
+        (asset data: for that tag the game disables Inventory.main's tool, the local player's).
       - crash-blast-AB: Alice's crash fish explodes 2 m from Bob's Seamoth (Crash.Detonate): the Seamoth loses health in
         Bob's game (falloff of 50 over 5 m), and Alice's game shows it. Without the fix: no damage.
       - crash-home-unload: a natural sulfur plant near the pod gets its fish (Alice holds the home), both players leave
         until neither game has it loaded, then come back. The fish must still be on the server, and both games get it
-        back as the home's fish, one fish only. Without the fix the server deleted it ("not found") when Alice left.
+        back as the home's fish, one fish only. Without the fix the server deleted it ("not found") when the home's lock
+        holder unloaded it. The players stay out of the fish's 4 m reach with NoAggression on, and the fish is checked
+        right after they left, so a fish that blew itself up isn't taken for a deleted one.
       - crash-home-restart: the server saves, everything restarts; both games must have the fish within 3 m of its home.
         Without the load fix it is about the home's distance from the world origin away (L2 CreatureAttackGapsTest).
 
@@ -35,9 +39,7 @@
 #>
 param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 'm4-attacks',
     # Only these cases, e.g. -Only reaper-grab-AB,emp-AB
-    [string[]]$Only,
-    # How far Alice stays from the EMP in emp-tools-AB
-    [double]$EmpSafeDistance = 120)
+    [string[]]$Only)
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
 . (Join-Path $PSScriptRoot 'CreatureAggroHelpers.ps1')
@@ -111,6 +113,7 @@ function Test-ReaperGrabCase {
         $row.pilotHealth = Get-SeamothHealth $B $SeamothId
     }
     finally {
+        Invoke-Bridge $A 'call GameModeUtils.DeactivateCheat NoAggression' | Out-Null
         Remove-Creature $grab.ReaperId
         Set-SeamothFull $B $SeamothId | Out-Null
         [void]$script:Rows.Add([pscustomobject]$row)
@@ -145,6 +148,7 @@ function Test-ReaperFallbackCase {
     finally {
         Invoke-Bridge $A "teleport $(Format-Point @(($aliceBack[0] + 30), $aliceBack[1], ($aliceBack[2] - 16)))" | Out-Null
         Start-Sleep -Seconds 3
+        Invoke-Bridge $A 'call GameModeUtils.DeactivateCheat NoAggression' | Out-Null
         Remove-Creature $grab.ReaperId
         Set-SeamothFull $B $SeamothId | Out-Null
         [void]$script:Rows.Add([pscustomobject]$row)
@@ -317,6 +321,17 @@ function Find-CrashHome {
     throw 'no sulfur plant (CrashHome) found around the pod'
 }
 
+<#
+    Both players near the home, out of its fish's 4 m reach (AggressiveWhenSeePlayer, S14), invisible to creatures: a
+    fish that blew itself up on a player would look like a deleted one.
+#>
+function Enter-HomeArea {
+    param([double[]]$HomePos)
+    foreach ($player in $A, $B) { Invoke-Bridge $player 'call GameModeUtils.ActivateCheat NoAggression' | Out-Null }
+    Invoke-Bridge $A "teleport $(Format-Point @(($HomePos[0]), ($HomePos[1] + 6), ($HomePos[2])))" | Out-Null
+    Invoke-Bridge $B "teleport $(Format-Point @(($HomePos[0] + 8), ($HomePos[1] + 6), ($HomePos[2])))" | Out-Null
+}
+
 function Get-HomeFishId {
     param([string]$HomeId)
     $query = Get-ServerQuery $HomeId
@@ -356,8 +371,7 @@ try {
         Step 'Alice holds a sulfur plant near the pod and it has its fish' {
             $script:CrashHome = Find-CrashHome
             $homePos = $script:CrashHome.Position
-            Invoke-Bridge $A "teleport $(Format-Point @(($homePos[0]), ($homePos[1] + 4), ($homePos[2])))" | Out-Null
-            Invoke-Bridge $B "teleport $(Format-Point @(($homePos[0] + 8), ($homePos[1] + 4), ($homePos[2])))" | Out-Null
+            Enter-HomeArea $homePos
             Write-Host "  home $($script:CrashHome.Id) at $(Format-Point $homePos), lock: $(Get-LockOwner $script:CrashHome.Id)"
             $fish = Wait-Until { $f = Get-HomeFishId $script:CrashHome.Id; if ($f.Count -ge 1) { $f } } -TimeoutSeconds 45
             Assert-True ([bool]$fish) "the home has its fish on the server ($((Get-ServerQuery $script:CrashHome.Id) -replace '\s+', ' '))"
@@ -372,14 +386,15 @@ try {
                 foreach ($player in $A, $B) {
                     Invoke-Bridge $player "teleport $(Format-Point @(($homePos[0] + 700), -8, ($homePos[2] + 700)))" | Out-Null
                 }
+                # Nobody is near it now: from here on, only the unload can take the fish away
+                Assert-True (-not ((Get-ServerQuery $script:FishId) -match 'not found')) 'the fish is on the server when the players have left'
                 foreach ($player in $A, $B) {
                     Assert-True ([bool](Wait-Until { -not (Test-Loaded $player $script:CrashHome.Id) } -TimeoutSeconds 40)) "$player's game unloaded the home"
                 }
                 Start-Sleep -Seconds 3
                 $query = Get-ServerQuery $script:FishId
                 Assert-True (-not ($query -match 'not found')) "the fish is still on the server after its area unloaded ($(($query -split "`n")[0]))"
-                Invoke-Bridge $A "teleport $(Format-Point @(($homePos[0]), ($homePos[1] + 4), ($homePos[2])))" | Out-Null
-                Invoke-Bridge $B "teleport $(Format-Point @(($homePos[0] + 8), ($homePos[1] + 4), ($homePos[2])))" | Out-Null
+                Enter-HomeArea $homePos
                 foreach ($player in $A, $B) {
                     $back = Wait-Until { $f = Get-HomeFishInGame $player $script:CrashHome.Id; if ($f) { $f } } -TimeoutSeconds 30
                     Assert-Equal $script:FishId $back "$player's game has the server's fish back as the home's fish"
@@ -391,6 +406,7 @@ try {
         if (-not $Only -or $Only -contains 'crash-home-restart') {
             Step 'The server saves and everything restarts: the fish is at its home in both games' {
                 Restart-ScenarioWorld -SaveName $SaveName
+                foreach ($player in $A, $B) { Invoke-Bridge $player 'call GameModeUtils.ActivateCheat NoAggression' | Out-Null }
                 foreach ($player in $A, $B) {
                     $loaded = Wait-Until { Test-Loaded $player $script:FishId } -TimeoutSeconds 60
                     Assert-True ([bool]$loaded) "$player's game has the fish after the restart"
