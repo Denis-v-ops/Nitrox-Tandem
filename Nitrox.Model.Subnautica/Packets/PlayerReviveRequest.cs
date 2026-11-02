@@ -18,7 +18,7 @@ public sealed class PlayerReviveRequest : Packet
     public ReviveMethod Method { get; }
 
     /// <summary>
-    ///     The first aid kit the rescuer holds, for <see cref="ReviveMethod.FIRST_AID_KIT" />.
+    ///     A first aid kit in the rescuer's inventory, for <see cref="ReviveMethod.FIRST_AID_KIT" />.
     /// </summary>
     public Optional<NitroxId> KitId { get; }
 
@@ -34,7 +34,7 @@ public sealed class PlayerReviveRequest : Packet
         /// <summary>A 6 s hold, about 20 health.</summary>
         HAND,
 
-        /// <summary>A 2 s hold with a first aid kit in hand, 50 health; the kit is used up.</summary>
+        /// <summary>A 2 s hold with a first aid kit in the inventory, 50 health; the kit is used up.</summary>
         FIRST_AID_KIT
     }
 }

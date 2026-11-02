@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Abstract;
@@ -7,9 +8,10 @@ using static Nitrox.Model.Subnautica.Packets.PlayerReviveRequest;
 namespace NitroxClient.GameLogic.Partner;
 
 /// <summary>
-///     Reviving a downed partner (COOP_FEATURES_SPEC T1): hold the interact button on their body for 6 s, or 2 s with a
-///     first aid kit in hand. The server checks it (<c>RescueService</c>), uses up the kit and sends
-///     <see cref="PlayerRevived" />. Letting go or looking away resets the hold (<see cref="PartnerHandTarget" />).
+///     Reviving a downed partner (COOP_FEATURES_SPEC T1): hold the interact button on their body for 6 s, or 2 s when the
+///     rescuer carries a first aid kit. The kit can't be held in hand: it isn't a hand item (<c>InventoryItem.isBindable</c>
+///     is false), so it never goes into a quick slot, and the game uses it from the inventory. The server checks it
+///     (<c>RescueService</c>), uses up the kit and sends <see cref="PlayerRevived" />. Letting go or looking away resets the hold (<see cref="PartnerHandTarget" />).
 /// </summary>
 /// <remarks>
 ///     It outranks every other action: buddy breathing is offered to a downed partner too, but getting them up comes
@@ -25,15 +27,15 @@ public sealed class ReviveAction(IPacketSender packetSender) : PartnerAction
 
     public override string GetText(PartnerHandTarget partner)
     {
-        string key = TryGetHeldKit(out _) ? "Nitrox_ReviveWithKit" : "Nitrox_Revive";
+        string key = TryGetKit(out _) ? "Nitrox_ReviveWithKit" : "Nitrox_Revive";
         return Language.main.Get(key).Replace("{PLAYER}", partner.Partner.PlayerName);
     }
 
-    public override string GetSubscript(PartnerHandTarget partner) => TryGetHeldKit(out _) ? string.Empty : Language.main.Get("Nitrox_ReviveHint");
+    public override string GetSubscript(PartnerHandTarget partner) => TryGetKit(out _) ? string.Empty : Language.main.Get("Nitrox_ReviveHint");
 
     public override bool OnHeld(PartnerHandTarget partner, float heldSeconds, float deltaTime, out float progress)
     {
-        bool kit = TryGetHeldKit(out NitroxId? kitId);
+        bool kit = TryGetKit(out NitroxId? kitId);
         float duration = DownedRules.ReviveSeconds(kit);
         progress = heldSeconds / duration;
         if (heldSeconds < duration)
@@ -47,18 +49,28 @@ public sealed class ReviveAction(IPacketSender packetSender) : PartnerAction
     }
 
     /// <summary>
-    ///     A first aid kit drawn from the quick slots (the game holds it as an item, <c>QuickSlots.DrawAsItem</c>).
+    ///     A first aid kit in the local player's inventory.
     /// </summary>
-    private static bool TryGetHeldKit(out NitroxId? kitId)
+    private static bool TryGetKit(out NitroxId? kitId)
     {
         kitId = null;
-        InventoryItem held = Inventory.main ? Inventory.main.quickSlots.heldItem : null;
-        Pickupable item = held?.item;
-        if (!item || item.GetTechType() != TechType.FirstAidKit || !item.TryGetNitroxId(out NitroxId id))
+        if (!Inventory.main)
         {
             return false;
         }
-        kitId = id;
-        return true;
+        IList<InventoryItem> kits = Inventory.main.container.GetItems(TechType.FirstAidKit);
+        if (kits == null)
+        {
+            return false;
+        }
+        foreach (InventoryItem kit in kits)
+        {
+            if (kit.item && kit.item.TryGetNitroxId(out NitroxId id))
+            {
+                kitId = id;
+                return true;
+            }
+        }
+        return false;
     }
 }

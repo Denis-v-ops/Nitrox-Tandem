@@ -34,7 +34,7 @@ public class DownedRulesTest
     [TestMethod]
     public void ReviveHoldTimes()
     {
-        DownedRules.ReviveSeconds(kitInHand: false).Should().Be(6);
-        DownedRules.ReviveSeconds(kitInHand: true).Should().Be(2);
+        DownedRules.ReviveSeconds(withKit: false).Should().Be(6);
+        DownedRules.ReviveSeconds(withKit: true).Should().Be(2);
     }
 }

@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     COOP_FEATURES_SPEC T1 (rescue window) and D3 (distress call). Alice takes lethal damage and goes down instead of
-    dying; Bob revives her by holding the interact button on her body, by hand and with a first aid kit; the window
+    dying; Bob revives her by holding the interact button on her body, by hand and carrying a first aid kit; the window
     shrinks on repeat downs; when it runs out she dies as in vanilla (death beacon); out of air she drowns, down or not.
 
 .DESCRIPTION
@@ -14,7 +14,7 @@
        into the red distress call ("Alice, down, NN s").
     3. Bob holds for 3 s: nothing. Then 6.5 s: Alice is up with about 20 health, everything unlocked; her body gets up
        and the marker is back to normal on Bob's game.
-    4. Second down: the window is 30 s. Bob draws a first aid kit and holds 2.5 s: Alice gets 50 health, the kit is
+    4. Second down: the window is 30 s. Bob carries a first aid kit and holds 2.5 s: Alice gets 50 health, the kit is
        gone from Bob's inventory and from the server.
     5. Third down: no window, Alice dies at once (vanilla death: respawn with full health, the death beacon).
     6. D3 at 400 m ("rescue rest" first, as a sleep would): Alice down at 400 m, Bob at 50 m far away. Bob's game shows
@@ -178,14 +178,10 @@ try {
         Assert-True ((Get-Signal 'ColorIndex') -ne '2') "the marker has its own colour again ($(Get-Signal 'ColorIndex'))"
     }
 
-    Step 'Second down: a 30 s window. Bob revives her with a first aid kit (2.5 s): 50 health, the kit is used up' {
+    Step 'Second down: a 30 s window. Bob carries a first aid kit and revives her in 2.5 s: 50 health, the kit is used up' {
         Invoke-Bridge $B 'console item firstaidkit' | Out-Null
         $kit = Wait-Until { (Get-State $B).inventory | Where-Object techType -eq 'FirstAidKit' | Select-Object -First 1 } -TimeoutSeconds 10
         Assert-True ([bool]$kit) "Bob has a first aid kit ($($kit.id))"
-        $slot = [int](Invoke-Bridge $B "call Inventory.main.quickSlots.GetSlotByItem $($kit.id)")
-        Invoke-Bridge $B "call Inventory.main.quickSlots.SelectImmediate $slot" | Out-Null
-        Start-Sleep -Seconds 1
-        Assert-Equal 'FirstAidKit' (Get-Value $B 'Inventory.main.quickSlots.heldItem.techType') 'Bob holds it (quick slot $slot)'
         Set-AliceOxygen 45
         $window = Invoke-LethalDamage
         Assert-True ($window -gt 25 -and $window -le 30) "the second down gets half the window ($window s)"
@@ -237,12 +233,12 @@ try {
             Start-Sleep -Milliseconds 300
             $body = Invoke-BridgeJson $B "get $aliceId Transform.position"
             $marker = Invoke-BridgeJson $B "get $aliceId PartnerSignal.MarkerPosition"
-            [pscustomobject]@{ t = [Math]::Round(((Get-Date) - $start).TotalSeconds, 1); pulses = [int](Get-Signal 'DistressPulses'); markerX = [double]$marker.x; bodyX = [double]$body.x }
+            [pscustomobject]@{ t = [Math]::Round(((Get-Date) - $start).TotalSeconds, 1); pulses = [int](Get-Signal 'DistressPulses'); markerX = [double]$marker[0]; bodyX = [double]$body[0] }
         }
         $samples | ForEach-Object { Write-Host ("  t={0,4} pulses {1} marker x {2:N1} body x {3:N1}" -f $_.t, $_.pulses, $_.markerX, $_.bodyX) }
         $bodyMoved = $samples | Where-Object { [Math]::Abs($_.bodyX - $deepSpot[0] - 30) -lt 3 } | Select-Object -First 1
         Assert-True ([bool]$bodyMoved) "Bob's game moved her body (at t=$($bodyMoved.t))"
-        $stale = @($samples | Where-Object { $_.pulses -eq $pulses0 -and [Math]::Abs($_.markerX - [double]$marker0.x) -lt 1 -and $_.t -ge $bodyMoved.t })
+        $stale = @($samples | Where-Object { $_.pulses -eq $pulses0 -and [Math]::Abs($_.markerX - [double]$marker0[0]) -lt 1 -and $_.t -ge $bodyMoved.t })
         Assert-True ($stale.Count -ge 1) "between pulses the marker stays where it was ($($stale.Count) samples after the move)"
         $caught = $samples | Where-Object { $_.pulses -gt $pulses0 -and [Math]::Abs($_.markerX - $_.bodyX) -lt 2 } | Select-Object -First 1
         Assert-True ([bool]$caught) "the next pulse puts it on her (t=$($caught.t))"

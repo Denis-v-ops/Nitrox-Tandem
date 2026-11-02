@@ -22,7 +22,7 @@ public static class DownedRules
     public const float HAND_REVIVE_SECONDS = 6f;
 
     /// <summary>
-    ///     Hold time for a revive with a first aid kit in hand.
+    ///     Hold time for a revive when the rescuer carries a first aid kit.
     /// </summary>
     public const float KIT_REVIVE_SECONDS = 2f;
 
@@ -65,5 +65,5 @@ public static class DownedRules
     /// <summary>
     ///     The hold a revive needs.
     /// </summary>
-    public static float ReviveSeconds(bool kitInHand) => kitInHand ? KIT_REVIVE_SECONDS : HAND_REVIVE_SECONDS;
+    public static float ReviveSeconds(bool withKit) => withKit ? KIT_REVIVE_SECONDS : HAND_REVIVE_SECONDS;
 }
