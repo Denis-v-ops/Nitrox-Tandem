@@ -79,6 +79,9 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
   AssemblyPublicizer), so you can access private game members directly from `NitroxClient`/`NitroxPatcher`.
 - **Known flake:** a *cold* parallel build can fail with `MSB4018 PublicizeTask ... being used by another process`
   (two target frameworks publicize at once). Just run the build again. If it keeps failing, use `-m:1`.
+- **Several worktrees building at once:** the shared compiler server can make the localization analyzer (NXLZ001) read
+  `en.json` from *another* worktree, so a build may pass or fail on keys that aren't in yours. Build with
+  `-p:UseSharedCompilation=false` when other worktrees build in parallel.
 - **Warnings are errors** (`TreatWarningsAsErrors=true`). Exceptions: NuGet vulnerability warnings NU1901–NU1904,
   `DIMA001` (direct DI container use; 8 known occurrences) and nullable warnings. Fix new warnings rather than suppressing them.
 - **Target frameworks:** `NitroxClient`, `NitroxPatcher`, `Nitrox.Model`, `Nitrox.Model.Subnautica` are multi-targeted to

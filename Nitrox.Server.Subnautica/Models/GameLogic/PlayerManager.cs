@@ -170,6 +170,9 @@ internal sealed partial class PlayerManager(SessionManager sessionManager, BanSe
 
         // TODO: make a ConnectedPlayer wrapper so this is not stateful
         player.PlayerContext = playerContext;
+        // A joining game starts with empty hands and sends its pose again (COOP_FEATURES_SPEC R2a)
+        player.Animations.Clear();
+        player.HeldItem = null;
 
         // reconnecting players need to have their cell visibility refreshed
         player.ClearVisibleCells();

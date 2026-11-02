@@ -112,6 +112,7 @@ public class RemotePlayer : INitroxPlayer
 
         vitals = playerVitalsManager.CreateOrFindForPlayer(this);
         RefreshVitalsVisibility();
+        Body.AddComponent<PartnerSignal>().Initialize(this);
 
         PlayerDisconnectEvent.AddHandler(Body, _ =>
         {
@@ -393,8 +394,14 @@ public class RemotePlayer : INitroxPlayer
         }
     }
 
+    /// <summary>
+    ///     What the partner wears, from their player metadata (e.g. a tank, for their breathing sound).
+    /// </summary>
+    public IReadOnlyList<TechType> Equipment { get; private set; } = [];
+
     public void UpdateEquipmentVisibility(List<TechType> equippedItems)
     {
+        Equipment = equippedItems;
         PlayerModelManager.UpdateEquipmentVisibility(equipmentVisibilityHandlers, equippedItems);
     }
 
@@ -495,6 +502,9 @@ public class RemotePlayer : INitroxPlayer
         {
             Log.Error($"[{nameof(RemotePlayer)}] Manual created FMOD emitter for {nameof(BreathingSound)} but linked sound is not whitelisted: ({breathingSoundCustomEmitter.asset.path})");
         }
+
+        // Pain and the breathing loop (COOP_FEATURES_SPEC D1): the emitter above is never played, the partner's game doesn't send it
+        Body.AddComponent<RemotePlayerSounds>().Initialize(this, fmodWhitelist);
     }
 
     /// <summary>
