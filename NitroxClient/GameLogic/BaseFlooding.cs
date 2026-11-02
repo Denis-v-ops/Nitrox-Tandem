@@ -2,6 +2,8 @@ using System;
 using System.Runtime.CompilerServices;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
+using Nitrox.Model.Subnautica.Packets;
+using NitroxClient.Communication.Abstract;
 using NitroxClient.GameLogic.Bases;
 using UnityEngine;
 
@@ -19,13 +21,14 @@ public class BaseFlooding
     public const float SEND_INTERVAL = 2f;
 
     private readonly SimulationOwnership simulationOwnership;
-    private readonly Entities entities;
+    // Not Entities: Entities -> EntityMetadataManager -> BaseFloodMetadataProcessor -> BaseFlooding would be a cycle
+    private readonly IPacketSender packetSender;
     private readonly ConditionalWeakTable<BaseFloodSim, SyncState> states = new();
 
-    public BaseFlooding(SimulationOwnership simulationOwnership, Entities entities)
+    public BaseFlooding(SimulationOwnership simulationOwnership, IPacketSender packetSender)
     {
         this.simulationOwnership = simulationOwnership;
-        this.entities = entities;
+        this.packetSender = packetSender;
     }
 
     /// <summary>
@@ -62,7 +65,7 @@ public class BaseFlooding
         }
         state.LastSent = levels;
         state.Seeded = true;
-        entities.BroadcastMetadataUpdate(baseId, new BaseFloodMetadata(ToGridSize(floodSim.shape), levels));
+        packetSender.Send(new EntityMetadataUpdate(baseId, new BaseFloodMetadata(ToGridSize(floodSim.shape), levels)));
     }
 
     /// <summary>
