@@ -844,6 +844,32 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 - Until that pass, an item counts as **implemented, not verified**. Merge order into `coop` follows the same rule:
   branches may merge after their headless tests pass; a scenario that fails in the final pass reopens its item.
 
+**Final pass checklist (2026-11-03, all nine implemented on branch `multinaughtica`).** One line per scenario: how to
+run it and what its author flagged. Details are in each item's Findings.
+- `M1-CyclopsPowerBuilding.ps1`, windowless. Unchecked assumptions: a loose constructable near the Aurora cargo room
+  (`-LooseSpot`), `set` on `PlayerCinematicController.cinematicModeCount` (private setter), the partner has the power
+  cell prefab cached, exactly one new beacon and 15 scrap metal. Lights, thermal reactor and build bots aren't covered.
+- `M2-StoryProgress.ps1`, windowless. Which doors hang on a key's goal is asset data: the door step is the first real
+  check of COOP §12.1.
+- `M3-JoinSaveSafety.ps1`: `-Windowless` or `-Rig` above 0 (it restarts one game itself; in launcher mode it reports
+  FAIL). The join-while-loading line is covered by L2 only.
+- `M4-CreatureAttacks.ps1`, windowless. It prints whether the partner's body is tagged `Player` (EMP guard).
+  `reaper-fallback-AB` is a guard, not a negative control.
+- `M5-CreatureHealth.ps1`, windowless. `S4-CreatureDeathSyncs.ps1` changed with it (the kill hit now names the player as
+  dealer): rerun S4 too.
+- `M6-AgedWorldMovement.ps1`: **windowed** (frame timing, about 120 fps), like S13. `run-suite.ps1` has no windowed
+  exclusion, so run M6 and S13 on their own, not in a `-Windowless` suite.
+- `M7-SavingIndicator.ps1`, windowless. It prints which path each game used (the game's `SavingIndicator` or the
+  notice), which answers M7's open question.
+- `M8-LockerCrafting.ps1`, windowless, from the S7 room fixture; `-OptionOff` is the negative control. Building the
+  Fabricator and Locker through the bridge is untried (the Cyclops half doesn't depend on it).
+- `M9-PingAim.ps1`, windowless. The Seamoth step is a guard, not a negative control.
+- Headless tests that sometimes fail under full-suite load and pass alone, on this branch and on its base:
+  `ThreadSafeSetTest`/`ThreadSafeListTest.ReadAndWriteSimultaneous`, `DroppedOutOfSightTest.PartnerWithoutTheCell…`,
+  once `ToolBatteryPersistenceTest`.
+- Upstream sync: M4 deletes upstream's `CrashHome_OnDestroy_Patch.cs`, so a later `master` → `coop` merge may stop on a
+  modify/delete conflict; keep it deleted.
+
 ## Definition of done (per item)
 
 - AGENTS.md §7: `dotnet build` + `dotnet test` green, a scenario or L2 test that fails without the fix, a note on what
@@ -869,3 +895,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | M9 | Implemented, not verified in game: pings aim past the own body, the own Seamoth or Prawn suit and, at the helm, the Cyclops; minimum 0.5 m instead of 3 m; a second ray on the Useable layer with triggers reaches the partner's body, a Look ping "Look! *name*" (Signal icon, sender's colour, no new strings) | Unit: `PingAimRulesTest` (12; with the old rule 7 fail, each M9 line reverted alone fails its cases), `PingRulesTest.APartnerIsLook_NotComeHere` (fails without the partner line). Scenario `M9-PingAim.ps1` written, not run |
 | 2026-11-02 | M6 | Implemented, not verified in game: movement snapshot times are `double` from the broadcaster to the replicator (the sender's clock and period check, the packet's value without the processor's cast, the replicator's clock, `Snapshot.Time`/`SentTime`, the latency bump time); a difference becomes a float only after the double subtraction (`MovementTime`). No `PlayerMovement` time field (nothing replays remote players from times). Scenario: `S13-CyclopsMovement.ps1 -AgeWorldSeconds` ages its own world through its save, `M6-AgedWorldMovement.ps1` runs it at 40 h | Unit `MovementTimeTest` (6): interpolation factor and snapshot age exact at 1-100 h of play; 3 fail when `MovementTime` rounds its arguments to float first (the old arithmetic); the wiring test (double types, no `conv.r4` in the broadcaster's `Update`, the processor's `Process` or the replicator's `RealTime`) fails on the old three files and on the processor's `(float)` cast alone. `dotnet build` clean (NU190x/DIMA001 only), `dotnet test` 417 pass, 13 skipped. Scenario written, not run (windowed) |
 | 2026-11-02 | M5 | Implemented, not verified in game: upstream #2903 (only a creature's simulating game changes its health; other players' hits are sent there, or back when nobody simulates it; the health is shared with those who see it) plus MultiNaughtica's hand-over grace (server 1.5 s, new holder 1 s; also after an exclusive take-over). Regression fixed: a creature's bite on a creature the other player simulates, and a crash fish blast on one, are sent to the prey's simulating game. S4's scenario kill passes the player as dealer. No ProtoInclude tags | L2 `CreatureHealthRoutingTest` (5, all fail without the server processors; the grace case fails with the grace off and with `ForgetPreviousOwner` removed). Unit `CreatureDamageRulesTest` (13; predator/prey and remote-copy cases fail with the old creature-dealer rule), `SimulationOwnershipDataTest` (5; exclusive take-over fails without its line), PR processor tests + 2 ported grace cases. Scenario written, not run |
+| 2026-11-03 | M1–M9 | All nine merged on branch `multinaughtica` (one `fix/`/`feat/` branch per item, merged `--no-ff`), together with `coop` @ `72ca17ae`. Final pass checklist added under "Testing". Not merged into `coop` yet | Full `dotnet build` green; `dotnet test` 724 passed, 13 skipped, 1 failed (`ReadAndWriteSimultaneous`, flaky under load, passes alone 3/3, its code untouched). No scenario run yet |
