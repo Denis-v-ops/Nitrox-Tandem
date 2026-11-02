@@ -125,7 +125,10 @@ tools\bridge.ps1 diff                                  # desync detector, see be
 - **Gotchas:** teleporting does fire trigger volumes (the gun terminal opened). Things only load near a player:
   teleport first, then `Wait-Until { find ... }`. Prefer the game's own entry points (`OnHandClick`, `EnergyMixin.Select`,
   `Inventory.InternalDropItem`) over setting fields, so the Nitrox patches run as they would for a player. Read the
-  decompiled method first (AGENTS.md §5.3) to find them.
+  decompiled method first (AGENTS.md §5.3) to find them. Values that live in assets (story goal keys, teleport
+  locations) aren't in the decompiled code: read them through the bridge
+  (`get find:PrecursorDisableGunTerminal PrecursorDisableGunTerminal.gunDeactivate.key`,
+  `get GotoConsoleCommand.main.data.locations`).
 
 ## The plan
 

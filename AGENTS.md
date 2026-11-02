@@ -207,8 +207,6 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
     on PATH. Then update the paths here.
   - One-off lookups: `ilspycmd -t <FullTypeName> <...>\Subnautica_Data\Managed\Assembly-CSharp.dll`. GUI: ILSpy or
     dnSpyEx (also the debugger, see §4).
-  - Values that live in assets (story goal keys, teleport locations) aren't in the code: read them at runtime with
-    the dev bridge (`tools\bridge.ps1 Alice get find:PrecursorDisableGunTerminal PrecursorDisableGunTerminal.gunDeactivate.key`).
   - Decompiled code can be subtly off (e.g. compiler-generated state machines, field initialisers). For anything
     timing-critical, confirm in the IL or in game.
   **Never guess game behaviour.** Upstream's CONTRIBUTING warns that AI-written Nitrox code goes wrong
