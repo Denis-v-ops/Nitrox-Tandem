@@ -83,6 +83,58 @@ Game-rig scenarios run once at the end, after all nine are implemented ("Testing
   can't be put away; `game:DockedVehicleHandTarget.cs`, `CinematicModeTriggerBase.cs`): the partner's bay opens and the
   lock stays held. Theirs sends from `VehicleDockingBay.OnUndockingStart`; leave out their rider-bar lines.
 
+**Findings (2026-11-02):** implemented on `fix/m1-cyclops-power-building`, not verified in game (scenario
+`tools/scenarios/M1-CyclopsPowerBuilding.ps1` written, not run).
+- **Cyclops blows up early: held, fixed.** The killing blow's metadata (`LiveMixin_TakeDamage_Patch` →
+  `BroadcastDefaultTookDamage`, lock holder only) said `IsDestroyed` at health 0; the partner's `SetDestroyed` ran
+  `DestroyCyclops` at once, and the server stored the Cyclops as a wreck. S1 (#2881) only changed the extractor's input
+  type; `health <= 0f` predates it. Correction: `DestroyCyclops` → `Player.TryEject` only ejects a *pilot*; anyone else
+  aboard is killed by `CyclopsDestructionEvent.Update` when the interior effect passes them, so the partner died 18 s
+  early. Now `IsDestroyed` = `subDestroyed`, or `DestroyCyclops` ran and the model swap is pending
+  (`IsInvoking(SwapToDamagedModels)`: its power-down turns shield, sonar or silent running off, and their patches extract
+  in those 2.5 s); the decision is `CyclopsDestructionRules`. The partner hears the abandon-ship line at 0 HP (its
+  `OnTakeDamage` is blocked for non-holders). `CyclopsDestructionWatchdog` (added from `SetHealth`, so also on spawn)
+  lets the lock holder run `DestroyCyclopsSubRoot` when a Cyclops is still at 0 HP 25 s later. The beacon is kept by the
+  game that isn't replaying (`PacketSuppressor<EntitySpawnedByClient>`, as the loot), not by the current lock holder.
+  Game quirk kept: `SubRoot.OnTakeDamage` starts the countdown only when neither the hull-low nor the hull-critical line
+  fires in that hit, so one hit from above 50 % to 0 never destroys it (vanilla too). Open, unverified: a Cyclops saved
+  at 0 HP (the hitter left, the server restarted) is a wreck on load through the game's own
+  `CyclopsDestructionEvent.Start` (no loot, no beacon, the server keeps it); a rejoiner holding its transient lock may run
+  `SubRoot.OnTakeDamage` from `SyncRemoteHealth` and start the game's own countdown.
+- **Battery one step late: held, fixed.** `BatteryChargeRules`: sent at a whole-number change or when it becomes empty,
+  with the value the setter stores (`Mathf.Min(value, _capacity)`, no lower limit, `game:Battery.cs`).
+- **Power-cell swap: held (code reading), fixed.** `EnergyMixin.Select` removes the old cell (no packet), adds the new
+  one (`OnAddItem` → `EntitySpawnedByClient`), then picks the old one up (`PickupItem`). On the partner the new cell
+  spawns at once when the power cell prefab is cached (`SpawnSyncSafe`, `StartCoroutine` runs to the first yield) while
+  the old cell still fills the slot (`game:StorageSlot.AllowedToAdd`); the pickup then destroys the old cell and
+  `Pickupable.SetInventoryItem(null)` empties the slot. With an uncached prefab the order is right; not seen in game. The
+  spawner now takes the old cell out first (its power-off broadcast suppressed) and logs a refused install.
+- **Resync never brings a base back: held, fixed.** `PairWithComponents` leaves out entities without a component, so the
+  spawn loop gets them. COOP B2 had recorded the same gap.
+- **Deconstructed loose constructable: held, fixed; lock part partly.** `entityRegistry.RemoveEntity` left the cell and
+  id-index entries (S7's `GetEntities` dropped them later with a warning). Now `WorldEntityManager.TryDestroyEntity`
+  (S7's path) and `SimulationOwnershipData.RevokeOwnerOfId`. Open: B2's `ConstructionLocks.ReleaseWhenDone` asks for a
+  transient lock once the object is gone, which recreates a lock for the removed id (also for ghosts and modules, where
+  nothing revokes); harmless (nothing simulates it), not changed here.
+- **Lights and thermal reactor: partly.** Not a double drain: `BatteryMetadata` sets the charge, so same-direction
+  changes just follow the faster game. Opposite directions fight and the charge sticks at a whole number (by reasoning,
+  not measured: with the old prefix's stale value it stuck even when both drained). Lights: only the vehicle's lock holder runs `UpdateLightEnergy`
+  (vehicles are global roots, so a connected player always holds it; `ToggleLights.Update` has no LOD gate), as
+  `Vehicle_UpdateEnergyRecharge_Patch` does; tools keep the game's behaviour. Thermal reactor: "only the holder" would
+  stop the charge when the last pilot (the lock follows piloting, not the players aboard) is away and `SubRoot.Update`
+  stops at LOD Minimal, while the partner stays aboard. So the reactor skips only while another player pilots that
+  Cyclops (the pilot's game drains the engine and charges). Open: holder-only drains left on while nobody pilots
+  (silent running, shield) near a vent can still fight the partner's charge. Not covered by the scenario.
+- **Build bot crash: held in code, timing unverified.** The `launch` setter skips a bot whose hover sound isn't assigned
+  yet (only `Start` assigns it, and `Start` ends with `launch = false`). Whether Unity really runs `Constructor.Update`
+  before the new bots' `Start` in the frame the partner's deploy arrives is only visible in game.
+- **Undocking announced early: held, fixed.** `VehicleDockingBay_OnUndockingStart_Patch` sends the start (only
+  `DockedVehicleHandTarget.OnStartCinematicMode` calls it, after `StartCinematicMode` accepted; the partner's processor
+  doesn't). The click patch asks no lock without undocking clearance or a valid target, and after a refused click
+  (`vehicle_docked_param` still set) gives the lock back as transient. Before, a player who already held the exclusive
+  lock undocked without announcing it. Left out: their `DenyOwnershipHand`.
+- Dev bridge: `UnityEngine.Object` and `IOut<T>` arguments (TESTING.md).
+
 ## M2: Story and progress (M)
 
 - **Sea Emperor babies.** *Confirmed:* `SeaEmperorBaby_Start_Patch` returns when the baby has a parent;
@@ -375,3 +427,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 |---|---|---|---|
 | 2026-11-02 | — | Spec created from the review of MultiNaughtica `99428c8` (base upstream `7815b4e4`) against `coop` @ `ddf06755`. Decisions recorded above. Game-rig tests deferred to one pass after M1–M9 are implemented (rigs in use) | Code review only, nothing built or run. Re-read in our code: Cyclops `isDestroyed` at health 0, `Battery_charge_set_Patch` Prefix, radiation `Max()`, Sea Emperor baby parent check. Everything else is *hypothesis (review)* |
 | 2026-11-02 | M3 | Implemented, not verified in game: start backups in `backups/server-starts/` (last 5); reservations wait for the world and the join re-checks the saved player; a reservation that never joined frees its name; a stale session with the same name and IP is kicked; only finished batches are recorded and failed batch loads are retried; one NTP socket per round, closed at its end; Debug `entitycount` | L2 (headless): `JoinSafetyTest` (5, each fails with its line reverted), `ServerStart_OnAnExistingSave_BacksItUpFirst` (fails without the start hook), `GeneratedBatch_StaysRecordedAcrossRestarts` (guard: fails if restored batches aren't marked done). Unit: `ServerStartBackupsTest` (zip and pruning, real files; the rolling-pruning test is a guard), `BatchLoadTasksTest` (running/failed batches not listed, failed loads retried: fail with the old behaviour), `NtpSyncerTest` (2, fail with the old round handling). Scenario written, not run |
+| 2026-11-02 | M1 | Implemented, not verified in game: a Cyclops at 0 HP isn't sent as destroyed until it explodes, a watchdog ends a countdown whose player left, the beacon comes from the game whose countdown fired; battery charge sent after the change and when empty; the partner takes the old power cell out before installing the new one; a building resync respawns a base or module the game lost; a deconstructed loose constructable leaves its cell and lock; vehicle lights drain on the lock holder only, the thermal reactor skips while another player pilots; un-started build bots skip the launch setter; undocking announced at `OnUndockingStart`, the lock given back after a refused click | Unit (each fails with its line reverted): `CyclopsDestructionRulesTest` (old `\|\| health <= 0`), `BatteryChargeRulesTest` (old floor-only rule), `BuildingResyncPairingTest` (pairing with null), `BuildingManagerDeconstructTest` (old `RemoveEntity`, no revoke), `ConstructorBuildBot_launch_set_PatchTest` (prefix always true). L2 `CyclopsDyingPersistsTest`: a server-contract guard, passes without the fix. Not tested headless: power-cell swap, lights, thermal reactor, undocking, watchdog, beacon (scenario only, or not covered). Scenario written, not run |

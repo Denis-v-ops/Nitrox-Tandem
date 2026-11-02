@@ -90,7 +90,25 @@ public class InstalledBatteryEntitySpawner : SyncEntitySpawner<InstalledBatteryE
         using (PacketSuppressor<EntityReparented>.Suppress())
         using (PacketSuppressor<EntitySpawnedByClient>.Suppress())
         {
-            energyMixin.batterySlot.AddItem(new InventoryItem(gameObject.GetComponent<Pickupable>()));
+            // A power cell swap is one step in the game (EnergyMixin.Select: old cell out, new cell in, old cell picked up),
+            // but here the new cell can arrive while the old one is still in the slot, which refuses a second item
+            // (StorageSlot.AllowedToAdd); the old cell's pickup then emptied the slot. Take the old one out first, its pickup
+            // destroys it (MULTINAUGHTICA_SPEC M1).
+            StorageSlot slot = energyMixin.batterySlot;
+            InventoryItem stored = slot.storedItem;
+            if (stored != null && stored.item && stored.item.gameObject != gameObject)
+            {
+                // Its power-off notification would switch a vehicle's lights off and send that; the new cell switches them on again
+                using (PacketSuppressor<EntityMetadataUpdate>.Suppress())
+                {
+                    slot.RemoveItem();
+                }
+            }
+
+            if (!slot.AddItem(new InventoryItem(gameObject.GetComponent<Pickupable>())))
+            {
+                Log.Error($"[{nameof(InstalledBatteryEntitySpawner)}] Could not install battery {gameObject.name} in {energyMixin.gameObject.GetFullHierarchyPath()}");
+            }
         }
     }
 }

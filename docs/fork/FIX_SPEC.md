@@ -122,6 +122,7 @@ Fixes when merging:
 players.
 
 **Status (branch `fix/s1-s5b-cyclops-flood`, 2026-11-02):** #2881 merged with fixes 1 and 2 (tag 92). L1 and L3 pass. See the Log.
+A Cyclops destroyed by damage (not covered by S1's scenario) is [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M1.
 
 ---
 
@@ -492,6 +493,9 @@ Needs an instrumented two-player repro (step 3 of the plan helps).
 - If the lock holder leaves without handing over the lock, production stops.
 - `RemoveItem` on the old container notifies its listeners (planters, trash cans).
 - Removing cell entries at the wrong moment could hide real world items.
+
+A deconstructed loose constructable now leaves its cell through the same `TryDestroyEntity` path
+([MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M1).
 
 ---
 

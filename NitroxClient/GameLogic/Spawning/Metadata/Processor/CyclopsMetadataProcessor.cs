@@ -3,6 +3,7 @@ using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication;
 using NitroxClient.Communication.Abstract;
 using NitroxClient.GameLogic.Spawning.Metadata.Processor.Abstract;
+using NitroxClient.MonoBehaviours.Cyclops;
 using UnityEngine;
 
 namespace NitroxClient.GameLogic.Spawning.Metadata.Processor;
@@ -167,8 +168,17 @@ public class CyclopsMetadataProcessor : EntityMetadataProcessor<CyclopsMetadata>
         {
             subRoot.voiceNotificationManager.PlayVoiceNotification(subRoot.hullCriticalNotification);
         }
+        else if (healthPercent <= 0f && oldHealthPercent > 0f)
+        {
+            // As game:SubRoot.OnTakeDamage does at the killing blow; the countdown itself runs on the game that took the hit
+            subRoot.voiceNotificationManager.ClearQueue();
+            subRoot.voiceNotificationManager.PlayVoiceNotification(subRoot.abandonShipNotification, false, true);
+        }
 
         subRoot.oldHPPercent = liveMixin.GetHealthFraction();
+
+        // MULTINAUGHTICA_SPEC M1: if the player who took the hit leaves before the countdown ends, the lock holder destroys it
+        CyclopsDestructionWatchdog.WatchIfDying(subRoot, health);
     }
 
     private void SetDestroyed(GameObject gameObject, bool isDestroyed)

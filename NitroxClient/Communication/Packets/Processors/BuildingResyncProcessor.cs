@@ -118,15 +118,11 @@ internal sealed class BuildingResyncProcessor(Entities entities, EntityMetadataM
             }
         }
 
-        for (int i = entitiesToUpdate.Count - 1; i >= 0; i--)
+        // An entity without a corresponding component (a base or module this game lost) stays in the list and is spawned below
+        foreach ((E entity, C associatedComponent) in PairWithComponents(entitiesToUpdate, unmarkedComponents, correspondingPredicate))
         {
-            E entity = entitiesToUpdate[i];
-            C associatedComponent = unmarkedComponents.Find(c =>
-                                                                correspondingPredicate(entity, c));
             yield return overwrite(associatedComponent, entity).OnYieldError(Log.Error);
-
-            unmarkedComponents.Remove(associatedComponent);
-            entitiesToUpdate.RemoveAt(i);
+            entitiesToUpdate.Remove(entity);
         }
 
         for (int i = unmarkedComponents.Count - 1; i >= 0; i--)
@@ -139,6 +135,29 @@ internal sealed class BuildingResyncProcessor(Entities entities, EntityMetadataM
             Log.Info($"[{typeof(E)} RESYNC] spawning entity {entity.Id}");
             yield return entities.SpawnEntityAsync(entity).OnYieldError(Log.Error);
         }
+    }
+
+    /// <summary>
+    ///     Pairs each entity with the first still unmarked component it corresponds to, and removes the paired components from
+    ///     <paramref name="unmarkedComponents" />. An entity without a corresponding component is left out (the caller spawns
+    ///     it): pairing it with null made the overwrite throw, and the entity was dropped before the spawn loop
+    ///     (MULTINAUGHTICA_SPEC M1).
+    /// </summary>
+    internal static List<(E Entity, C Component)> PairWithComponents<E, C>(IReadOnlyList<E> entitiesToUpdate, List<C> unmarkedComponents, Func<E, C, bool> correspondingPredicate) where C : class
+    {
+        List<(E Entity, C Component)> pairs = [];
+        for (int i = entitiesToUpdate.Count - 1; i >= 0; i--)
+        {
+            E entity = entitiesToUpdate[i];
+            C associatedComponent = unmarkedComponents.Find(c => correspondingPredicate(entity, c));
+            if (associatedComponent == null)
+            {
+                continue;
+            }
+            unmarkedComponents.Remove(associatedComponent);
+            pairs.Add((entity, associatedComponent));
+        }
+        return pairs;
     }
 
     private IEnumerator OverwriteBase(Base @base, BuildEntity buildEntity)

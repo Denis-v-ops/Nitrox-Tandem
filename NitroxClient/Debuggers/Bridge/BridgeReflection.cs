@@ -356,6 +356,16 @@ internal static class BridgeReflection
             Optional<ItemsContainer> container = InventoryContainerHelper.TryGetContainerByOwner(ResolveTarget(raw));
             return container.HasValue ? container.Value : throw new ArgumentException($"'{raw}' has no ItemsContainer");
         }
+        // A plain Unity object parameter (Object.Destroy): the target's GameObject
+        if (type == typeof(UnityEngine.Object))
+        {
+            return ResolveTarget(raw);
+        }
+        // An out-style result of a coroutine (Constructable.DeconstructAsync): a fresh TaskResult, whatever was written
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IOut<>))
+        {
+            return Activator.CreateInstance(typeof(TaskResult<>).MakeGenericType(type.GetGenericArguments()));
+        }
         if (typeof(Component).IsAssignableFrom(type) || type.IsInterface)
         {
             return GetComponentOn(ResolveTarget(raw), type);

@@ -117,7 +117,9 @@ tools\bridge.ps1 Bob animator <alicePlayerId>          # Animator parameters and
 - **Targets:** `player`, a NitroxId, or `find:<ComponentType>` (the nearest loaded object with that component, for
   scene objects without an id, e.g. `use find:PrecursorDisableGunTerminal PrecursorDisableGunTerminal`). Static paths
   start with a type name (`Story.StoryGoalManager.main.completedGoals`); `member[3]` indexes a list. Private members
-  work (reflection with non-public flags). Values: numbers, `true`/`false`, `null`, enum names, `x,y,z`, ids.
+  work (reflection with non-public flags). Values: numbers, `true`/`false`, `null`, enum names, `x,y,z`, ids. A
+  `UnityEngine.Object` parameter takes the target's GameObject (`call UnityEngine.Object.Destroy <id>`); an `IOut<T>`
+  parameter gets a fresh `TaskResult<T>`, whatever is written (`call <id> Constructable.DeconstructAsync _ _`).
 - **`diff`** fetches every game's loaded entities (id, tech type, position, parent or container owner, live-extracted
   metadata) and the server's records, and prints mismatches: `GHOST` (game has an id the server doesn't), `MISSING`
   (server has a child of a loaded entity, the game doesn't), `TECHTYPE`, `PARENT` (container contents included),
