@@ -2,9 +2,11 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
+using NitroxClient.Communication;
 using NitroxClient.GameLogic;
 using NitroxClient.MonoBehaviours.Cyclops;
 using Nitrox.Model.DataStructures;
+using Nitrox.Model.Subnautica.Packets;
 using UnityEngine;
 
 namespace NitroxPatcher.Patches.Dynamic;
@@ -59,13 +61,15 @@ public sealed partial class CyclopsDestructionEvent_DestroyCyclops_Patch : Nitro
 
     public static void ManageBeacon(Beacon beacon, CyclopsDestructionEvent cyclopsDestructionEvent)
     {
-        if (!cyclopsDestructionEvent.TryGetNitroxId(out NitroxId nitroxId))
+        if (!cyclopsDestructionEvent.TryGetNitroxId(out NitroxId _))
         {
             return;
         }
 
-        // We let the simulating player spawn it for everyone
-        if (!Resolve<SimulationOwnership>().HasAnyLockType(nitroxId))
+        // The game whose countdown fired spawns it for everyone, like the loot; the others replay the destruction under this
+        // suppressor (CyclopsMetadataProcessor.SetDestroyed). "The lock holder" lost the beacon when the lock moved during the
+        // 18 s countdown (MULTINAUGHTICA_SPEC M1).
+        if (PacketSuppressor<EntitySpawnedByClient>.IsSuppressed)
         {
             Object.Destroy(beacon.gameObject);
             return;
