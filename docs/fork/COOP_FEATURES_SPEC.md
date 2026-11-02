@@ -272,7 +272,7 @@ Client settings: partner signal Off / Faint / Always (F1; "Always" also ignores 
 
 ## 5. Story gates (shared story moments)
 
-### G0: Gate foundation, the roster and the solo lock
+### G0: Gate foundation, the roster and the solo lock — done 2026-11-02 (branch `feat/2-g0-g4-story-gates`)
 
 **Goal:**
 - A major beat starts only when both players are there and have each confirmed it.
@@ -322,6 +322,58 @@ Client settings: partner signal Off / Faint / Always (F1; "Always" also ignores 
   - solo with a roster → locked, naming the absent player;
   - option off → immediate start;
   - admin release works.
+
+**Done 2026-11-02** (branch `feat/2-g0-g4-story-gates`, with G4):
+- **Server:** `Models/GameLogic/StoryGates/`. `StoryGateState` is the state machine without networking (ready per gate
+  and player with its time, release flag, `Evaluate` → `NONE`/`LOCKED`/`WAITING`/`START`); `StoryGateService` wraps it
+  (lock, `ISessionCleaner`, sends status and start); `StoryGateRules` holds one rule per gate. `StoryGateReadyProcessor`
+  feeds it. A status is only sent when it differs from the last one for that gate, so renewals don't flood.
+- **Options** (`server.cfg`, server only): `StoryGatesEnabled` (default true; false = every gate starts as soon as one
+  player asks) and `StoryGatePlayers` (default `""` = every saved player; recommended: the two names, e.g.
+  `"Alice,Bob"`, so a test or guest player doesn't lock the story). Both are read at each ask, so `config` changes take
+  effect without a restart (H: not tried).
+- **Roster:** `StoryGatePlayers` split at commas, trimmed, case-insensitive; empty means every saved player
+  (`PlayerManager.GetAllPlayers`, which includes the players loaded from `PlayerData.json`). A name on the roster that
+  never joined counts as offline, so a typo shows up as "Waiting for *typo* to come online".
+- **Rules** (`StoryGateRule`): every rule first needs the whole roster online (else `LOCKED`, naming who is offline).
+  `ONLINE_ONLY` then starts at once (the radio lock). `ALL_READY`: every roster player sends ready within the timeout.
+  `ONE_READY_ALL_PRESENT`: one player asks, every roster player must be inside the gate's `StoryGateArea` (a box, checked
+  against the server's positions from `PlayerMovement`). A ready is dropped when it expires, its player leaves the
+  gate's area, or disconnects. Players who aren't on the roster may ask, but are never waited for.
+- **Option off:** every ready answers with `StoryGateStart` at once, so the game needs no copy of the option.
+- **Admin:** `storygate status` (roster, who is online, each gate's rule and what it waits for) and
+  `storygate release <kind>` (starts a waiting gate now, otherwise lets its next ask through; used up by that start, kept
+  in memory only). For good, set `StoryGatePlayers` to one name or `StoryGatesEnabled=false`.
+- **Game side:** `NitroxClient/GameLogic/StoryGates.cs` holds at most one moment per gate, sends ready (renewed at most
+  once a second while an attempt goes on), shows the status through `Log.InGame` (shown again after 4 s if the player
+  keeps trying) and runs the held moment on `StoryGateStart` with `IsPassing(kind)` true. A game that holds nothing
+  ignores the start. Texts in en/de: `Nitrox_StoryGateOffline`, `..WaitingFor`, `..PartnerReady`, `..DriveCoreWait`,
+  `..DriveCoreJoin`.
+- **Radio lock:** `Radio_PlayRadioMessage_Patch` holds `Radio.PlayRadioMessage` while `pendingRadioMessages[0]` is
+  `RadioSunbeam4` (compared like the game, ignoring case). Verified in `game:Radio.cs` and
+  `game:Story/StoryGoalManager.cs:116-130`: the click only schedules `PlayRadioMessage`, and only
+  `ExecutePendingRadioMessage` takes the message from the queue and completes `OnPlayRadioSunbeam4`; held, nothing is
+  taken (also not from the server's queue, since `RadioPlayPendingMessage` isn't sent), so the message stays playable.
+  `OnHandClick` already hid the HUD icon, so the patch pulses the pending messages to show it again. The partner's
+  `RadioPlayPendingMessageProcessor` calls `ExecutePendingRadioMessage` directly and isn't gated. The admin `sunbeam`
+  command and the `sunbeamcountdownstart` console command aren't gated either.
+
+**API for G1–G3:**
+1. Pick the gate's line in `StoryGateRules.For` (rule, ready timeout, area). The kinds already exist: `DISABLE_GUN`,
+   `ROCKET_LAUNCH`, `SEA_EMPEROR`, `HATCHING`, `CURE` (all `ALL_READY`, 2 min, no area until their item sets one; G2's
+   "aboard" is an area). New kinds are appended to `StoryGateKind` (it's sent over the network).
+2. In the gate's Prefix: `if (!Resolve<StoryGates>().IsPassing(kind)) { Resolve<StoryGates>().Hold(kind, () => __instance.Method(args)); return false; }`.
+   The re-run goes through the same Prefix, so whatever the patch did before (lock requests, packets) still happens once.
+3. Where the game has an area exit (G1: `OnTerminalAreaExit`), call `Resolve<StoryGates>().Cancel(kind)`.
+4. Gate-specific texts: add a case in `StoryGates.FormatStatus` and keys in en/de; otherwise the generic texts apply.
+5. Tests: an L2 test of the gate's rule like `StoryGateTest`, and the item's scenario.
+
+**Verified:** L1 `StoryGateStateTest` (roster parsing, ready set, lock, presence, timeout and renewal, area exit,
+disconnect, release used up once, empty roster) and `StoryGatesTest` (each player's text). L2 `StoryGateTest`: one
+ready → status to both, both ready → start to both, renewals unanswered, disconnect clears the ready and tells the
+other, solo with a roster → locked naming the absent player until they're online, drive core presence, option off,
+admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProcessor` removed. Windowless:
+`G4-DriveCoreTogether.ps1` (radio part below in G4).
 
 ### G1: Disabling the gun
 - **Gate:** a Prefix on `PrecursorDisableGunTerminal.OnHandClick` (`game:` 110-135), **only when `playerCured`**. The
@@ -382,7 +434,7 @@ Three beats. Size L in total.
   - L3: a fixture inside the containment facility; both end at infection 0. Plus the offline-cure regression: cure with B
     offline (gate released by admin), B rejoins cured.
 
-### G4: Aurora drive core
+### G4: Aurora drive core — done 2026-11-02 (branch `feat/2-g0-g4-story-gates`)
 - **There's no single click.** Players weld many radiation leaks, and the last weld calls `LeakingRadiation.NotifyLeaksFixed`
   (`game:LeakingRadiation.cs:106-122`).
 - **Today:** leak health is metadata, and the partner runs their own `NotifyLeaksFixed` through `LiveMixinManager.cs:146-153`.
@@ -398,6 +450,43 @@ Three beats. Size L in total.
   - L3: a fixture after the explosion; the `fixleaks` console command (`game:LeakingRadiation.cs:130`) on all leaks but
     one; the last weld is held until B arrives.
 - **Size:** M.
+
+**Done 2026-11-02** (branch `feat/2-g0-g4-story-gates`, on G0):
+- **Hook: `LiveMixin.AddHealth`**, in the existing `LiveMixin_AddHealth_Patch` Prefix, not `Welder.Weld`: `Weld` runs
+  from an animation event (`Welder.OnToolUseAnim`), which windowless games don't fire, and `AddHealth` also catches the
+  `fixleaks` console command. A heal is held when the target has a `RadiationLeak`, it is the only one of
+  `LeakingRadiation.main.leaks` still leaking (the same count as `GetNumLeaks`, which decides in `NotifyLeaksFixed`
+  whether the goal completes, `game:LeakingRadiation.cs:106-122`), and it would reach `maxHealth` with the same checks as
+  `game:LiveMixin.cs:271-291` (alive or `canResurrect`). Held, `AddHealth` returns 0, so `Welder.Weld` uses no energy and
+  shows no effect; welding below full health goes on as usual (the last leak sits at 90 % while it waits).
+- **Rule:** `ONE_READY_ALL_PRESENT` with the area `StoryGateRules.DriveCoreRoom`. The welder's game renews the ready
+  with each held heal (at most once a second, expiry 5 s), and each renewal re-checks the positions. So the leak seals
+  when the partner arrives *while the welder keeps welding*; a welder who stopped welds once more.
+- **On start** the welder's game runs the held heal again (`AddHealth(maxHealth)`): the leak seals, `NotifyLeaksFixed`
+  completes the goal, and the patch's Postfix sends the leak's metadata; the partner's game seals it through
+  `RadiationMetadataProcessor` → `LiveMixinManager.SyncRemoteHealth` → `AddHealth`, which runs its own
+  `NotifyLeaksFixed`. **The remote path is never held** (`IsRemoteHealthChanging`): it applies what the server already
+  accepted, and it can't complete the leak early because a held heal never sends a full-health metadata.
+- **Findings (read in game, windowless):** the 11 leaks lie within x 849.9..881.5, y -16.0..2.7, z -7.7..18.9; the room
+  box is that plus 6 m (x 844..888, y -22..9, z -14..25). The room is under water (`isUnderwater` true) and the game has
+  no volume or biome of its own for it (`GetBiomeString` is `crashedShip` everywhere in the wreck). The leaks have
+  `maxHealth` 100, `canResurrect` true, start at 0 and exist (with ids) before the explosion. `leaksFixedGoal.key` is
+  **`AuroraRadiationFixed`**.
+- **(H) left:** the box isn't checked against the room's walls: a player in a neighbouring corridor within 6 m of the
+  box's edge counts as "in the room". If both players weld the last two leaks in the same instant, each game sees the
+  other leak still leaking and neither is held; they're both in the room then anyway. The real welder (hold the
+  button, `Welder.Weld`) wasn't driven; it reaches the same `AddHealth` (`Welder_Weld_Patch` swaps the call, then calls
+  `AddHealth` itself for non-vehicles). Not checked windowed (the message on screen).
+- **Verified:** windowless `tools/scenarios/G4-DriveCoreTogether.ps1` PASS (24 checks): Aurora exploded, 10 leaks healed
+  and synced, Alice's heals on the last leak held at 90 % on both games with the goal incomplete while Bob is outside
+  (server: `WAITING ... waiting for Bob`), Bob teleports in and the next heals seal it on both and complete
+  `AuroraRadiationFixed` on both, the server stores it at 100; radio: `RadioSunbeam4` queued on both, Bob quits, Alice's
+  `PlayRadioMessage` is held (message still queued, countdown not started, server `LOCKED ... waiting for Bob`), after
+  both rejoin it plays and `OnPlayRadioSunbeam4` completes on both. **Negative control:** the same scenario with the two
+  patches as on `coop` before G0 fails 9 checks (the last leak seals alone and completes the goal on both; the radio
+  plays with Bob offline). The bridge `diff` reports every sealed leak as a METADATA difference because
+  `RadiationMetadataExtractor` gives "now" as `FixRealTime` for a sealed leak; that's representation noise, so the
+  scenario checks the server's record instead.
 
 ### Seeing each other in cinematics
 Most of this is covered by R1b (adopting #2859). Story cinematics are first-person, so "together" means each player sees
@@ -1570,3 +1659,6 @@ prices, "keeping it scary").
 | 2026-11-02 | D6 | Flare fixed: thrown out of the partner's loaded cells it stayed unlit in the thrower's inventory in the partner's game (no spawn sent); the server now sends those players `EntityDestroyed` for their stale copy. Metadata was fine | L2 `DroppedOutOfSightTest`; windowless `D6-ThrownFlare` PASS, fails the 120 m check without the fix. Lights drawn at 60–120 m: open (windowed) |
 | 2026-11-02 | T4 | Done: the helm screen is interactable for the crew; engine and horn only for the pilot (engine still applies the partner's change); silent running paid only by the game with the lock; decoy patch type and relay fixed; bridge `hold` Down reaches `LeftHandButton`. Finding: the CanvasGroup never blocked the helm buttons (a standing player could already start the engine); silent running drained erratically in two games. README row | L2 `CyclopsCrewTest`; L3 windowless `T4-CyclopsCrew.ps1` PASS (56 checks); negative control on the unfixed patches FAIL (4 checks; silent running drain measured by hand). Not windowed, no real mouse click |
 | 2026-11-02 | F2 | Done: `PingKind` + target tech type in `PlayerPingCreated`, labels built by each game (en/de); Danger/Look/Come here from the crosshair hit (creature aggression read from its components and the player's eco target type); "Ping: come here" on H; `uGUI_Pings` OnAdd/OnIconChange patches keep the icon and colour (the colour was lost on a re-add before too); price via `SignalInterference` (partners' `Interfered`, the local D2 hook returns false until D2). README row | L1 `PingRulesTest`; L2 `ContextPingTest` (fails with send-to-all); L3 windowless `F2-ContextPings.ps1` PASS (146 checks, creature table of 24 types); negative controls: without the patches FAIL (12 checks), unfixed `coop` FAIL. Not verified: two languages at once, real D2 interference, windowed markers, drillables/breakables in game |
+| 2026-11-02 | G0 | Done: story gates (`StoryGateService`/`StoryGateState`/`StoryGateRules`, packets `StoryGateReady`/`Status`/`Start`, `StoryGateKind` with room for G1–G3), roster from `StoryGatePlayers` or every saved player, locked while a roster player is offline, readies cleared on timeout, area exit and disconnect, option off starts at once, admin `storygate status`/`release <kind>`; game-side `StoryGates` hold-and-resume API for G1–G3; Sunbeam radio lock (`RadioSunbeam4` stays queued while held); en/de texts; README co-op rows | L1 `StoryGateStateTest`, `StoryGatesTest`; L2 `StoryGateTest` (6 tests, all fail without `StoryGateReadyProcessor`); windowless `G4-DriveCoreTogether.ps1` radio part (lock across a quit and rejoin) PASS, fails without the radio hook. Full suite green |
+| 2026-11-02 | G4 | Done: the heal that would seal the Aurora's last leak (`LiveMixin.AddHealth`) waits until every roster player is in the drive core room (box from the leaks' measured positions plus 6 m), then seals for both; remote health syncs never held. Goal key `AuroraRadiationFixed` (read in game) | Windowless `G4-DriveCoreTogether.ps1` PASS (24 checks); negative control with the coop hooks: 9 checks fail. L2 drive core presence test. Real welder button and the on-screen message not driven; room walls not measured (H) |
+| 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |

@@ -119,6 +119,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<NitroxPDATabManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<TimeManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<SleepManager>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<StoryGates>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<BulletManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<NtpSyncer>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<SignalInterference>().InstancePerLifetimeScope();
