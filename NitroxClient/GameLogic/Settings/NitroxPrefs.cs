@@ -31,6 +31,14 @@ namespace NitroxClient.GameLogic.Settings
         /// In seconds.
         /// </summary>
         public static readonly NitroxPref<float> OfflineClockSyncDuration = new("Nitrox.offlineClockSyncDuration", 5);
+        /// <summary>
+        /// The partner's marker: a <see cref="NitroxClient.GameLogic.PlayerLogic.PartnerSignalMode"/> (COOP_FEATURES_SPEC F1).
+        /// </summary>
+        public static readonly NitroxPref<int> PartnerSignal = new("Nitrox.partnerSignal", 1);
+        /// <summary>
+        /// In metres: the partner's name tag shows only this close (COOP_FEATURES_SPEC F1).
+        /// </summary>
+        public static readonly NitroxPref<float> NameTagRange = new("Nitrox.nameTagRange", 12);
     }
 
     public abstract class NitroxPref { }

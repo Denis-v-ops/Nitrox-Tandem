@@ -112,6 +112,7 @@ public class RemotePlayer : INitroxPlayer
 
         vitals = playerVitalsManager.CreateOrFindForPlayer(this);
         RefreshVitalsVisibility();
+        Body.AddComponent<PartnerSignal>().Initialize(this);
 
         PlayerDisconnectEvent.AddHandler(Body, _ =>
         {
