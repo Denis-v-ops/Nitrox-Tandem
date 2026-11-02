@@ -106,6 +106,12 @@ tools\bridge.ps1 Alice record start sub <nitroxId> [relativeTo]   # per-frame tr
 tools\bridge.ps1 Alice record stop sub                 # samples as JSON
 tools\bridge.ps1 Alice input move 0 0 1                # hold movement input (strafe/turn, up/down, forward): drive, walk
 tools\bridge.ps1 Alice call Thread.Sleep 300           # one long frame (a hitch) on purpose
+tools\bridge.ps1 Bob hold <nitroxId> 6                 # hold the interact button on a target for 6 s, aiming at it
+tools\bridge.ps1 Bob hold status                       # frames, frames GUIHand targeted it, reticle progress
+tools\bridge.ps1 Alice hold none 3 RightHand           # hold another button (a tool), no target
+tools\bridge.ps1 Bob sounds 10 player/                 # FMOD events started in the last 10 s whose path/owner has "player/"
+tools\bridge.ps1 Bob pdaqueue                          # PDA voice line playing now and the queued ones
+tools\bridge.ps1 Bob animator <alicePlayerId>          # Animator parameters and clips of Alice's body on Bob's game
 ```
 
 - **Targets:** `player`, a NitroxId, or `find:<ComponentType>` (the nearest loaded object with that component, for
@@ -118,6 +124,28 @@ tools\bridge.ps1 Alice call Thread.Sleep 300           # one long frame (a hitch
   `POSITION` (beyond `-Tolerance`, default 1 m; `-MoverTolerance` 15 m for vehicles and loose physics objects;
   creatures only game vs game), `METADATA` (numbers within 0.5 count as equal). Representation quirks are on a short,
   commented `$KnownNoise` list in `bridge.ps1` (`-All` shows them). Takes about 3 s. Run it after every scenario step.
+- **`hold <target|none> <seconds> [button] [noaim]`** presses a game button (default `LeftHand`, the interact button;
+  any `GameInput.Button` name) through the game's own input (`GameInputSystem.GetButtonState`, a Debug-only patch):
+  `Down` + `Held` on the first frame, `Held` while it lasts, `Up` on the last. `GUIHand` clicks and hovers as for a
+  player and `GetButtonHeld` is true, so hold-to-use hand targets fill `HandReticle` progress. Unless `noaim`, the camera
+  turns toward the target every frame, so `GUIHand`'s own 2 m raycast must pick it. The command returns at once;
+  `hold status` gives `frames`, `targetedFrames` (frames `GUIHand` targeted it), `lastActiveTarget`, `distance`,
+  `maxProgress`, `avatarInputEnabled` (false while a menu is open: then `GUIHand` ignores input). The button `None`
+  only aims (e.g. turn Bob toward Alice before reading what he sees). Checked windowless
+  2026-11-02: holding on the pod's fabricator opens it, `call GameInput.GetButtonHeld LeftHand` is true during a hold
+  and false after.
+- **`sounds [seconds] [filter]`** lists FMOD events started lately (ring buffer of 512): `ago`, `source`, `path`,
+  `position`, `distance` from the local player, the GameObject, its NitroxId owner and `remotePlayer` (set when it plays
+  on a partner's body). Recorded where sounds start: `FMOD_CustomEmitter.OnPlay`, `FMOD_StudioEventEmitter.StartEvent`
+  and `PlayUI`, FMODUnity's `StudioEventEmitter.Play`, `FMODUWE.PlayOneShotImpl`, the PDA voice (`SoundQueue.Play`) and
+  the raw event instances `FMODEmitterController` starts for other players' sounds. Not recorded: game code that calls
+  `EventInstance.start()` itself. Windowless games are muted on the master channel group only, so events still start.
+  `sounds clear` empties it.
+- **`pdaqueue`**: `PDASounds.queue`: the voice line playing (`current`, position, length) and the waiting ones. Lines
+  that already played: `sounds 600 SoundQueue`.
+- **`animator <target> [all]`**: every parameter of the target's `Animator` with its value, and the clips playing per
+  layer (`get` can't read parameters). The partner's body has the partner's player id (`state` on the partner's game).
+  In windowless games the body's animator is `CullUpdateTransforms`: the state machine runs, bones don't move.
 - **Scenarios** are PowerShell scripts in `tools/scenarios/` over `ScenarioHelpers.ps1`: `Start-ScenarioGames` (fresh
   world `bridge-scenario`, both games joined, no-oxygen and no-damage cheats on), `Step` (runs a block, then `diff`),
   `Assert-*`, `Wait-Until`, `Assert-NoDiff -Ids` (no desync for the scenario's entities), `Complete-Scenario` (PASS/FAIL,
@@ -290,7 +318,10 @@ tools\run-suite.ps1 -Windowless
     becomes Full, the ones out of view stay Minimal. A Cyclops with players aboard is Full either way (its distance is
     measured to its bounds), so the patch doesn't change S13.
   - `bridge.ps1 <player> screenshot` renders the main camera into a texture instead (no HUD); `ScreenCapture` writes
-    nothing in batch mode.
+    nothing in batch mode. **Crash seen 2026-11-02 (A0 probe run):** a windowless game at night, 20 m from a partner
+    with a lit flashlight, crashed right around a bridge screenshot; its `Player-<name>.log` ends with
+    `RenderNodeQueue Page Allocator out of memory. Maximum allowed memory: 256.0 MB`, then `Crash!!!`. Until that's
+    understood, check lights through their state (`get <id> Light.enabled`) and take light screenshots windowed.
   - Still different (read from the game code, not checked in game): animators and UI canvases that switch off when not
     visible (`AnimatorLink`, `CanvasLink`, Animator culling) stay off, so animation-driven bones don't move. Screen
     effects (`OnPreRender`) never run.

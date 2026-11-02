@@ -120,6 +120,9 @@ public class FMODEmitterController : MonoBehaviour
             {
                 tuple.Item1.setVolume(volume);
                 tuple.Item1.start();
+#if DEBUG
+                Debuggers.Bridge.BridgeSounds.Record("FMODEmitterController.PlayStudioEmitter", path, position, gameObject);
+#endif
             }
         }
     }
@@ -155,6 +158,9 @@ public class FMODEmitterController : MonoBehaviour
         eventInstance.start();
         eventInstance.release();
         loopingEmitter.timeLastStopSound = Time.time;
+#if DEBUG
+        Debuggers.Bridge.BridgeSounds.Record("FMODEmitterController.PlayCustomLoopingEmitter", path, loopingEmitter);
+#endif
     }
 
     public void PlayEventInstance(string path, float volume)
@@ -163,6 +169,9 @@ public class FMODEmitterController : MonoBehaviour
         {
             tuple.Item1.setVolume(volume);
             tuple.Item1.start();
+#if DEBUG
+            Debuggers.Bridge.BridgeSounds.Record("FMODEmitterController.PlayEventInstance", path, transform.position, gameObject);
+#endif
         }
     }
 
