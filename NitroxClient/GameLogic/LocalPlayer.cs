@@ -41,6 +41,10 @@ public class LocalPlayer : ILocalNitroxPlayer
     public IntroCinematicMode IntroCinematicMode { get; set; }
     public bool KeepInventoryOnDeath { get; set; }
     public bool MarkDeathPointsWithBeacon { get; set; }
+    /// <summary>
+    ///     The co-op server options the game reads, from the initial sync.
+    /// </summary>
+    public CoopSettings CoopSettings { get; set; }
 
     public LocalPlayer(IMultiplayerSession multiplayerSession, IPacketSender packetSender, ThrottledPacketSender throttledPacketSender)
     {
@@ -54,6 +58,7 @@ public class LocalPlayer : ILocalNitroxPlayer
         IntroCinematicMode = IntroCinematicMode.NONE;
         KeepInventoryOnDeath = false;
         MarkDeathPointsWithBeacon = false;
+        CoopSettings = new CoopSettings();
     }
 
     public void BroadcastLocation(Vector3 location, Vector3 velocity, Quaternion bodyRotation, Quaternion aimingRotation)
@@ -92,11 +97,11 @@ public class LocalPlayer : ILocalNitroxPlayer
         }
     }
 
-    public void BroadcastStats(float oxygen, float maxOxygen, float health, float food, float water, float infectionAmount)
+    public void BroadcastStats(float oxygen, float maxOxygen, float health, float food, float water, float infectionAmount, bool interfered)
     {
         if (SessionId.HasValue)
         {
-            packetSender.Send(new PlayerStats(SessionId.Value, oxygen, maxOxygen, health, food, water, infectionAmount));
+            packetSender.Send(new PlayerStats(SessionId.Value, oxygen, maxOxygen, health, food, water, infectionAmount, interfered));
         }
     }
 

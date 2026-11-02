@@ -47,6 +47,18 @@ internal sealed class PersistedPlayerData
 
     public bool DisplaySurfaceWater { get; set; }
 
+    /// <inheritdoc cref="Player.DownedUntil" />
+    public double? DownedUntil { get; set; }
+
+    /// <inheritdoc cref="Player.DownsSinceRest" />
+    public int DownsSinceRest { get; set; }
+
+    /// <inheritdoc cref="Player.LastDownedAt" />
+    public double? LastDownedAt { get; set; }
+
+    /// <inheritdoc cref="Player.HeardGoals" />
+    public HashSet<string> HeardGoals { get; set; } = [];
+
     public Player ToPlayer()
     {
         return new Player(Id,
@@ -68,7 +80,13 @@ internal sealed class PersistedPlayerData
                           PlayerPreferences.PingPreferences,
                           PlayerPreferences.PinnedTechTypes,
                           InPrecursor,
-                          DisplaySurfaceWater);
+                          DisplaySurfaceWater)
+        {
+            DownedUntil = DownedUntil,
+            DownsSinceRest = DownsSinceRest,
+            LastDownedAt = LastDownedAt,
+            HeardGoals = new ThreadSafeSet<string>(HeardGoals ?? [])
+        };
     }
 
     public static PersistedPlayerData FromPlayer(Player player)
@@ -91,7 +109,11 @@ internal sealed class PersistedPlayerData
             PersonalCompletedGoalsWithTimestamp = new(player.PersonalCompletedGoalsWithTimestamp),
             PlayerPreferences = new(player.PingInstancePreferences.ToDictionary(m => m.Key, m => m.Value), player.PinnedRecipePreferences.ToList()),
             InPrecursor = player.InPrecursor,
-            DisplaySurfaceWater = player.DisplaySurfaceWater
+            DisplaySurfaceWater = player.DisplaySurfaceWater,
+            DownedUntil = player.DownedUntil,
+            DownsSinceRest = player.DownsSinceRest,
+            LastDownedAt = player.LastDownedAt,
+            HeardGoals = [.. player.HeardGoals]
         };
     }
 }

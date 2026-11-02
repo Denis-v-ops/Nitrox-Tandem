@@ -134,7 +134,7 @@ internal static class SaveLoadRoundTrip
     ///     The save code catches exceptions and only logs them, so a test would just see "save failed". Throwing on error
     ///     logs makes the real cause the test failure.
     /// </summary>
-    private sealed class ThrowOnErrorLogger<T> : ILogger<T>
+    internal sealed class ThrowOnErrorLogger<T> : ILogger<T>
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 

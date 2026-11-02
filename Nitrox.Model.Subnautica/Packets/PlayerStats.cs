@@ -15,8 +15,13 @@ public class PlayerStats : Packet
     public float Food { get; }
     public float Water { get; }
     public float InfectionAmount { get; }
+    /// <summary>
+    ///     True when the player's signal is cut off (caves, the deep; COOP_FEATURES_SPEC D2). The server keeps the latest
+    ///     value in memory only.
+    /// </summary>
+    public bool Interfered { get; }
 
-    public PlayerStats(SessionId sessionId, float oxygen, float maxOxygen, float health, float food, float water, float infectionAmount)
+    public PlayerStats(SessionId sessionId, float oxygen, float maxOxygen, float health, float food, float water, float infectionAmount, bool interfered)
     {
         SessionId = sessionId;
         Oxygen = oxygen;
@@ -25,6 +30,7 @@ public class PlayerStats : Packet
         Food = food;
         Water = water;
         InfectionAmount = infectionAmount;
+        Interfered = interfered;
 
         DeliveryMethod = NitroxDeliveryMethod.DeliveryMethod.RELIABLE_ORDERED_LAST;
     }

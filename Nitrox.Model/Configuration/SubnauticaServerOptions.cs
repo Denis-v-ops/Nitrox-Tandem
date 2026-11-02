@@ -81,6 +81,33 @@ public sealed partial class SubnauticaServerOptions
     [PropertyDescription("Command to run following a successful world save (e.g. .exe, .bat, or PowerShell script). ")]
     public string PostSaveCommandPath { get; set; } = "";
 
+    [PropertyDescription("Major story beats wait until every player on the roster is there and has confirmed")]
+    public bool StoryGatesEnabled { get; set; } = true;
+
+    [PropertyDescription("Comma-separated player names that story gates wait for (e.g. \"Name1,Name2\"). If empty, all saved players count.")]
+    public string StoryGatePlayers { get; set; } = "";
+
+    [PropertyDescription("Seconds a player stays down at 0 health before dying, so another player can revive them. 0 disables it.")]
+    [Range(0, int.MaxValue)]
+    public int RescueWindowSeconds { get; set; } = 60;
+
+    [PropertyDescription("If true, the rescue window halves on the 2nd down since the player last rested and is gone on the 3rd")]
+    public bool RescueEscalation { get; set; } = true;
+
+    [PropertyDescription("Share of the oxygen given by buddy breathing that the receiver gets (0.5 = half of what the donor pays)")]
+    [Range(0.0, 1.0)]
+    public float BuddyBreathingEfficiency { get; set; } = 0.5f;
+
+    [PropertyDescription("If true, the partner's marker drops to a last contact in caves and the deep unless a beacon or scanner room relays it")]
+    public bool PartnerSignalInterference { get; set; } = true;
+
+    [PropertyDescription("Depth in meters below which the partner's signal fades (see PartnerSignalInterference)")]
+    [Range(0, int.MaxValue)]
+    public int SignalInterferenceDepth { get; set; } = 300;
+
+    [PropertyDescription("If true, a player hears the PDA's biome and location lines only when they get there themselves")]
+    public bool PartnerDiscoveriesSilent { get; set; } = true;
+
     [OptionsValidator]
     public partial class Validator : IValidateOptions<SubnauticaServerOptions>;
 }
