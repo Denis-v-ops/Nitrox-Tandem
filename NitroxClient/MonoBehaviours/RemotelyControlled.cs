@@ -32,6 +32,7 @@ public class RemotelyControlled : MonoBehaviour
     private Vector3 creatureVelocity;
     private Vector3 creatureAngularVelocity;
     private double creatureRealTime;
+    private float creatureLocalTime;
 
     private Locomotion disabledLocomotion;
     private WorldForces disabledWorldForces;
@@ -104,6 +105,11 @@ public class RemotelyControlled : MonoBehaviour
         creatureVelocity = velocity;
         creatureAngularVelocity = angularVelocity;
         creatureRealTime = realTime;
+        // When it was taken on this game's clock (Time.time, which is Time.fixedTime in FixedUpdate). The copy is moved
+        // in FixedUpdate, and after a long frame Unity runs several fixed steps in one frame to catch up: measured against
+        // the wall clock, each of them saw the whole delay at once, so the copy overshot by metres (8.4 m one-frame step
+        // after a 353 ms frame, while the original swam 5 m).
+        creatureLocalTime = Time.time - (float)(timeManager.RealTimeElapsed - realTime);
     }
 
     /// <summary>
@@ -147,7 +153,7 @@ public class RemotelyControlled : MonoBehaviour
             return;
         }
 
-        float age = Mathf.Clamp((float)(timeManager.RealTimeElapsed - creatureRealTime), 0f, MAX_EXTRAPOLATION);
+        float age = Mathf.Clamp(Time.fixedTime - creatureLocalTime, 0f, MAX_EXTRAPOLATION);
         bool extrapolating = age < MAX_EXTRAPOLATION;
         Vector3 velocity = extrapolating ? creatureVelocity : Vector3.zero;
         Vector3 angularVelocity = extrapolating ? creatureAngularVelocity : Vector3.zero;

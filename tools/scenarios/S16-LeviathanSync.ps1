@@ -195,34 +195,49 @@ function Measure-Pair {
     $from = [math]::Max($t[0], $ownerTrack.Times[0]) + 1000
     $to = [math]::Min($t[$t.Length - 1], $ownerTrack.Times[$ownerTrack.Times.Length - 1])
     $result = [S13Analysis]::Compare($ownerTrack, $observerTrack, $from, $to, 1500)
-    $snaps = Get-Snaps $observerTrack $from $to
+    $snaps = Get-Snaps $observerTrack $from $to -OwnerTrack $ownerTrack
     Write-Host "  $Name ($Owner simulates, $observer watches): $(Format-Result $result)"
-    Assert-Measure ($snaps.max -le $MaxSnap) ('{0}: no one-frame step over {1} m for {2} ({3:0.0} m)' -f $Name, $MaxSnap, $observer, $snaps.max)
-    Write-Host ('    observer snaps (one-frame steps over {0} m): {1} in {2:0} s, largest {3:0.0} m' -f $SnapMetres, $snaps.count, (($to - $from) / 1000), $snaps.max)
+    Assert-Measure ($snaps.excessMax -le $MaxSnap) ('{0}: no snap over {1} m for {2} (a one-frame step beyond what the original moved meanwhile: {3:0.0} m)' -f $Name, $MaxSnap, $observer, $snaps.excessMax)
+    Write-Host ('    observer snaps (one-frame steps over {0} m): {1} in {2:0} s, largest {3:0.0} m; beyond the original''s movement: {4} over {0} m, largest {5:0.0} m' -f $SnapMetres, $snaps.count, (($to - $from) / 1000), $snaps.max, $snaps.excessCount, $snaps.excessMax)
     Write-Host "    owner: $(Format-Result ([S13Analysis]::Frames($ownerTrack, $from, $to))) speed $(Format-Result ([S13Analysis]::Stats($ownerTrack, 'vx', $from, $to, $true)))"
     Write-Host "    observer: $(Format-Result ([S13Analysis]::Frames($observerTrack, $from, $to))) speed $(Format-Result ([S13Analysis]::Stats($observerTrack, 'vx', $from, $to, $true)))"
     Show-Events $ownerTrack @('lock', 'active', 'remote', 'lod', 'target')
     Show-Events $observerTrack @('lock', 'active', 'remote', 'lod', 'target')
-    [void]$script:Summary.Add([pscustomobject]@{ case = $Name; owner = $Owner; lagMs = $result.lagMs; residualRms = $result.residualRms; instantMean = $result.instantMean; instantMax = $result.instantMax; speed = $result.ownerSpeed; snaps = $snaps.count; maxSnap = $snaps.max })
+    [void]$script:Summary.Add([pscustomobject]@{ case = $Name; owner = $Owner; lagMs = $result.lagMs; residualRms = $result.residualRms; instantMean = $result.instantMean; instantMax = $result.instantMax; speed = $result.ownerSpeed; snaps = $snaps.count; maxSnap = $snaps.max; maxExcess = $snaps.excessMax })
     [pscustomobject]@{ result = $result; owner = $ownerTrack; observer = $observerTrack; snaps = $snaps }
 }
 
 <#
     One-frame steps longer than $SnapMetres (a leviathan at 25 m/s moves 0.2 m per frame at 120 fps): the observer's copy
-    put back at the position in a partner's packet (RemotelyControlled.TeleportIfTooFar, beyond 5 m).
+    put back at the position in a partner's packet (before S16b: RemotelyControlled.TeleportIfTooFar, beyond 5 m).
+    With -OwnerTrack also the *excess*: how much further the copy stepped in that frame than the simulator's creature moved
+    over the same time. A long frame (100-350 ms, cells loading) moves both by metres and the physics catch-up in the next
+    frame does too, in the simulating game as well (seen after S16b: a 353 ms frame stepped the copy 8.4 m while the
+    original swam 5.3 m); a teleport moves only the copy. -Strict checks the excess.
 #>
 $SnapMetres = 1.0
 function Get-Snaps {
-    param([S13Track]$Track, [double]$From, [double]$To)
+    param([S13Track]$Track, [double]$From, [double]$To, [S13Track]$OwnerTrack)
     $t = $Track.Times; $x = $Track.Column('px'); $y = $Track.Column('py'); $z = $Track.Column('pz')
-    $count = 0; $max = 0.0
+    if ($OwnerTrack) { $ot = $OwnerTrack.Times; $ox = $OwnerTrack.Column('px'); $oy = $OwnerTrack.Column('py'); $oz = $OwnerTrack.Column('pz') }
+    $count = 0; $max = 0.0; $excessCount = 0; $excessMax = 0.0
     for ($i = 1; $i -lt $t.Length; $i++) {
         if ($t[$i] -lt $From -or $t[$i] -gt $To -or [double]::IsNaN($x[$i]) -or [double]::IsNaN($x[$i - 1])) { continue }
         $step = [math]::Sqrt([math]::Pow($x[$i] - $x[$i - 1], 2) + [math]::Pow($y[$i] - $y[$i - 1], 2) + [math]::Pow($z[$i] - $z[$i - 1], 2))
         if ($step -gt $SnapMetres) { $count++ }
         if ($step -gt $max) { $max = $step }
+        if ($OwnerTrack -and $step -gt $SnapMetres) {
+            # The simulator's samples at or before both ends of this frame
+            $a = [Array]::BinarySearch($ot, $t[$i - 1]); if ($a -lt 0) { $a = [math]::Max(0, -$a - 2) }
+            $b = [Array]::BinarySearch($ot, $t[$i]); if ($b -lt 0) { $b = [math]::Max(0, -$b - 2) }
+            $ownerStep = [math]::Sqrt([math]::Pow($ox[$b] - $ox[$a], 2) + [math]::Pow($oy[$b] - $oy[$a], 2) + [math]::Pow($oz[$b] - $oz[$a], 2))
+            if ([double]::IsNaN($ownerStep)) { $ownerStep = 0 }
+            $excess = $step - $ownerStep
+            if ($excess -gt $SnapMetres) { $excessCount++ }
+            if ($excess -gt $excessMax) { $excessMax = $excess }
+        }
     }
-    [pscustomobject]@{ count = $count; max = $max }
+    [pscustomobject]@{ count = $count; max = $max; excessCount = $excessCount; excessMax = $excessMax }
 }
 
 <# Largest per-frame step of a track (a jump) between two times. #>
