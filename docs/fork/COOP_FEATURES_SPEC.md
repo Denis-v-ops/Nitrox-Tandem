@@ -218,6 +218,9 @@ on its own (see R1b). Until T1 lands, the death penalty is plain vanilla, which 
 - Probes that need a late-game fixture (G2, G3) stay with their item.
 - **Bridge additions, in one change:** `hold <id> <seconds>` (T1, T2, T3), a read of recently played FMOD events (D1,
   D3), a read of `PDASounds.queue` (D5), and the partner body's animator values if `get` can't reach them (R2).
+- **Done 2026-11-02** (branch `feat/0-a0-probes`): bridge commands `hold`, `sounds`, `pdaqueue`, `animator`
+  (TESTING.md, dev bridge section); `tools/scenarios/A0-Probes.ps1` run windowless. Findings are in D1, D2, D6, R2, T1,
+  T4, B4 and B5 ("A0 probe"), F2 from code. Not probed: P2 (needs a base with an aquarium, left to P2), D4 (own item).
 
 **A1: Shared plumbing (S). Done (2026-11-02, branch `feat/0-a1-shared-plumbing`).** One change that every later item
 only reads:
@@ -445,7 +448,13 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - "Hold to revive" with the hand-target's hold progress: 6 s by hand, 2 s with a first aid kit in hand. Letting go or
     moving out of range resets the progress.
   - The server checks `PlayerReviveRequest` with T2's partner-interaction check, plus "target is downed".
-  - The downed pose from the `player_death` animator trigger (H: Nitrox's `AnimationController` may override it).
+  - The downed pose from the `player_death` animator trigger. **A0 probe (2026-11-02, windowless):**
+    `AnimationController` doesn't override it: on B's copy of A's body the `Death` layer plays `quick_death`. But the
+    clip plays **once** (about 1.2 s) and the layer goes back to its empty state; `player_death_drown` (`drown_death`,
+    about 3.4 s), `_choke`, `_fire`, `_explosion` behave the same. So the trigger gives a collapse, not a held pose:
+    hold the last frame on the downed body (e.g. `Animator.Play(state, deathLayer, 1f)` and keep re-applying it while
+    downed, or stop that body's animator speed) and check the pose windowed (windowless bodies are
+    `CullUpdateTransforms`: the state machine runs, the bones don't).
   - The downed player is heard (D1) and sends a distress call (D3).
 - **Option `RescueWindowSeconds`:** 0 disables the feature. It's sent in `InitialPlayerSync`.
 
@@ -484,7 +493,7 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - B revives → A is up;
   - the timer runs out → death and beacon;
   - underwater, oxygen reaches 0 → death.
-  - The bridge needs a new "hold use" command; `use` only clicks once.
+  - Hold to revive with the bridge's `hold <partnerId> 6` (added in A0); `use` only clicks once.
 
 **Size:** L.
 
@@ -557,7 +566,13 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - Let non-pilots click the helm screen.
   - Gate only engine, motor mode and horn behind `Player.main.isPiloting` (Prefixes).
   - The co-pilot stands behind the helm and runs abilities and cameras.
-  - **First probe** (bridge or one game run): can a standing player reach the buttons (H)?
+  - **First probe** (bridge or one game run): can a standing player reach the buttons?
+    **A0 probe (2026-11-02, windowless + code): reach isn't the blocker.** Standing 0.8–2.5 m behind the pilot chair,
+    the helm HUD is 1.4–3 m away. Its `uGUI_GraphicRaycaster` has `interactionDistance` 0 and no status delegate, so
+    it's always enabled; `FPSInputModule`'s 3 m limit only applies to `uGUI_InputGroup` canvases (code). There
+    `canvasGroup.interactable` is false and `hudActive` true: Nitrox's patch is the only block. Not shown: an actual
+    click by a standing player with `currentSub` set (teleporting inside the sub clears `currentSub`; walk there with
+    `input move` in T4's scenario).
 - **Tests:**
   - L2: Cyclops state set by the player who isn't steering is stored and relayed.
   - L3: B toggles each ability and A sees it; power drains once.
@@ -641,7 +656,11 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - A hold-radial menu comes later; it needs key-release wiring.
   - **Price (§2.2):** pings travel like the signal. If the sender or the receiver is in interference (D2), the receiver
     only shows the ping when they're within about 50 m of the sender. The receiver decides, so the server stays a relay.
-- **Risk:** a custom icon may be reset when `uGUI_Pings` re-adds markers (H). Patch `uGUI_Pings.OnAdd` if so.
+- **Risk:** a custom icon may be reset when `uGUI_Pings` re-adds markers. Patch `uGUI_Pings.OnAdd` if so.
+  **A0 (2026-11-02, from code, not checked in game): it is reset.** `uGUI_Pings.OnAdd` sets the sprite from
+  `pingType`, and it runs for every ping when the component is enabled (`OnEnable` re-adds all); `OnIconChange` does
+  the same. The game itself never toggles `uGUI_Pings`. Danger (Signal) and Come here (Beacon) are ping types, so they
+  survive. Look (an item's sprite) needs a Postfix on `OnAdd` and `OnIconChange` that re-applies the sprite by ping id.
 - **Tests:**
   - L2: the kind reaches B, the sender gets nothing back.
   - L3: B's marker icon and label, read through the bridge.
@@ -664,6 +683,21 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     on the partner's body is (H).
   - Sounds on the player's own body need their own packet, as footsteps do (`FootstepSounds_OnStep_Patch` →
     `FootstepPacket`).
+- **A0 probe (2026-11-02, windowless, `sounds` on both games):**
+  - **Breathing: not heard** (in game and from code). `BreathingSound` starts its loop with
+    `FMOD_StudioEventEmitter.StartEvent`, which Nitrox doesn't patch, so the breathing emitter `SetupPlayerSounds`
+    puts on the partner's body is never played. A's game started `event:/player/breathing`; B's played nothing on A's
+    body.
+  - **Bubbles: heard, but not positional.** `event:/player/bubbles` reaches B as a 2D event instance
+    (`FMODEmitterController.PlayEventInstance`, volume by distance). Seen once on each body in about a minute;
+    the scripted 30 s window caught none, so the cadence is unknown.
+  - **Pain: not synced** (confirmed). A played `event:/player/Pain_no_tank` and `event:/player/pain_no_tank_light`; B
+    nothing. The paths can be read from the local emitters at startup: `painWithTank` `event:/player/Pain`,
+    `painWithoutTank` `.../Pain_no_tank`, `painWithoutMask` `.../Pain_surface`, `painSmoke` `.../coughing` (all
+    `.asset.path`), `painWithoutTankLight` `.../pain_no_tank_light` (FMODUnity emitter: `.Event`; the whitelist spells
+    it `Pain_no_tank_light`, so match case-insensitively).
+  - With a tank *equipped*, the game still chose "no tank": it counts tanks in the inventory
+    (`GetPickupCount(TechType.Tank)`). Send the kind the local game chose rather than recomputing it.
 - **Design:**
   - Postfix on `PlayerDamageSounds.OnTakeDamage` → `PlayerPainSound(kind)`, at most 2 per second. Nothing to persist,
     so the default relay is enough.
@@ -671,12 +705,12 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     from the local player's emitters at startup (H: the asset field), so no paths are hard-coded.
   - **Downed:** a weak pain or breath sound every few seconds from the downed body, so a rescuer can follow it in the
     dark.
-  - **Breathing:** probe first. If the partner's breathing loop doesn't play on their body, drive the same event on the
-    partner's body from their underwater state (H).
+  - **Breathing:** the A0 probe showed the partner's loop doesn't play on their body, so drive the breathing emitter
+    that `SetupPlayerSounds` already adds to the body from their underwater state (and tank).
 - **Tests:**
   - L2: the relay.
-  - L3: damage A through the bridge; B's game played the pain event on A's body (the bridge needs a read of recently
-    played FMOD events, H); nothing when B is 100 m away.
+  - L3: damage A through the bridge; B's game played the pain event on A's body (bridge `sounds 5 player/`,
+    `remotePlayer` = A); nothing when B is 100 m away.
 
 ### D2: The deep cuts the line (M)
 - **Goal:** the partner's signal works in open water and drops to a **last contact** in caves, below 300 m, in the Lost
@@ -692,7 +726,20 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     the `Interfered` flag on `PlayerStats` (added in A1). That packet already goes out every 3 s and the server keeps
     the latest per player (`PlayerStatsProcessor`), so there's no new packet and a late joiner has it within 3 s. That avoids
     looking up the partner's biome in cells that aren't loaded.
-  - Biome names come from game data, not code. Collect the real names at known spots through the bridge first (H).
+  - Biome names come from game data, not code. Collect the real names at known spots through the bridge first.
+    **A0 probe (2026-11-02, in game):** `GetBiomeString` is, in order, a special zone (`observatory`,
+    `generatorRoom`, `crashedShip` inside the Aurora), the atmosphere-volume override (`Lifepod` in the pod, caves,
+    Precursor rooms), else the 2D biome map by x/z. Read at known spots: Jellyshroom Cave (Degasi base, 258 m)
+    `JellyshroomCaves`; Deep Grand Reef (503 m) `deepGrandReef`; Mushroom Forest cave `mushroomForest_cave_light`;
+    Lost River `LostRiver_Junction` (791 m), `LostRiver_GhostTree` (622 m); Inactive Lava Zone `ILZCastleChamber`;
+    Thermal Plant inside `Precursor_LavaCastleBase`; outside the Primary Containment Facility `LavaLakes`; Prison
+    aquarium `Prison_Aquarium_Upper`; open water `safeShallows`, `GrassyPlateaus`, `CragField`, `bloodKelpTwo`
+    (500 m). The full list (182 names, 145 without the `Sky*` ones) is `WaterBiomeManager.main.biomeSettings[].name`;
+    it has `LostRiver_*` (20 names), `ILZ*`/`ilz*`, `InactiveLavaZone`, `LavaLakes*`, `LavaFalls`, `LavaPit`, `ALZ*`, `Precursor_*`,
+    `PrecursorCave_*`, `precursorCache`, `Prison_*` and `*_Cave*` names for many biomes. **Case varies** between the map
+    and the settings (`JellyshroomCaves` vs `jellyshroomCaves`, `GrassyPlateaus` vs `grassyPlateaus`): match by
+    case-insensitive prefix (`LostRiver`, `ILZ`, `InactiveLavaZone`, `Lava`, `ALZ`, `Precursor`, `Prison`,
+    `jellyshroomCaves`) plus "contains `cave`". Depth covers the rest (`deepGrandReef`, `bloodKelp*` below 300 m).
   - The link is cut when **either** player is in interference: someone in the Lost River loses their partner too.
 - **Presentation** (fields only, never `SetVisible`/`SetColor`, see F1):
   - The marker freezes where contact was lost: point `PingInstance.origin` (`game:PingInstance.cs:12`) at a static proxy
@@ -793,6 +840,18 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     (`Seaglide_onLightsToggled_Patch`), vehicles (`ToggleLights_SetLightsActive_Patch`). Flares have `FlareMetadata`.
 - **Probe:** at night, A holds a lit flashlight, then a Seaglide, then throws a flare, at 20, 60 and 120 m from B. Take a
   screenshot from B each time. Also check a light that was switched on *before* the tool was drawn.
+- **A0 probe (2026-11-02, windowless, light state read in both games):**
+  - The layer isn't a problem: B's main camera renders the `Viewmodel` layer (8), where the partner's tool sits.
+  - Flashlight at 20, 60 and 120 m: B's copy has `lightsActive` true and the same spotlight as A's (enabled,
+    intensity 1, range 50). Switched off or on while put away and then drawn: B matches A both times. Seaglide: same
+    state on both (lights off by default, range 40).
+  - **Thrown flare: not synced in this run.** A's flare landed lit; 5 s later B still had it as A's inventory item,
+    unlit, at A's position. The throw was started by calling `Flare.OnToolUseAnim` (the animation event a windowless
+    game doesn't fire), then the game's own `Throw` → `Pickupable.Drop` ran. (H) until a windowed throw confirms it.
+  - With the flashlight put away (first run), B's copy read `lightsActive` false while A's read true; once drawn
+    they matched.
+  - No screenshots: a windowless game crashed around a night screenshot (TESTING.md). Whether the light is still
+    drawn at 60–120 m (culling) needs windowed screenshots.
 - **Fixes from the probe**, for example the layer, the light state when a tool is drawn, or the culling distance. Keep
   vanilla light ranges; don't make lights brighter.
 - **Downed:** a downed player's held light stays on. It helps the rescue, and it goes out when they die.
@@ -960,6 +1019,11 @@ sets ever reaches them.
   (#2281) and jumps. No new packet; `PacketsSerializableTest` covers it.
   - (H) Also call `ArmsController.Reconfigure(tool)` on the partner's body when a tool is drawn or put away, for aim and
     the two-handed grip.
+  - **A0 probe (2026-11-02, windowless, `animator` on both games):** with the PDA open, A's own animator has
+    `using_pda` true, B's copy false. With the scanner or builder drawn, A has `holding_tool` true, B false;
+    `holding_scanner`/`holding_builder` and `using_tool_first` do reach B (held-item packet). `using_tool` stayed false
+    on A's *own* animator in the samples taken while A scanned a fish (the scan completed), so check the sender side of
+    `using_tool` windowed before relying on it (H). Add `holding_tool` to R2b's list.
 - **R2c: Tool effects (M–L).** Each tool plays its beam or sparks only for the local user (`game:BuilderTool.cs:362`,
   `Welder.cs:61`, `LaserCutter.cs:100`, `ScannerTool.cs:146`, the Seaglide propeller `Seaglide.cs:110-117`). Play them on
   the partner's body when R2b's `using_tool` turns on. Scanner, builder and welder first; the laser cutter beam also
@@ -984,7 +1048,8 @@ sets ever reaches them.
   follows the S7 step 2 rule (`BaseModuleSimulation`).
 - **Aquarium:** fish are items in the aquarium's storage, and the swimming models are local copies
   (`game:Aquarium.cs:105-168`). So the partner sees them as long as the container owner resolves
-  (`InventoryContainerHelper.cs:67-69`, H). **Verify only.**
+  (`InventoryContainerHelper.cs:67-69`, H). **Verify only.** Not probed in A0 (2026-11-02): it needs a base with an
+  aquarium and fish, more setup than the probe run's budget; do it in P2's scenario.
 - **Tests:**
   - L2: lock owner of the tank; handover on disconnect.
   - L3: an egg ripens (fast-hatch cheat, `game:CreatureEgg.cs:129`) while only the player without the lock is near; it must
@@ -1112,10 +1177,21 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   are probably local to each game.
 - **Probe (A0):** does an Aurora fire's parent have an id? If not, create the fires on the server, the way the radiation
   leaks are created (`WorldService.cs:418`). Needed before the players go into the Aurora.
+- **A0 probe (2026-11-02, windowless): yes.** After `/aurora explode`, the cargo room, generator room and Prawn bay had
+  33, 24 and 40 `Fire` components. Each one's direct parent is an `Aurora_ExtinguishableFire_Small`/`_Medium`/
+  `_Medium_Tall` world entity with a NitroxId (from the batch), so `Fires.cs`'s `fire.transform.parent` lookup finds an
+  id; no server-side creation is needed. What's left for B4: whether dousing them is relayed, persisted on the server
+  and kept after a restart (headless first: `FireDoused` / `EntityDestroyed` for these world entities).
 
 #### B5: Wild fruit regrowth (S, probe first)
 - **Today (H):** `FruitPlant_Update_Patch.cs:22-26` waits for a lock; planters get one, wild plants may not. Check which
   wild plants regrow in vanilla, then put them on the utility whitelist or let regrowth run when nobody holds a lock.
+- **A0 probe (2026-11-02, code + game data + in game): wild fruit doesn't regrow in vanilla either, so B5 has nothing
+  to fix.** `FruitPlant.Update` only regrows when `fruitSpawnEnabled`, which defaults to false and is set only by
+  `OnGrown`, i.e. a plant grown in a planter (`game:FruitPlant.cs:14,64,85-95`). The world's batch cells carry no
+  serialized `FruitPlant` (none of the 4582 `.bin` files in `SNUnmanagedData/Build18` names it), and in game every wild
+  plant with fruit had `fruitSpawnEnabled` false and `timeNextFruit` -1 (9 creepvines near the pod, 5 lantern trees on
+  the Floating Island). Planted fruit plants regrow through the planter lock already. Suggest dropping B5.
 
 #### B6: Cosmetic leftovers (S)
 - The repulsion cannon has no sync; the propulsion cannon moves objects (`PropulsionCannon_GrabObject_Patch.cs:44`) but
@@ -1171,3 +1247,4 @@ prices, "keeping it scary").
 | 2026-11-02 | A2, R1b | Trial merge of #2859 into `coop` (not built): no conflicts, two overlapping files merge cleanly; its hatch state is keyed by session id and has no save test; coupling table per item; decision: build R2b before #2859 | `git merge --no-commit` of `pr-2859` (aborted); PR and #2642 review comments, decompiled `Bed.cs`/`DayNightCycle.cs` read; scratch Newtonsoft check of a `SessionId`-shaped struct |
 | 2026-11-02 | A1 | Shared plumbing: the 8 co-op options in `server.cfg` (4 of them sent to the game in `InitialPlayerSync.CoopSettings`), the saved player fields for T1 and D5b, `Interfered` on `PlayerStats` | Headless: `PlayerDataSaveLoadTest` (save and load, old save without the fields), `CoopPlumbingTest` (L2: options reach the game, `Interfered` kept and relayed), `PacketsSerializableTest`; full suite green. No game run (no in-game behaviour yet) |
 | 2026-11-02 | R1a | Done: the sleep status names who is still awake (names in `SleepStatusUpdate`, new en/de key); disconnect mid-wait counts joined players and updates when the sleeper leaves; eat/drink/stillsuit-drink sounds synced at 10 m. README co-op features table created | Headless: L2 `SleepStatusTest`, `EatingSoundTest`; L1 `FMODWhitelistTest`, `SleepStatusUpdateProcessorTest`; negative controls. Not in game |
+| 2026-11-02 | A0 | Probe run: bridge `hold`, `sounds`, `pdaqueue`, `animator`; findings in D1 (breathing and pain not heard, bubbles 2D), D2 (real biome strings), D6 (light state matches; thrown flare not synced, H), R2 (`using_pda`, `holding_tool` missing), T1 (death clips play once, no held pose), T4 (reach fine; a click with `currentSub` set not shown), B4 (fire parents have ids), B5 (no wild regrowth in vanilla: drop), F2 (icon reset, from code). P2 not probed | `tools/scenarios/A0-Probes.ps1` windowless (two runs), game code, batch cell files |

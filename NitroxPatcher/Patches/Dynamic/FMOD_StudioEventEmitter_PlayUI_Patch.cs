@@ -20,6 +20,9 @@ public sealed partial class FMOD_StudioEventEmitter_PlayUI_Patch : NitroxPatch, 
         {
             return;
         }
+#if DEBUG
+        NitroxClient.Debuggers.Bridge.BridgeSounds.Record("StudioEventEmitter.PlayUI", __instance.asset ? __instance.asset.path : __instance.path, __instance);
+#endif
 
         if (!Resolve<FMODWhitelist>().IsWhitelisted(__instance.asset.path))
         {

@@ -17,6 +17,9 @@ public sealed partial class FMOD_CustomEmitter_OnPlay_Patch : NitroxPatch, IDyna
 
     public static void Postfix(FMOD_CustomEmitter __instance)
     {
+#if DEBUG
+        NitroxClient.Debuggers.Bridge.BridgeSounds.Record("CustomEmitter.OnPlay", __instance.asset ? __instance.asset.path : null, __instance);
+#endif
         if (!Resolve<FMODWhitelist>().IsWhitelisted(__instance.asset.path))
         {
             return;
