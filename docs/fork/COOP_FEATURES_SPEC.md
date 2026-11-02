@@ -497,7 +497,7 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
 
 **Size:** L.
 
-### T2: Buddy breathing
+### T2: Buddy breathing — done 2026-11-02 (branch `feat/1-t2-buddy-breathing`)
 - **Today:**
   - `OxygenManager` (`game:` 11, 88, 104, 120) holds the lungs plus tanks.
   - The partner's oxygen arrives every 3 s in `PlayerStats` (`PlayerStatsBroadcaster.cs:9,33`).
@@ -524,6 +524,38 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - L2: target-only delivery, the efficiency factor applied by the server, clamping, unknown target dropped.
   - L3: A's oxygen rises by about half of what B's falls.
 - **Size:** S.
+- **Done (2026-11-02):**
+  - **Chosen `n` = 1 unit per 0.5 s** (`OxygenShare.MAX_AMOUNT`, the server's clamp per packet). Oxygen is in seconds of
+    air at shallow depth; without a Rebreather a player uses 1/s down to 100 m, 1.5/s to 200 m and 2/s below
+    (`Player.GetBreathPeriod`, `GetOxygenPerBreath`). The donor pays 2/s, the receiver gets 1/s at efficiency 0.5:
+    below 200 m drowning is halved, in the shallows the receiver's air only holds. Measured windowless at 226 m:
+    2.24/s alone, 0.91/s with a partner sharing.
+  - The donor needs a tank (`OxygenManager.HasOxygenTank`) and stops at a reserve of 15 s of their own air at the
+    current depth (at least 15 units). Offered when the partner's last `PlayerStats` shows less than 30 % air, or when
+    they are down (`PartnerHandTarget.IsDowned`, set by T1). The reticle says why it can't share (no tank, reserve);
+    its progress bar shows how much the donor can still give.
+  - **Partner hand-target for T1 and T3:** `PartnerHandTarget` (`NitroxClient/GameLogic/Partner/`) on the body, added
+    by one line in `RemotePlayer.SetupBody`. An action is a class deriving from `PartnerAction` (registered
+    automatically): `IsAvailable(partner)`, `GetText`/`GetSubscript` (reticle lines), `OnHeld(partner, heldSeconds,
+    deltaTime, out progress)` every frame the interact button stays held after a press on the body (return false to
+    end the hold), `Priority` when several apply. A revive acts when `heldSeconds` reaches 6 s (2 s with a kit); a give
+    acts on the first call. The hold resets when the button is released, the body isn't targeted for a frame, or the
+    best action changes. Checked in game: `GUIHand` targets the body at 1.2 m in every frame of a bridge `hold`.
+  - **Server check:** `PartnerInteractions.Check(sender, targetSessionId, rules, out target)` (`Models/GameLogic/`):
+    both online, not the same player, neither downed unless `PartnerInteractionRules` allows it
+    (`SenderMayBeDowned`, `TargetMayBeDowned`; "downed" = `DownedUntil` set), within `MAX_DISTANCE` = 4 m of each
+    other's last reported position (the game's reach is 2 m from the camera; the server's positions lag and sit at the
+    body's center). T1 adds "target is downed", T3 its item checks.
+  - `OxygenShare(donor, target, amount)`: the server drops shares the check refuses, NaN or negative amounts, clamps to
+    1 and sends `amount × BuddyBreathingEfficiency` (0 to 1) to the target alone, with the donor set by the server.
+  - Feel: the player's breath bubbles (`event:/player/bubbles`) as a local one-shot, for the donor at the partner's body
+    and for the receiver at their own; no new HUD.
+  - Tests: L1 `PartnerInteractionsTest`; L2 `BuddyBreathingTest` (target alone, efficiency, clamp, refused shares, a
+    downed target allowed and a downed donor refused), both L2 tests fail without the processor (default relay);
+    windowless `tools/scenarios/T2-BuddyBreathing.ps1` PASS (21 checks), FAIL without the processor (the receiver got
+    5 of 5).
+  - Not checked: windowed (the reticle text and the bubbles heard); the hand target while a tool that overrides the
+    hand is held (`PlayerTool.DoesOverrideHand`: no target, so no sharing then); a partner in a vehicle or the Cyclops.
 
 ### T3: Hand items over
 - **Today:**
@@ -1274,3 +1306,4 @@ prices, "keeping it scary").
 | 2026-11-02 | A0 | Probe run: bridge `hold`, `sounds`, `pdaqueue`, `animator`; findings in D1 (breathing and pain not heard, bubbles 2D), D2 (real biome strings), D6 (light state matches; thrown flare not synced, H), R2 (`using_pda`, `holding_tool` missing), T1 (death clips play once, no held pose), T4 (reach fine; a click with `currentSub` set not shown), B4 (fire parents have ids), B5 (no wild regrowth in vanilla: drop), F2 (icon reset, from code). P2 not probed | `tools/scenarios/A0-Probes.ps1` windowless (two runs), game code, batch cell files |
 | 2026-11-02 | B1 (teeth) | `Stalker_CheckLoseTooth_Patch` guard: or instead of and, so only the stalker's simulating game decides on a tooth | Windowless: `B1-StalkerOneTooth.ps1` PASS (11 checks); negative control on the unfixed build FAIL (5 teeth from the non-simulating game). Full test suite green. Not checked in game: how often a natural bite reaches `CheckLoseTooth` in the non-simulating game |
 | 2026-11-02 | B2 | Server keeps a module that still holds items and sends it back to the deconstructing game; exclusive lock for building a ghost or module (`ConstructionLocks`); fabricator pickup by hand under the crafter's exclusive lock, automatic pickup keeps it until the item is taken | Headless: `StorageModuleDeconstructionTest` (fails without the check). Windowless: `B2-BuildAndCraftNoDupe.ps1` PASS (25 checks); negative control on the unfixed client FAIL (4 of 2 titanium paid, 2 knives). Full test suite green. Not checked in game: the respawned module after a refused removal; planters (H) |
+| 2026-11-02 | T2 | Done: buddy breathing (1 unit per 0.5 s from the donor's tank, half reaches the target via the server, 15 s reserve, offered below 30 % air or when down); the partner hand-target with pluggable actions for T1/T3; the server's partner-interaction check (online, not downed unless allowed, 4 m); en/de strings; README co-op table row | Headless: L1 `PartnerInteractionsTest`, L2 `BuddyBreathingTest` (fails without the processor). Windowless: `T2-BuddyBreathing.ps1` PASS (21 checks, incl. 2.24/s vs 0.91/s drain at 226 m); negative control without the processor FAIL. Full test suite green. Not checked windowed |
