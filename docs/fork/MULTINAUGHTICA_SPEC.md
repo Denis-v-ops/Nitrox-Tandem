@@ -606,6 +606,56 @@ decides whether it bites; check before building, and age the server clock in the
   one ping per player, 300 m.
 - **Tests:** extend `F2-ContextPings.ps1`: pings from the Seamoth seat and the Cyclops helm reach what is outside; an
   item at 1 m; the partner.
+- **Findings (2026-11-02):**
+  - *Ours relies on `RaycastHelper`'s 3 m minimum:* held. `PlayerPingManager` called `GetClosestHitFromAim(250)` with
+    the default `minDistance = 3` and no check for the own vehicle or sub, so anything nearer than 3 m was unpingable.
+    Whether a Seamoth's or the Cyclops' own colliders really lie in front of the camera, and how far, is prefab data,
+    not in the decompiled code (unverified; the scenario prints every hit). Where the Cyclops reaches more than 3 m
+    from the helm camera (looking down through the hull), the old ping would land on the sub itself (unverified, the
+    scenario's helm step checks it).
+  - *Ours skips triggers, the partner's body is one:* held. `RemotePlayer.SetupBody` puts the body on
+    `LayerID.Useable` with a trigger `CapsuleCollider`; `RaycastHelper` skipped every trigger. The game's own hand
+    targeting accepts exactly Useable triggers (`game:Targeting.Filter`), which is how T2 hovers the partner.
+  - Layers, from the decompiled game: the local player is on the `Player` layer by every sign in code (the game's own
+    rays from the player leave it out: `PlayerController`, `PropulsionCannon`, `Builder`, `PlaceTool`; `BaseUtils`
+    treats a `LayerID.Player` hit as the player), not read from the prefab. Terrain chunks are layer 30
+    (`game:VoxelandChunk`). `LayerID.Vehicle` is declared but used nowhere in code; vehicle and Cyclops collider
+    layers are prefab data. So "own" is decided by component, not layer: `Player`, the `Vehicle` from
+    `Player.GetVehicle()`, the `SubRoot` from `Player.currentSub`. "At the helm" is `Player.Mode.Piloting`, which only
+    `PilotingChair` sets (`game:Player.EnterPilotingMode`); `IsPiloting()` is also true in a Seamoth or Prawn suit
+    (`LockedPiloting`).
+  - **Built:** `PingAim` (ping only; `RaycastHelper` had no other caller and is left as it came from upstream, now
+    unused) casts two rays through the crosshair, a solid one (triggers ignored, the `Player` layer left out as the
+    game does) and one against the Useable layer with triggers. `PingAimRules` (pure) picks the nearest hit that is
+    not nearer than 0.5 m, not a trigger unless it is a partner's body, not the own body, not the own vehicle and, at
+    the helm only, not the sub the player steers; a partner standing in that sub still counts. Standing in the Cyclops
+    (passenger, or after leaving the helm) its walls stay pingable.
+  - **The pinged partner:** a **Look** ping (10 s), target `Player`, Signal icon in the sender's colour, label
+    "Alice: Look! Bob" from F2's own `Nitrox_Ping_Look`, no new strings. Not Come here: its arrival rule (partner
+    within 4 m) would end it at once on both games, the partner is at it. Not a new kind: F2's three kinds keep the
+    marker vocabulary small (COOP §2 principle 1), and the packet stays as F2 built it. The packet carries no player
+    id, so each game names the player nearest the ping other than the sender; with two players that is always the
+    pinged partner. On the pinged partner's own game the marker sits within the game's 5 m `minDist` of them and only
+    shows once they move away; they hear the ping sound. The "come here" key (H) goes through the partner as before
+    M9, for the same arrival reason.
+  - Not taken from their ping (as decided): server-stamped sender, rate limit, text cleaning, one ping per player,
+    300 m. Their single-ray stepping loop is replaced by one `RaycastNonAlloc` per ray (sorted by the rule).
+  - Debug only: `PingAim.Describe` / `DescribeToward x,y,z` (every hit, what was skipped, the winner) and
+    `PlayerPingManager.RequestPingToward x,y,z` (the ping key along a ray from the camera toward a point: the bridge
+    can't turn a seated player's camera, T4).
+  - **Tests:** `PingAimRulesTest` (12) and `PingRulesTest.APartnerIsLook_NotComeHere`. With the old rule in
+    `IsSkipped` (3 m minimum, every trigger skipped) 7 fail; one line at a time: 3 m minimum fails the 1 m item and
+    the minimum; no own-vehicle skip fails the Seamoth case; no helm skip fails the helm and partner-at-the-helm cases;
+    no partner exception fails both partner cases; partners always included fails the come-here case; without the
+    partner line in `SelectKind` its test fails. Scenario
+    `tools/scenarios/M9-PingAim.ps1` (written, not run): an item at 1 m; the partner (kind, label, icon, colour, still
+    there a second later on both games; the come-here key goes through him); the Seamoth seat (titanium 8 m ahead, a guard: the old 3 m minimum also stepped
+    over the nose); the helm (15 m ahead, and 12 m ahead and 45 degrees down through the hull with `RequestPingToward`);
+    a passenger's ping at the Cyclops floor is Come here.
+  - **Open:** everything in game (implemented, not verified); the Prawn suit's arms (code path as the Seamoth, not in
+    the scenario); a partner in the Cyclops pinged from the helm (unit test only); held-tool collider layers; three or
+    more players standing together (the name is the nearest non-sender, may pick the wrong one); the Useable ray keeps
+    32 hits, so past more Useable colliders than that (a base full of hand targets) a partner can be missed.
 
 ## Not taken, and parked
 
@@ -694,3 +744,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | M4 | Implemented, not verified in game: the Reaper's grab and release are replayed in every game that sees it (20 s fallback; the pilot's game applies the grip); the Crabsquid's EMP is replayed at each game's copy and skips other players' bodies; the victim's game takes a Bleeder's exclusive lock and world bleeders are simulated (whitelist, duplicates removed); crash fish are no longer deleted when their area unloads, the holder waits for the home's saved state and makes no second fish, and the loader keeps a fish's world position; creature actions are sent on change plus every 5 s, null included; a crash fish blast hurts the partner's vehicle. Their `CrashHomeStates` save normalisation left out | L2 `CreatureAttackGapsTest` (3, each fails with its fix reverted: loader, whitelist line, server processors). Unit `CreatureActionBroadcastRulesTest`, `BleederClaimRulesTest`, `CrashHomeRulesTest` (pure helpers). Scenario written, not run |
 | 2026-11-02 | M2 | Implemented, not verified in game: babies of the server swim to the mother and teleported ones are destroyed on the server, incubator metadata applied once; radiation radius for a joiner from all leaks, stale leak health dropped (both sides); the pod respawn keeps the player in the pod, a new player's entity transform is parented (S13 finding); story and Aurora packets wait for the initial sync; goals completed outside `StoryGoal.Execute` (door keys) are sent, teleporter pairs persist as `Nitrox_TeleporterActive:<id>` goals, only a teleporter that opened reports; the server drops `RadioSunbeam4` on `Goal_Disable_Gun`, the partner's open gun terminal closes; double fragment scan; rocket reports merged, a launch for an unloaded rocket ignored, stage before elevator; beacon keys compared ignoring case. Hypothesis "goals lost while loading" only partly held (see Findings) | L2 (headless): `StoryProgressTest` (6 fail with their fix reverted, 1 guard). Unit: `RadiationRadiusModelTest` (fails with the old `Max()` rule), `RocketMetadataTest`, `SeaEmperorBabyRulesTest`, `DirectGoalCompletionsTest`, `TeleporterGoalKeyTest`, `InitialSyncDeferralTest`. Scenario `M2-StoryProgress.ps1` written, not run |
 | 2026-11-02 | M7 | Implemented, not verified in game: the server tells every player when a save starts and ends (finished or failed); the game's own `SavingIndicator` shows it (Postfix on `Update`) for at least 2 s, at most 60 s without an end; where no indicator runs in the play scene, the game's notice shows `SavingGame` once per save. A game's copy of the packet is dropped. No new strings, no `ProtoInclude` tags | Unit `ServerSaveIndicatorTest` (10; 7 fail with their rule reverted, 3 guards). L2 `ServerSavingTest` (3, each fails with its line reverted). Scenario written, not run |
+| 2026-11-02 | M9 | Implemented, not verified in game: pings aim past the own body, the own Seamoth or Prawn suit and, at the helm, the Cyclops; minimum 0.5 m instead of 3 m; a second ray on the Useable layer with triggers reaches the partner's body, a Look ping "Look! *name*" (Signal icon, sender's colour, no new strings) | Unit: `PingAimRulesTest` (12; with the old rule 7 fail, each M9 line reverted alone fails its cases), `PingRulesTest.APartnerIsLook_NotComeHere` (fails without the partner line). Scenario `M9-PingAim.ps1` written, not run |

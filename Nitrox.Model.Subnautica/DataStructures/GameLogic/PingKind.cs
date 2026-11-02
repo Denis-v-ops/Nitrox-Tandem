@@ -8,7 +8,10 @@ public enum PingKind : byte
     /// <summary>"Come here": the Beacon icon, until the partner arrives or 30 s.</summary>
     ComeHere,
 
-    /// <summary>"Look": a pickupable, breakable or drillable resource, shown with that item's own icon for 10 s.</summary>
+    /// <summary>
+    ///     "Look": a pickupable, breakable or drillable resource, shown with that item's own icon for 10 s; or a partner
+    ///     (target <c>Player</c>, MULTINAUGHTICA_SPEC M9), the Signal icon named after them.
+    /// </summary>
     Look,
 
     /// <summary>"Danger": an aggressive creature, a red Signal icon for 15 s.</summary>

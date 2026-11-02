@@ -826,6 +826,8 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   (driven from the bridge in windowless games, see Findings). The dead Reefback is gone at once, so its row is
   reported, not checked.
 - **Later:** a hold-radial menu needs key-release wiring.
+- **Follow-up:** the aim (past the own vehicle and, at the helm, the Cyclops; 0.5 m minimum; the partner's body as a
+  "Look! *name*" ping) is [MULTINAUGHTICA_SPEC M9](MULTINAUGHTICA_SPEC.md#m9-ping-aim-xss-follow-up-to-coop-f2).
 
 ---
 

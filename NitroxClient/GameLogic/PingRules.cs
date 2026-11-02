@@ -15,11 +15,16 @@ internal static class PingRules
     public const float ARRIVAL_DISTANCE = 4f;
 
     /// <summary>
-    ///     A live aggressive creature is a danger; something to pick up, break or drill is worth a look; anything else
+    ///     A live aggressive creature is a danger; something to pick up, break or drill is worth a look, and so is a
+    ///     partner (MULTINAUGHTICA_SPEC M9; "come here" at them would end at once, they are already there); anything else
     ///     (ground, a wall, a peaceful creature) means "come here".
     /// </summary>
-    public static PingKind SelectKind(bool isAggressiveCreature, bool isLoot)
+    public static PingKind SelectKind(bool isAggressiveCreature, bool isLoot, bool isPartner = false)
     {
+        if (isPartner)
+        {
+            return PingKind.Look;
+        }
         if (isAggressiveCreature)
         {
             return PingKind.Danger;
