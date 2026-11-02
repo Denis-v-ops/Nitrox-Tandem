@@ -129,14 +129,53 @@ internal sealed partial class PlayerManager(SessionManager sessionManager, BanSe
         return new MultiplayerSessionReservation(sessionId);
     }
 
+    /// <summary>
+    ///     Whether a session holds this name: a connected player or a reservation.
+    /// </summary>
+    public bool IsNameReserved(string playerName) => reservedPlayerNames.Contains(playerName);
+
+    /// <summary>
+    ///     Another session that holds <paramref name="playerName" /> (joined or only reserved) and comes from the same IP
+    ///     address as the requesting one. That is the same player, whose game crashed or lost the connection: the server
+    ///     keeps the old session until it times out, and until then the name is "in use".
+    /// </summary>
+    public bool TryFindStaleSession(string playerName, SessionId requestingSessionId, IPAddress requestingAddress, out SessionId staleSessionId)
+    {
+        staleSessionId = default;
+        SessionId? holder = ConnectedPlayers().FirstOrDefault(player => player.Name == playerName && player.SessionId != requestingSessionId)?.SessionId ??
+                            reservations.Values.FirstOrDefault(reservation => reservation.PlayerName == playerName && reservation.SessionId != requestingSessionId)?.SessionId;
+        if (holder is not { } holderId || sessionManager.GetEndPoint(holderId) is not { } holderEndPoint)
+        {
+            return false;
+        }
+        if (!Normalize(holderEndPoint.Address).Equals(Normalize(requestingAddress)))
+        {
+            return false;
+        }
+        staleSessionId = holderId;
+        return true;
+
+        // The server socket is dual-mode (IPv6Enabled): the same IPv4 client can show up as ::ffff:a.b.c.d
+        static IPAddress Normalize(IPAddress address) => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+    }
+
     public Player CreatePlayerData(SessionId sessionId, out bool wasBrandNewPlayer)
     {
         PlayerContext playerContext = reservations[sessionId];
         Validate.NotNull(playerContext);
 
+        bool isKnown = allPlayersByName.TryGetValue(playerContext.PlayerName, out Player player);
+        if (playerContext.WasBrandNewPlayer && isKnown)
+        {
+            // Reserved before the saved players were loaded (the reservation processor waits for the world, this is the
+            // fallback). As a new player the saved one would get a new body, the pod's starting items and the intro.
+            logger.ZLogWarning($"{playerContext.PlayerName} was reserved as a new player, but a saved player of that name exists now: joining as the saved player");
+            playerContext = new PlayerContext(playerContext.PlayerName, playerContext.SessionId, player.GameObjectId, false, playerContext.PlayerSettings, playerContext.IsMuted, player.GameMode,
+                                              playerContext.DrivingVehicle, IntroCinematicMode.COMPLETED, playerContext.Animation);
+        }
         wasBrandNewPlayer = playerContext.WasBrandNewPlayer;
 
-        if (!allPlayersByName.TryGetValue(playerContext.PlayerName, out Player player))
+        if (!isKnown)
         {
             player = new Player(++currentPlayerId,
                                 sessionId,
@@ -215,9 +254,14 @@ internal sealed partial class PlayerManager(SessionManager sessionManager, BanSe
 
     public Task OnEventAsync(ISessionCleaner.Args args)
     {
-        reservations.Remove(args.Session.Id);
+        reservations.Remove(args.Session.Id, out PlayerContext? reservation);
         if (!connectedPlayersBySessionId.Remove(args.Session.Id, out Player player))
         {
+            // Left before joining (e.g. the game crashed while loading): free the name the reservation took
+            if (reservation != null)
+            {
+                reservedPlayerNames.Remove(reservation.PlayerName);
+            }
             return Task.CompletedTask;
         }
         reservedPlayerNames.Remove(player.Name);

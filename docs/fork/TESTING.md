@@ -257,6 +257,11 @@ public class MyFeatureTest
 - **Sharing:** a server start costs about 0.6 s (first one in a run about 1.2 s), so one per class (`[ClassInitialize]`)
   or per test are both fine. With a shared server, call `server.DisconnectPlayersAsync()` in `[TestCleanup]` so the next
   test can use the same player names.
+- **Joining step by step:** `server.ConnectAsync(name)` connects and gets the policy only; then `ReserveAsync()` (or
+  `SendReservationRequest()`) and `CompleteJoinAsync()`. `player.Crash()` stops without a disconnect message, like a
+  crashed game. `server.RestartHoldingWorldLoadAsync(gate)` starts the server with its world load held until `gate`
+  completes (the network is up meanwhile), then `WaitForStartAsync()`. `ServerHarness.StartAsync(name, extraArgs)`
+  passes server options (e.g. `--GameServer:MaxBackups 2`; the harness sets 0).
 - **Negative control:** revert the fix, the test must fail (same rule as L3).
 - **Can't be faked:** anything the game decides. A `FakePlayer` sends exactly what the test tells it, so the packets
   must match what the client really sends (read the client code: `NitroxClient/GameLogic/Items.cs` and friends). It
