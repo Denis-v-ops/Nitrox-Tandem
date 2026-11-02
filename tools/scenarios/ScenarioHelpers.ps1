@@ -10,6 +10,9 @@
 . (Join-Path $PSScriptRoot '..\bridge.ps1')
 
 $ErrorActionPreference = 'Stop'
+# The bridge expects invariant numbers ("-53.74"). -f and ToString() follow the PC's culture (German: "-53,74"), which once
+# sent players to random out-of-world spots; make every scenario format numbers invariantly.
+[System.Globalization.CultureInfo]::CurrentCulture = [System.Globalization.CultureInfo]::InvariantCulture
 $script:ScenarioFailures = New-Object System.Collections.ArrayList
 $script:ScenarioChecks = 0
 $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)

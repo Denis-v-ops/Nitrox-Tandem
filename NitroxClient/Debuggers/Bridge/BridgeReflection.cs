@@ -303,13 +303,26 @@ internal static class BridgeReflection
         {
             return bool.Parse(raw);
         }
-        if (type.IsPrimitive || type == typeof(decimal))
+        // No thousands separators: a number formatted with a comma decimal separator must fail instead of changing value
+        if (type == typeof(float))
+        {
+            return float.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
+        }
+        if (type == typeof(double))
+        {
+            return double.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
+        }
+        if (type == typeof(decimal))
+        {
+            return decimal.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
+        }
+        if (type.IsPrimitive)
         {
             return Convert.ChangeType(raw, type, CultureInfo.InvariantCulture);
         }
         if (type == typeof(Vector3))
         {
-            float[] parts = raw.Split(',').Select(p => float.Parse(p, CultureInfo.InvariantCulture)).ToArray();
+            float[] parts = raw.Split(',').Select(p => float.Parse(p, NumberStyles.Float, CultureInfo.InvariantCulture)).ToArray();
             return new Vector3(parts[0], parts[1], parts[2]);
         }
         if (type == typeof(Quaternion))

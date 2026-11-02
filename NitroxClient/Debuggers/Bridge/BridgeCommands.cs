@@ -400,6 +400,7 @@ internal static class BridgeCommands
         }
     }
 
-    private static float ParseFloat(string text) => float.Parse(text, CultureInfo.InvariantCulture);
+    // NumberStyles.Float has no thousands separator: "-53,74" from a German-formatted script must fail, not teleport to -5374
+    private static float ParseFloat(string text) => float.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
 }
 #endif
