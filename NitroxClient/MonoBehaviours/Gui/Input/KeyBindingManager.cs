@@ -13,6 +13,8 @@ public static class KeyBindingManager
         new ChatKeyBindingAction(),
         new DiscordFocusBindingAction(),
         new PingKeyBindingAction(),
-        new ReportKeyBindingAction()
+        new ReportKeyBindingAction(),
+        // Always append: a binding's button id is NITROX_BASE_ID + its index here.
+        new ComeHerePingKeyBindingAction()
     ];
 }

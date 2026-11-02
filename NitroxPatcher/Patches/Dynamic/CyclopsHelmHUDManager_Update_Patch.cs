@@ -11,15 +11,15 @@ public sealed partial class CyclopsHelmHUDManager_Update_Patch : NitroxPatch, ID
 
     public static void Postfix(CyclopsHelmHUDManager __instance)
     {
-        // To show the Cyclops HUD every time "hudActive" have to be true. "hornObject" is a good indicator to check if the player piloting the cyclops.
-        if (!__instance.hornObject.activeSelf && __instance.hudActive)
-        {
-            __instance.canvasGroup.interactable = false;
-        }
-        else if (!__instance.hudActive)
+        // To show the Cyclops HUD every time "hudActive" have to be true.
+        if (!__instance.hudActive)
         {
             __instance.hudActive = true;
         }
+        // Cyclops crew (COOP_FEATURES_SPEC T4): everyone in the sub can use the helm screen, not only the pilot, so a
+        // co-pilot can run sonar, shield, silent running, decoys, fire suppression and the cameras. Engine and motor mode
+        // check for the pilot themselves (CyclopsEngineChangeState_OnClick_Patch, CyclopsMotorModeButton_OnClick_Patch).
+        __instance.canvasGroup.interactable = Player.main.currentSub == __instance.subRoot;
         if (__instance.subLiveMixin.IsAlive())
         {
             if (__instance.motorMode.engineOn)
