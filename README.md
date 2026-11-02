@@ -45,6 +45,7 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
 | **Cyclops** | The partner sees the Cyclops drive smoothly: no falling behind after a stutter, no snap back when the other player takes the helm, no moving while leaving the helm. A passenger who rejoins is back inside, even if the sub drove on | [#2379](https://github.com/SubnauticaNitrox/Nitrox/issues/2379) | In game + headless, negative control for the rejoin |
 | **Creatures** | Aggressive creatures attack both players, not only the one whose game "simulates" them; crash fish explode for both | [#2781](https://github.com/SubnauticaNitrox/Nitrox/issues/2781) | In game + headless + negative control |
 | **Creatures** | A stalker that loses a tooth drops one tooth, not one in each player's game | new | In game + negative control |
+| **Creatures** | Creatures bite your Seamoth or Prawn suit even when your partner's game "simulates" them; before, a vehicle was safe from half the creatures around it | — | In game (Seamoth) + headless + negative control |
 
 ### Co-op features
 
