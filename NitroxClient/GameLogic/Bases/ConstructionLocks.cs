@@ -43,12 +43,7 @@ public sealed class ConstructionLocks
         }
         if (simulationOwnership.HasExclusiveLock(id))
         {
-            bool releaseScheduled = lastUseById.ContainsKey(id);
-            lastUseById[id] = Time.time;
-            if (!releaseScheduled)
-            {
-                CoroutineHost.StartCoroutine(ReleaseWhenDone(constructable, id));
-            }
+            MarkUsed(constructable, id);
             return true;
         }
         if (pendingIds.Contains(id) || (deniedUntilById.TryGetValue(id, out float deniedUntil) && Time.time < deniedUntil))
@@ -57,7 +52,7 @@ public sealed class ConstructionLocks
         }
 
         pendingIds.Add(id);
-        simulationOwnership.RequestSimulationLock(new LockRequest<Context>(id, SimulationLockType.EXCLUSIVE, OnLockResponse, new Context()));
+        simulationOwnership.RequestSimulationLock(new LockRequest<Context>(id, SimulationLockType.EXCLUSIVE, OnLockResponse, new Context(constructable)));
         return false;
     }
 
@@ -67,10 +62,22 @@ public sealed class ConstructionLocks
         if (lockAcquired)
         {
             deniedUntilById.Remove(id);
+            // Also when the player let go of the button before the answer came: the lock must still be given back
+            MarkUsed(context.Constructable, id);
             return;
         }
         deniedUntilById[id] = Time.time + RETRY_AFTER_DENIED_SECONDS;
         Log.InGame(Language.main.Get("Nitrox_DenyOwnershipHand"));
+    }
+
+    private void MarkUsed(Constructable constructable, NitroxId id)
+    {
+        bool releaseScheduled = lastUseById.ContainsKey(id);
+        lastUseById[id] = Time.time;
+        if (!releaseScheduled)
+        {
+            CoroutineHost.StartCoroutine(ReleaseWhenDone(constructable, id));
+        }
     }
 
     private IEnumerator ReleaseWhenDone(Constructable constructable, NitroxId id)
@@ -87,5 +94,8 @@ public sealed class ConstructionLocks
         }
     }
 
-    private sealed class Context : LockRequestContext;
+    private sealed class Context(Constructable constructable) : LockRequestContext
+    {
+        public Constructable Constructable { get; } = constructable;
+    }
 }
