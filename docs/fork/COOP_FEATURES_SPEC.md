@@ -1026,7 +1026,7 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
 - **Open:** how it sounds (windowed, with sound; windowless games are muted): volume, and the 2D breathing. Bubbles stay
   2D (unchanged). The downed sound (T1, through `PlayPain`).
 
-### D2: The deep cuts the line (M)
+### D2: The deep cuts the line (M) — done 2026-11-02 (branch `feat/2-d2-deep-cuts-line`)
 - **Goal:** the partner's signal works in open water and drops to a **last contact** in caves, below 300 m, in the Lost
   River, the lava zones and Precursor facilities. Beacons and scanner rooms you build bring it back. (Decided
   2026-11-02.)
@@ -1069,6 +1069,66 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - L2: state relay; a late joiner gets the partner's state.
   - L3: teleport B to 400 m: A's marker freezes and the label counts up. Place a beacon next to B: contact returns. Remove
     it and bring B back to 50 m: contact returns.
+- **What was built:**
+  - The rule, pure: `SignalInterferenceRules` (`NitroxClient/GameLogic/SignalInterferenceRules.cs`). Deeper than the
+    option (strictly), or the biome starts with `LostRiver`, `ILZ`, `InactiveLavaZone`, `Lava`, `ALZ`, `Precursor` or
+    `Prison`, or contains `cave` (all ignoring case; `jellyshroomCaves` is covered by `cave`). From the A0 list that
+    matches every `LostRiver_*`, `ILZ*`/`ilz*`, `InactiveLavaZone`, `LavaLakes*`, `LavaFalls`, `LavaPit`, `ALZ*`,
+    `Precursor_*` (the gun's rooms too), `PrecursorCave_*`, `PrecursorThermalRoom`, `precursorCache`, `Prison_*`,
+    `JellyshroomCaves`/`jellyshroomCaves*`, every `*_Cave*`/`*_cave_*` and `FloatingIslandCaveTeleporter`. The
+    `*_CaveEntrance` names match too, so the line drops at a cave mouth. Not matched: `Lifepod`, the Aurora
+    (`crashedShip`, `CrashedShip_Interior_*`: not in the decided list), open water and wrecks. An empty biome (before the
+    player's first `LateUpdate`) is no interference.
+  - Relays: a beacon that is deployed (`BeaconManager` lists every beacon, also the ones in inventories and lockers:
+    active and `!pickupable.attached`) within 150 m, or a scanner room in `MapRoomFunctionality.mapRooms` (the ones this
+    game has loaded) that is powered (`powered`, or no power needed in the game mode) within its own `GetScanRange()`
+    (`Mathf.Min(500, 300 + 50 × range upgrades)`, `game:MapRoomFunctionality.cs:272`), measured to the room.
+  - `SignalInterference.IsLocalPlayerInterfered()` works it out from `Player.main` (position, `Ocean.GetDepthOf`,
+    `GetBiomeString()`), at most every 0.25 s, and keeps why in `SignalInterference.LocalReason` (for the bridge, e.g.
+    "relayed by beacon 3 m (depth 400 m > 300 m)"). `IsLinkCut(partner)` is local or partner.
+  - The marker: `LastContactRule` goes in front of "faint" in `PartnerSignalRules.Rules` (room for D3's "distress" in
+    front of it). It answers only in the Faint setting, when the link is cut and the partner isn't up close (within
+    12 m, or in sight under 25 m: then "faint" answers, so up close nothing changes). Its look is faint (`minDist` 12,
+    `range` 150) with `Frozen`, and the marker is gone for 0.5 s at the end of every 3 s (`minDist` hidden). The
+    context gained `LinkCut` and `SecondsSinceContact`, the look `Frozen`.
+  - `PartnerSignal` points `PingInstance.origin` at a scene-root object `last_contact_<name>` placed where the marker
+    last followed the partner, and back at the body's own origin when contact returns. Contact is any refresh that
+    isn't frozen (also up close, or with Off/Always). Distance, sight and name tag are measured to the body now, not to
+    the marker. Label: "<name> · last contact 42 s", from a minute on "· last contact 2 min" (en + de), via `SetLabel`.
+  - Server: `Player.Interfered` is reset when the player joins (`CreatePlayerData`) and leaves. A joining player gets
+    each partner's latest `PlayerStats` (with `Interfered`) right after the pose replay, so a late joiner's marker is
+    right before the partner's next stats (up to 3 s) and their vitals show at once.
+  - F2's ping price now uses the real rule.
+- **Verified:**
+  - L1 `SignalInterferenceRulesTest` (depth 300 vs 300.01, the A0 names in and out, beacon 150 m, scanner range
+    300/350/500 and power, either player), `PartnerSignalRulesTest` (frozen look, flicker phases, up close equals faint,
+    Always and Off, rule order, label age).
+  - L2 `DeepCutsLineTest`: the flag reaches the partner, a late joiner gets it at once with the stats, it's back to false
+    after a disconnect and after a rejoin (a late joiner then gets false). Both tests fail without the server changes.
+  - L3 windowless `tools/scenarios/D2-DeepCutsLine.ps1` PASS (34 checks): at 50 m the marker is faint and on Bob; at
+    400 m (above Lifepod 29, `bloodKelpTwo`: depth decides) Alice's marker drops to the last contact, stays put while
+    Bob moves 40 m on, the label counts up (0 s → 4 s), no name tag, the marker flickers (2 of 16 reads dark); a beacon
+    spawned next to Bob ("relayed by beacon 3 m") brings contact back; picked up, contact is lost again; back at 50 m
+    contact returns; in the Jellyshroom Cave at 258 m (`JellyshroomCaves`) the biome cuts the line; Alice at 400 m
+    loses Bob and Bob loses Alice; Alice's setting Always shows Bob live.
+  - Negative control: on unfixed `coop` the scenario FAILs (20 checks with an earlier revision whose two depth-label patterns were stricter; 18 expected now): the marker follows Bob 40 m at 400 m, no last
+    contact anywhere.
+- **Findings:**
+  - Right after a teleport out of the lifepod, `GetBiomeString()` still said `Lifepod` at 50 m in Grassy Plateaus (the
+    atmosphere override isn't cleared by a teleport). Harmless here; whether a Precursor teleporter leaves a stale
+    override the same way is (H).
+  - With a beacon in Bob's inventory, `get <bobId> PingInstance...` on Alice's game reaches the beacon's `PingInstance`
+    under his body (`minDist` 10). The scenario reads the marker through `PartnerSignal`. `PartnerSignal` found the
+    marker with the first `GetComponentInChildren<PingInstance>`, so a partner who joins carrying a beacon could, before
+    the signal is attached, have had the beacon's ping taken as their marker (since F1, not seen in game). **Fixed:**
+    `PartnerSignal` takes only the `PingInstance` on the object `PlayerModelManager.AttachPing` names
+    `signal_<name>` (`PartnerSignalRules.MarkerObjectName`/`IsPartnerMarker`, both sides use the same name; L1
+    `TheMarkerIsThePartnersSignal_NotACarriedBeacon`). The D2 scenario passed again with it (34 checks); joining while
+    the partner already carries a beacon wasn't run in game (the selection is the pure function).
+- **Not verified:** a scanner room in game (L1 only; also whether a scanner room reports `powered` in a game that
+  doesn't simulate its base, B3); the frozen marker and its flicker on screen (windowed); a beacon thrown by the player
+  (the scenario spawns one with the console, which also leaves it unattached); two game languages at once; the F2
+  scenario wasn't re-run with the real rule (its spots are shallow open water).
 
 ### D3: Distress call (S, with T1)
 - **Goal:** when your partner goes down, their marker becomes a distress signal you can follow, even where the signal
@@ -1703,3 +1763,4 @@ prices, "keeping it scary").
 | 2026-11-02 | G4 | Done: the heal that would seal the Aurora's last leak (`LiveMixin.AddHealth`) waits until every roster player is in the drive core room (box from the leaks' measured positions plus 6 m), then seals for both; remote health syncs never held. Goal key `AuroraRadiationFixed` (read in game) | Windowless `G4-DriveCoreTogether.ps1` PASS (24 checks); negative control with the coop hooks: 9 checks fail. L2 drive core presence test. Real welder button and the on-screen message not driven; room walls not measured (H) |
 | 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
 | 2026-11-02 | T3 | Done: Give on the partner hand-target opens the transfer screen with the partner's inventory copy; the copy refuses removals and turns an add into `ItemGiveRequest`; the server checks the pair, ownership, item kind and equipment, reparents and tells everyone; room checked on the giver's copy; en/de strings; README row | Headless: L2 `ItemGiveTest` (2 tests, fail without the processor). Windowless: `T3-HandItemsOver.ps1` PASS (37 checks); without the T3 code 21 fail. Full test suite green. Not checked windowed, no-room refusal code-read |
+| 2026-11-02 | D2 | Done: each game decides its own interference (deeper than `SignalInterferenceDepth`, or a biome starting with `LostRiver`/`ILZ`/`InactiveLavaZone`/`Lava`/`ALZ`/`Precursor`/`Prison` or containing `cave`, case-insensitive; relayed by a deployed beacon within 150 m or a powered scanner room within its scan range) and sends it on `PlayerStats`; when either player is in interference the faint marker stays at the last contact (`origin` on a static object), flickers and reads "last contact 42 s / 2 min" (en, de); up close and with Always nothing changes; the server resets `Interfered` on join and leave and replays the partners' stats to a joining player; the partner marker is found by its `signal_<name>` object, never a carried beacon's ping. README row | L1 `SignalInterferenceRulesTest`, `PartnerSignalRulesTest`; L2 `DeepCutsLineTest` (fails without the server changes); L3 windowless `D2-DeepCutsLine.ps1` PASS (34 checks: 400 m, beacon, pocketed beacon, 50 m, Jellyshroom Cave, Alice deep, Always); unfixed `coop` FAIL (18 checks expected on the final script; 20 on an earlier revision). Marker selection: L1, D2 scenario re-run PASS. Not verified: scanner room in game, windowed look, thrown beacon, two languages, F2 scenario not re-run, joining while the partner carries a beacon |

@@ -280,6 +280,7 @@ internal sealed class JoiningManager(
     ///     Sends the joined player what the others are doing with their bodies: every animation state and the held item
     ///     (COOP_FEATURES_SPEC R2a). Sent after the initial sync, so the game has the partner's body and inventory and its
     ///     usual processors apply them. The first-use flag is left out, so the first-use animation doesn't play again.
+    ///     Also their latest stats with the interference flag (D2).
     /// </summary>
     private async Task ReplayOtherPlayersPoseAsync(Player player)
     {
@@ -298,6 +299,14 @@ internal sealed class JoiningManager(
             if (other.HeldItem is { } heldItem)
             {
                 await packetSender.SendPacketAsync(new PlayerHeldItemChanged(other.SessionId, heldItem.ItemId, heldItem.Type, null), player.SessionId);
+            }
+
+            // The partner's latest stats and signal interference (COOP_FEATURES_SPEC D2), so the marker is right before their
+            // game's next PlayerStats (every 3 s)
+            if (other.Stats is { } stats)
+            {
+                await packetSender.SendPacketAsync(new PlayerStats(other.SessionId, stats.Oxygen, stats.MaxOxygen, stats.Health, stats.Food, stats.Water, stats.InfectionAmount, other.Interfered),
+                                                   player.SessionId);
             }
         }
     }
