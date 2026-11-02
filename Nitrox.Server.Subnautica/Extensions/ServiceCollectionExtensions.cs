@@ -166,6 +166,7 @@ internal static partial class ServiceCollectionExtensions
                     .AddSingleton<PlayerManager>()
                     .AddSingleton<SessionManager>()
                     .AddSingleton<SleepManager>()
+                    .AddSingleton<PartnerInteractions>()
                     .AddSingleton<StoryManager>()
                     .AddSingleton<StoryScheduler>()
                     .AddSingleton<SimulationOwnershipData>()

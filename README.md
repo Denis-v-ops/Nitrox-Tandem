@@ -45,6 +45,7 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
 | **Cyclops** | The partner sees the Cyclops drive smoothly: no falling behind after a stutter, no snap back when the other player takes the helm, no moving while leaving the helm. A passenger who rejoins is back inside, even if the sub drove on | [#2379](https://github.com/SubnauticaNitrox/Nitrox/issues/2379) | In game + headless, negative control for the rejoin |
 | **Creatures** | Aggressive creatures attack both players, not only the one whose game "simulates" them; crash fish explode for both | [#2781](https://github.com/SubnauticaNitrox/Nitrox/issues/2781) | In game + headless + negative control |
 | **Creatures** | A stalker that loses a tooth drops one tooth, not one in each player's game | new | In game + negative control |
+| **Creatures** | Creatures bite your Seamoth or Prawn suit even when your partner's game "simulates" them; before, a vehicle was safe from half the creatures around it | — | In game (Seamoth) + headless + negative control |
 
 ### Co-op features
 
@@ -56,6 +57,11 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **Sleeping together** | Lying down tells everyone who is still up: "1/2 players sleeping. Waiting for *name*…". The night passes once everyone is in bed | Use a bed | Nobody sleeps until everyone is in bed (as before) | None, always on |
 | **Hear your partner eat and drink** | The eating and drinking sounds play for your partner, from where you are | Eat or drink as usual | Only within about 10 m, and only when you're both in the same base or vehicle, or both outside | None, always on |
 | **Your own firsts** | The PDA describes a new place when *you* get there, not when your partner does from across the map | Go there yourself | For now only within one session: after a rejoin, a place your partner reached earlier is already in your log and stays silent | `PartnerDiscoveriesSilent` (true) |
+| **Buddy breathing** | Give a partner who is running out of air some of yours, from your tank | Swim up to your partner while they're below 30 % air, look at them and hold the interact key | Slow and lossy: your partner gets half of what you give, so it slows drowning but doesn't refill. You need a tank and keep a reserve of about 15 s of your own air | `BuddyBreathingEfficiency` 0.5 (share of the air the partner gets) |
+| **Your partner's signal** | Your partner is a faint signal with their name and depth. Their name tag and vitals show only up close | Nothing to do; **Options → Nitrox → Your partner** sets the signal to Off, Faint or Always, and the name tag's range | Faint: no signal within 12 m or while you can see them; it fades in slowly with distance. The name tag shows within 12 m | None (your own setting) |
+| **Hear your partner get hurt and breathe** | Their pain sounds and their breathing from a tank play from their body | Nothing to do | Pain within about 30 m, breathing within about 20 m. No alert, no marker | None, always on |
+| **Their flare burns for you too** | A flare your partner throws is lit in your game as well, also when it lands far from you | Throw a flare as usual | You see it when you get close enough for the game to load it, as with your own | None, always on |
+| **Your partner looks right after you join** | When you join or rejoin, your partner stands or swims as they really do and holds what they hold | Nothing to do | — | None, always on |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -78,11 +84,11 @@ stays lonely, scary and hard, just shared.
 What's planned:
 - **Story moments together:** the Aurora drive core, disabling the gun, the Sea Emperor and the cure, and the rocket
   launch wait until both players are there. Playing alone in between is fine.
-- **Teamwork survival:** a rescue window instead of instant death (revive with a first aid kit, or by hand), buddy
-  breathing, handing items over, Cyclops crew roles, and hitching a ride on the Seamoth.
-- **Finding each other:** your partner as a faint signal with name and distance, plus "danger / look / come here" pings.
-- **Keeping it scary:** hear your partner get hurt or run out of air nearby; a distress call when they go down that
-  pulses through even in the deep; see their flashlight and flares in the dark.
+- **Teamwork survival:** a rescue window instead of instant death (revive with a first aid kit, or by hand), handing
+  items over, Cyclops crew roles, and hitching a ride on the Seamoth.
+- **Finding each other:** "danger / look / come here" pings.
+- **Keeping it scary:** your partner's signal drops to a last contact in the deep; a distress call when they go down
+  that pulses through even there.
 - **Cozy base life:** seeing each other sit, sleep and use things, and a cuddlefish that plays with both of you.
 
 ### For developers

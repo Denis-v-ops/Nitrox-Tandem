@@ -58,6 +58,20 @@ public class RemotePlayerVitals : MonoBehaviour
         waterBar.SetVisible(visible);
     }
 
+    /// <summary>
+    ///     Shows or hides the whole tag, name and bars (COOP_FEATURES_SPEC F1: only up close). Independent of
+    ///     <see cref="SetStatsVisible" />.
+    /// </summary>
+    public void SetNameTagVisible(bool visible)
+    {
+        if (canvas && canvas.enabled != visible)
+        {
+            canvas.enabled = visible;
+        }
+    }
+
+    public bool NameTagVisible => canvas && canvas.enabled;
+
     public void SetOxygen(float oxygen, float maxOxygen)
     {
         EnsureBars();

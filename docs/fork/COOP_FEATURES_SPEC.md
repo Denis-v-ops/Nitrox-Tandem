@@ -500,7 +500,7 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
 
 **Size:** L.
 
-### T2: Buddy breathing
+### T2: Buddy breathing — done 2026-11-02 (branch `feat/1-t2-buddy-breathing`)
 - **Today:**
   - `OxygenManager` (`game:` 11, 88, 104, 120) holds the lungs plus tanks.
   - The partner's oxygen arrives every 3 s in `PlayerStats` (`PlayerStatsBroadcaster.cs:9,33`).
@@ -527,6 +527,38 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - L2: target-only delivery, the efficiency factor applied by the server, clamping, unknown target dropped.
   - L3: A's oxygen rises by about half of what B's falls.
 - **Size:** S.
+- **Done (2026-11-02):**
+  - **Chosen `n` = 1 unit per 0.5 s** (`OxygenShare.MAX_AMOUNT`, the server's clamp per packet). Oxygen is in seconds of
+    air at shallow depth; without a Rebreather a player uses 1/s down to 100 m, 1.5/s to 200 m and 2/s below
+    (`Player.GetBreathPeriod`, `GetOxygenPerBreath`). The donor pays 2/s, the receiver gets 1/s at efficiency 0.5:
+    below 200 m drowning is halved, in the shallows the receiver's air only holds. Measured windowless at 226 m:
+    2.24/s alone, 0.91/s with a partner sharing.
+  - The donor needs a tank (`OxygenManager.HasOxygenTank`) and stops at a reserve of 15 s of their own air at the
+    current depth (at least 15 units). Offered when the partner's last `PlayerStats` shows less than 30 % air, or when
+    they are down (`PartnerHandTarget.IsDowned`, set by T1). The reticle says why it can't share (no tank, reserve);
+    its progress bar shows how much the donor can still give.
+  - **Partner hand-target for T1 and T3:** `PartnerHandTarget` (`NitroxClient/GameLogic/Partner/`) on the body, added
+    by one line in `RemotePlayer.SetupBody`. An action is a class deriving from `PartnerAction` (registered
+    automatically): `IsAvailable(partner)`, `GetText`/`GetSubscript` (reticle lines), `OnHeld(partner, heldSeconds,
+    deltaTime, out progress)` every frame the interact button stays held after a press on the body (return false to
+    end the hold), `Priority` when several apply. A revive acts when `heldSeconds` reaches 6 s (2 s with a kit); a give
+    acts on the first call. The hold resets when the button is released, the body isn't targeted for a frame, or the
+    best action changes. Checked in game: `GUIHand` targets the body at 1.2 m in every frame of a bridge `hold`.
+  - **Server check:** `PartnerInteractions.Check(sender, targetSessionId, rules, out target)` (`Models/GameLogic/`):
+    both online, not the same player, neither downed unless `PartnerInteractionRules` allows it
+    (`SenderMayBeDowned`, `TargetMayBeDowned`; "downed" = `DownedUntil` set), within `MAX_DISTANCE` = 4 m of each
+    other's last reported position (the game's reach is 2 m from the camera; the server's positions lag and sit at the
+    body's center). T1 adds "target is downed", T3 its item checks.
+  - `OxygenShare(donor, target, amount)`: the server drops shares the check refuses, NaN or negative amounts, clamps to
+    1 and sends `amount × BuddyBreathingEfficiency` (0 to 1) to the target alone, with the donor set by the server.
+  - Feel: the player's breath bubbles (`event:/player/bubbles`) as a local one-shot, for the donor at the partner's body
+    and for the receiver at their own; no new HUD.
+  - Tests: L1 `PartnerInteractionsTest`; L2 `BuddyBreathingTest` (target alone, efficiency, clamp, refused shares, a
+    downed target allowed and a downed donor refused), both L2 tests fail without the processor (default relay);
+    windowless `tools/scenarios/T2-BuddyBreathing.ps1` PASS (21 checks), FAIL without the processor (the receiver got
+    5 of 5).
+  - Not checked: windowed (the reticle text and the bubbles heard); the hand target while a tool that overrides the
+    hand is held (`PlayerTool.DoesOverrideHand`: no target, so no sharing then); a partner in a vehicle or the Cyclops.
 
 ### T3: Hand items over
 - **Today:**
@@ -617,7 +649,7 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
 
 ## 7. Finding & signalling
 
-### F1: Faint partner signal, close-range name tag
+### F1: Faint partner signal, close-range name tag — done 2026-11-02 (branch `feat/1-remote-player`)
 - **Today:**
   - **The marker:** each remote player already has a `PingInstance` (a clone of `Signal.prefab`, labelled "Player <name>",
     in the player's colour, hidden from the beacon manager) (`PlayerModelManager.cs:68-89`). A per-partner show/hide toggle
@@ -641,6 +673,34 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - L1: the visibility rule as a pure function.
   - L3: teleport to 5/30/200 m, read `minDist` and the name-tag state through the bridge, take screenshots.
 - **Size:** S–M.
+- **What was built:**
+  - `PartnerSignal` (`NitroxClient/MonoBehaviours/PartnerSignal.cs`) on each partner's body, 4 times a second: distance
+    from the local camera to the marker, line of sight under 25 m (`Physics.Linecast` against the terrain mask only, as
+    `Creature.GetCanSeeObject` does: base walls don't block it), then sets `PingInstance.minDist`/`range` and the name
+    tag. The marker is hidden by setting `minDist` to `float.MaxValue` (`uGUI_Pings` hides a ping closer than
+    `minDist`); `visible` stays the player's own PDA toggle.
+  - The rule slot: `PartnerSignalRules.Rules` (`NitroxClient/GameLogic/PlayerLogic/PartnerSignalRules.cs`), a list of
+    `IPartnerSignalRule` with plain inputs (`PartnerSignalContext`: mode, distance, sight, name-tag range, the
+    prefab's distances) and output (`PartnerSignalLook`: rule name, `minDist`, `range`, name tag). The first rule
+    that answers wins; `FaintSignalRule` answers always and stays last. D2 and D3 insert theirs in front and extend the
+    context (interference, downed).
+  - Faint: hidden within 12 m, or while in sight under 25 m; else `minDist` 12, `range` 150. Off: hidden at any
+    distance. Always: the signal prefab's own distances (`minDist` 10, `range` 5, read in game), so the marker is as it
+    was before F1. The name tag follows its own range in every mode.
+  - Name tag: `RemotePlayerVitals.SetNameTagVisible` switches its canvas (name and bars), independent of the
+    creative-mode `SetStatsVisible`.
+  - Label: "<name> · <depth> m deep" (`Nitrox_PartnerSignalLabel`, `Ocean.GetDepthOf` of the marker), only the name at
+    the surface; set with `SetLabel`, which Nitrox doesn't sync, only when the rounded depth changes. It replaces
+    "Player <name>"; nothing reads the label as a key (`TryGetKeyForPingInstance` uses the body's id).
+  - Client settings, Options → Nitrox → "Your partner": partner's signal Off / Faint / Always (`NitroxPrefs.PartnerSignal`,
+    default Faint) and name-tag range 0–50 m (`NitroxPrefs.NameTagRange`, default 12; 0 hides it). en + de.
+- **Verified:** L1 `PartnerSignalRulesTest` (distances, sight, name-tag range, Off/Always, rule order). Windowless L3
+  `tools/scenarios/F1-PartnerSignal.ps1` PASS (12 checks): at 5 m (in sight) the marker is hidden and the tag shows;
+  at 30 and 200 m `minDist` 12, `range` 150, no tag; label "Alice · 59 m deep"; Off hides the marker at 30 m, Always
+  uses 10/5; the setting is put back afterwards (`PlayerPrefs.DeleteKey`). No in-game negative control: the scenario
+  reads fields the pre-F1 code never set (budget rule; L1 is the negative control).
+- **Open:** screenshots of the faint marker and the tag (windowed only, not run). Whether the 150 m fade feels right is
+  a play question. Line of sight ignores base walls and vehicles.
 
 ### F2: Context pings
 - **Today:**
@@ -714,6 +774,36 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - L2: the relay.
   - L3: damage A through the bridge; B's game played the pain event on A's body (bridge `sounds 5 player/`,
     `remotePlayer` = A); nothing when B is 100 m away.
+- **Done 2026-11-02** (branch `feat/1-remote-player`), pain and breathing; the downed sound waits for T1.
+- **What was built:**
+  - `PlayerDamageSounds_OnTakeDamage_Patch` (Postfix, local player only) sends `PlayerPainSound(session, kind)`, at
+    most every 0.5 s. The kind comes from the game's own branches with the same inputs at the same moment
+    (`TryGetKind`: damage, type, `isUnderwater`, `GetPickupCount(Tank)`), so it is the emitter the game just picked,
+    including "no tank" with a tank only on the back. No server processor: the default relay forwards it (kept out of
+    its debug log).
+  - `RemotePlayerSounds` (`NitroxClient/MonoBehaviours/RemotePlayerSounds.cs`) on each partner's body. **Pain:**
+    `PlayPain(kind)` plays the event at the body, silent beyond 30 m, and doesn't restart a kind that is still playing
+    (as the game's `GetIsPlaying` checks). It is the hook for T1's downed sound. **Breathing:** every 0.25 s, like
+    `BreathingSound.UpdateSound`: underwater (`is_underwater` from the partner's `AnimationChangeEvent`), not in a vehicle
+    or the Cyclops helm, a tank equipped (`Tank`, `DoubleTank`, `PlasteelTank`, `HighCapacityTank` from the partner's
+    player metadata; an approximation of `OxygenManager.HasOxygenTank`); within the whitelist's 20 m. Sets the `depth`
+    and `rebreather` parameters as the game does. Own event instances, not the body's emitters: `FMOD_CustomEmitter.Play`
+    is patched and would echo a packet.
+  - Paths are read once from the local `PlayerDamageSounds` and `BreathingSound` (`.asset.path`; `painWithoutTankLight`
+    `.Event`). Read in game: `event:/player/Pain`, `Pain_no_tank`, `pain_no_tank_light`, `Pain_surface`, `coughing`,
+    `breathing`.
+  - **Positional:** a 3D event is placed at the body (min 1 m, max 30 m or the breathing radius; the breathing loop
+    follows the body every frame); a 2D event gets its volume by distance (`FMODSystem.CalculateVolume`), like bubbles.
+    **`event:/player/breathing` is 2D** (read in game), so the breathing is heard by distance, not from a direction.
+    Whether the pain events are 3D wasn't read (H); both cases are handled.
+- **Verified:** L1 `PlayerDamageSounds_OnTakeDamage_PatchTest` (the branches), L2 `PainSoundRelayTest` (Bob gets the
+  kind, Alice doesn't). Windowless L3 `tools/scenarios/D1-HearPartner.ps1` PASS: Alice with a tank 6 m from Bob; Bob's
+  game starts `event:/player/breathing` on her body; she is hurt for 10 then 4 and Bob's game plays
+  `event:/player/Pain_no_tank` and then `pain_no_tank_light` on her body, the events her own game played; at 100 m
+  no pain and the loop stops (she still breathes). Negative control: the A0 probe, same steps without D1: nothing on
+  her body in Bob's game.
+- **Open:** how it sounds (windowed, with sound; windowless games are muted): volume, and the 2D breathing. Bubbles stay
+  2D (unchanged). The downed sound (T1, through `PlayPain`).
 
 ### D2: The deep cuts the line (M)
 - **Goal:** the partner's signal works in open water and drops to a **last contact** in caves, below 300 m, in the Lost
@@ -797,6 +887,36 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   directions, plus a bite on a vehicle. Keep S14's method: wait for a natural bite, force the contact only as a
   fallback.
 - **Done when:** every creature on the list either hurts both players or has a FIX_SPEC item.
+- **Done 2026-11-02** (branch `feat/1-d4-threat-parity`). Scenario `tools/scenarios/D4-ThreatParity.ps1` (S14's
+  helpers moved to `CreatureAggroHelpers.ps1`, shared by both), windowless. A→B = Alice's game simulates the creature,
+  Bob is the target; "natural" = the creature attacked by itself, "touch" = the forced contact.
+
+  | Creature / case | Hurts the partner? | Evidence | Outcome |
+  |---|---|---|---|
+  | Crabsnake A→B, B→A | Yes: bite 20, natural, both directions | In game | Partner gets no grab cinematic and not its extra 15 → FIX_SPEC S15e |
+  | Ampeel A→B, B→A | Yes: shock 15 (Electrical) in the partner's own game, both directions; bite 30 relayed (A→B, natural) | In game | Its shock skips aggression and passes no dealer, so each game shocks its own player: parity |
+  | River prowler A→B | Yes: bite 30, natural | In game | — |
+  | Crabsquid A→B | Bite yes: 40. **EMP no**: the partner's Seamoth stays powered (disabled only in the simulating game; control B→B: disabled) | In game | FIX_SPEC S15a |
+  | Lava lizard A→B | Bite yes: 30, natural (also when Bob started 15 m away with the lava shell on). Ranged lava rock: not provoked in the time box | Bite in game; ranged from code | Ranged → FIX_SPEC S15c |
+  | Warper A→B (Bob infected 0.5) | Bite yes: 23.5, natural. Warp ball: no (it warps only `Player.main`) | Bite in game; warp ball from code | Warp ball → FIX_SPEC S15c, spawning is B1 |
+  | Mesmer A→A (control), A→B | Bite yes: 30. **Hypnosis no**: control pulled and slowed (x0.78); no pull of Bob's body and no slowing of Bob observed (whether the body met the eye-contact check wasn't read); the code acts on `Player.main` only | In game + code | FIX_SPEC S15b |
+  | Bleeder A→A (control), A→B | **No**: control attached (5 per suck); the partner's body has no attach point, 0 damage. World bleeders aren't simulated at all (B1) | In game | FIX_SPEC S15d (+ B1 whitelist) |
+  | Stalker born in a containment, A→B | Spares Bob, also when touched (as intended) | In game | — |
+  | **Bite on a vehicle**: Bone shark vs Seamoth, B→B (control), A→B, B→A | **Was no** (0 damage both directions: the simulating game may not change a vehicle it doesn't hold, the pilot's game never bites). **Fixed**: 30 per bite in the pilot's game, the simulator's game shows the new health, no double bite, pilot's body not bitten | In game + headless | Fixed on this branch (below) |
+
+- **Fix (vehicles):** a creature's bite on a vehicle whose lock another player holds is sent from the simulating game as
+  `CreatureAttackedVehicle` (`LiveMixin_TakeDamage_Patch`); the server relays it only from the creature's simulator
+  and only to the vehicle's lock holder, whose game applies it and broadcasts the vehicle's health as usual. Games that
+  don't simulate the creature no longer bite vehicles with it (`MeleeAttack_CanDealDamageTo_Patch`), as S14 did for
+  players. Leviathans keep their path. No save change; one new packet (all three must run the same build).
+- **Verification:** headless L2 `CreatureAttackRoutingTest.VehicleAttack_ReachesOnlyTheVehiclesLockHolder` (fails with
+  the creature-lock check removed). In game: the vehicle cases fail without the fix (first run: 0 damage A→B and B→A,
+  forced contact included) and pass with it; each lock direction once. On the fixed build, `D4-ThreatParity.ps1`
+  passes in full (95 checks) and `S14-CreatureAggro.ps1` (its helpers moved) passes all 11 cases.
+- **Not run:** the Lava lizard's and Warper's ranged attacks (from code), Prawn suit and Cyclops bites (same code path
+  as the Seamoth; whether any non-leviathan bites a Cyclops, `canBiteCyclops`, wasn't read), the Ampeel's shock on a
+  partner's vehicle (no dealer, so not relayed; by reasoning the pilot's game shocks it locally, like the player
+  shock), a world (not console-spawned) Bleeder, network latency.
 
 ### D5: Your own firsts (D5a S + D5b S–M)
 - **Goal:** each player hears the PDA's biome and location lines when *they* get there, not when the partner does.
@@ -894,6 +1014,27 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
 - **Fixes from the probe**, for example the layer, the light state when a tool is drawn, or the culling distance. Keep
   vanilla light ranges; don't make lights brighter.
 - **Downed:** a downed player's held light stays on. It helps the rescue, and it goes out when they die.
+- **Flare fixed 2026-11-02** (branch `feat/1-remote-player`); the drawn-at-distance question stays open.
+  - **Cause (verified in game, windowless):** `FlareMetadata` applies fine. Thrown 20 m from B, the flare burns in both
+    games (lit, light on, out of A's hands in B's game). Thrown 120 m from B it lands in a cell B hasn't loaded:
+    `EntitySpawnedByClientProcessor` sends the respawn only to players who `CanSee` the new cell, so B got nothing and
+    his copy stayed unlit in A's inventory (A0's observation). When B swam over, the cell's spawn brought it in lit.
+    Any item dropped or thrown out of the partner's loaded cells left the same copy in the dropper's inventory.
+  - **Fix:** the server now sends `EntityDestroyed` to every other player who could see the item's previous record
+    (an inventory or locker item, or a loaded cell) but can't see the new one. Their copy goes; the cell's spawn brings
+    it back when they come near. Vanilla light ranges are untouched.
+  - **The A0 throw, explained:** `Flare.OnToolUseAnim` only throws a flare that is *drawn*. A flare of a stack that has
+    no quick slot (`GetSlotByItem` -1) can't be selected; called on it in the inventory, it lights up but never runs
+    `Throw` (its `Update` doesn't run while inactive). The scenario picks a flare that has a slot and asserts it was
+    thrown.
+  - **Verified:** L2 `DroppedOutOfSightTest` (B without the cell gets `EntityDestroyed`, no spawn; B with the cell gets
+    the force respawn and no destroy; fails without the fix). Windowless L3 `tools/scenarios/D6-ThrownFlare.ps1` PASS
+    (14 checks: 20 m lit; 120 m gone from A's inventory in B's game; lit when B comes near). Negative control in game:
+    the same run without the fix fails only the 120 m check.
+  - **Open (windowed only, not run):** whether the flashlight, Seaglide light and flare are *drawn* for B at 60–120 m
+    (culling, light range), with night screenshots. The downed light (T1). Seen, not changed: the destroy also makes the
+    partner's scanner room forget a resource dropped out of their cells until the cell loads it again; and if their game
+    is spawning a batch at that moment, `MarkForDeletion` could skip a spawn of the same id until the next cell load.
 
 ---
 
@@ -1044,7 +1185,7 @@ the held tool and vehicles correctly, but **only two animator values are synced*
 `ArmsController.Update` is skipped on the partner's body (`ArmsController_Update_Patch.cs:9-22`), so nothing that it
 sets ever reaches them.
 
-- **R2a: Pose and held item survive a rejoin (S).**
+- **R2a: Pose and held item survive a rejoin (S)** — done 2026-11-02 (branch `feat/1-remote-player`).
   - The server keeps only the *last* animation change, overwriting the one before
     (`Nitrox.Server.Subnautica/Models/Packets/Processors/AnimationChangeEventProcessor.cs:12`). After the infection reveal,
     a rejoining player can see the partner swimming while they stand in a base.
@@ -1052,6 +1193,21 @@ sets ever reaches them.
     until they switch items.
   - Fix: keep a map of animation type → state plus the held item id per player, and replay both on join. In memory
     only, no save change.
+  - **What was built:** the server `Player` keeps `Animations` (type → state) and `HeldItem` (the latest draw packet;
+    cleared on put-away of that item). Both are cleared when that player joins again: their game starts with empty
+    hands and sends its underwater state anew. `JoiningManager` sends them to a player once their initial sync is done
+    (`ReplayOtherPlayersPoseAsync`, after `PlayerJoinedMultiplayerSession`), as ordinary `AnimationChangeEvent` and
+    `PlayerHeldItemChanged` packets: by then the game has the partner's body and inventory, and its usual processors
+    apply them. No client change. The first-use flag isn't replayed (the first-use animation would play again).
+  - **Finding (from code):** the infection reveal isn't a pose. The game plays it with `SetTrigger("player_infected")`
+    once (`game:Player.cs:2409`); Nitrox relays it as `INFECTION_REVEAL ON`. Kept as the player's animation (before R2a
+    too, when it was the last change), it would play again on the partner's body for every late joiner. It is now
+    relayed live only, not kept in `PlayerContext.Animation` or the map.
+  - **Verified:** headless. L2 `PartnerPoseReplayTest`: a late joiner gets the standing pose and the held flashlight
+    (no first-use flag), no reveal, and the join payload's pose is the standing one; a put-away item isn't replayed; a
+    rejoin starts empty. Negative controls: without the replay call both tests fail; with the reveal kept, the first
+    fails. **Not verified in game:** the rejoin itself (B rejoins, A's body stands and holds the tool). The packets are
+    the ones the game already applies live.
 - **R2b: Arm states (M).** Sync `using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump` and
   `diving` (`game:ArmsController.cs:255-261,454-577`) as new `AnimChangeType` values, sent on change from a watcher like
   `UnderwaterStateTracker`. The partner then visibly scans, builds, welds, cuts, opens the PDA, swims at the surface
@@ -1314,3 +1470,9 @@ prices, "keeping it scary").
 | 2026-11-02 | B1 (teeth) | `Stalker_CheckLoseTooth_Patch` guard: or instead of and, so only the stalker's simulating game decides on a tooth | Windowless: `B1-StalkerOneTooth.ps1` PASS (11 checks); negative control on the unfixed build FAIL (5 teeth from the non-simulating game). Full test suite green. Not checked in game: how often a natural bite reaches `CheckLoseTooth` in the non-simulating game |
 | 2026-11-02 | B2 | Server keeps a module that still holds items and sends it back to the deconstructing game; exclusive lock for building a ghost or module (`ConstructionLocks`); fabricator pickup by hand under the crafter's exclusive lock, automatic pickup keeps it until the item is taken | Headless: `StorageModuleDeconstructionTest` (fails without the check). Windowless: `B2-BuildAndCraftNoDupe.ps1` PASS (25 checks); negative control on the unfixed client FAIL (4 of 2 titanium paid, 2 knives). Full test suite green. Not checked in game: the respawned module after a refused removal; planters (H) |
 | 2026-11-02 | D5a | Done: a partner's biome and location PDA lines complete silently (`OnGoalComplete` only); this player's own tracker still schedules them (Nitrox's "completed goals don't schedule" rule excepted) and a partner's delayed one isn't scheduled here. (H) answered: the game keeps them, Nitrox's `SetupTrackers` drops them on join (a D5b hook). Found logs not done: `PDALogEntryAdd` is the pod radio, found PDAs come as `StoryGoalExecuted`; decision needed. README row | L1 `ExperientialGoalsTest`; L3 windowless `D5a-OwnFirsts.ps1` PASS; negative controls: option off (2 checks fail), without the schedule fix (2 fail). Delayed lines and location goals code-read only |
+| 2026-11-02 | D4 | Done: probe of every creature S14 didn't run plus vehicle bites (`tools/scenarios/D4-ThreatParity.ps1`, S14's helpers shared in `CreatureAggroHelpers.ps1`). Bites of Crabsnake, Ampeel, River prowler, Crabsquid, Lava lizard, Warper and Mesmer reach the partner; the Ampeel's shock hurts each player in their own game; a containment-born Stalker spares the partner. Fixed: a vehicle took no bites from creatures its pilot's game didn't simulate (new `CreatureAttackedVehicle`, relayed to the vehicle's lock holder). Not fixed, now FIX_SPEC S15: Crabsquid EMP, Mesmer hypnosis, lava rock and warp ball, Bleeder, Crabsnake grab. README fix table row | L3 windowless: first run 84 of 86 checks (the two vehicle cases failed: negative control); fixed build: full D4 PASS 95 checks, S14 PASS (all 11 cases, the two Alice-victim ones rerun after D4 left Alice in the Seamoth, now fixed in the scenario). L2 `VehicleAttack_ReachesOnlyTheVehiclesLockHolder` (fails without the creature-lock check); `dotnet test` 331 pass, 13 skipped. Ranged attacks, Prawn suit, Cyclops, world bleeders, latency: not run |
+| 2026-11-02 | T2 | Done: buddy breathing (1 unit per 0.5 s from the donor's tank, half reaches the target via the server, 15 s reserve, offered below 30 % air or when down); the partner hand-target with pluggable actions for T1/T3; the server's partner-interaction check (online, not downed unless allowed, 4 m); en/de strings; README co-op table row | Headless: L1 `PartnerInteractionsTest`, L2 `BuddyBreathingTest` (fails without the processor). Windowless: `T2-BuddyBreathing.ps1` PASS (21 checks, incl. 2.24/s vs 0.91/s drain at 226 m); negative control without the processor FAIL. Full test suite green. Not checked windowed |
+| 2026-11-02 | R2a | Done: the server keeps one animation state per type and the held item per player (in memory) and sends both to a player after their initial sync; the infection reveal is relayed but no longer kept as a pose | Headless: L2 `PartnerPoseReplayTest` with negative controls. The rejoin not run in game |
+| 2026-11-02 | F1 | Done: `PartnerSignal` on the partner's body with a rule list (`PartnerSignalRules`, "faint" last); marker hidden within 12 m or in sight under 25 m, range 150; name tag only within its range; depth in the label; settings Off/Faint/Always and name-tag range (en + de) | L1 `PartnerSignalRulesTest`; windowless `F1-PartnerSignal` PASS. No screenshots |
+| 2026-11-02 | D1 | Done (pain, breathing): `PlayerPainSound` from a Postfix on `PlayerDamageSounds.OnTakeDamage`, played on the partner's body within 30 m; the breathing loop on the body follows their underwater state and tank; paths read from the local emitters. Breathing is a 2D event | L1, L2 `PainSoundRelayTest`; windowless `D1-HearPartner` PASS; negative control: A0 probe. Not listened to |
+| 2026-11-02 | D6 | Flare fixed: thrown out of the partner's loaded cells it stayed unlit in the thrower's inventory in the partner's game (no spawn sent); the server now sends those players `EntityDestroyed` for their stale copy. Metadata was fine | L2 `DroppedOutOfSightTest`; windowless `D6-ThrownFlare` PASS, fails the 120 m check without the fix. Lights drawn at 60–120 m: open (windowed) |
