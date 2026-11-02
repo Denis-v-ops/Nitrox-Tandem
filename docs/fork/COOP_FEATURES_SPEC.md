@@ -249,8 +249,8 @@ only reads:
 conflicts with this spec's planned edits to `RemotePlayer`, `AnimationController` and the escape pod. Record the list
 in R1b. **Done 2026-11-02:** no textual conflicts; the coupling and the decision are in R1b ("A2 trial merge").
 
-**New save-format tags:** `EntityMetadata` uses up to 94 (S1 = 92, S5b = 93, S10 = 94). This spec reserves **95**
-(`CuddlefishMetadata`, P1) and **96–99** for later features. Any new entity or metadata type needs a `SaveLoadRoundTrip` test.
+**New save-format tags:** `EntityMetadata` uses up to 95 (S1 = 92, S5b = 93, S10 = 94, P1 `CuddlefishMetadata` = 95,
+taken). This spec reserves **96–99** for later features. Any new entity or metadata type needs a `SaveLoadRoundTrip` test.
 B3 stores power as metadata on existing power-source entities; pick its tag from 96–99.
 
 **Options this spec adds** (defaults follow the decisions in §1):
@@ -1472,7 +1472,7 @@ sets ever reaches them.
   - Growing up (`WaterParkCreature_ManagedUpdate_Patch`) and breeding: unchanged. A game without the lock removes the baby
     locally without broadcasting (no `Kill`), and the holder sends the swap. Not tested in game.
 
-### P1: Cuddlefish follows and plays with both (M)
+### P1: Cuddlefish follows and plays with both (M) — done 2026-11-03 (branch `feat/3-p1-cuddlefish`)
 - **Today:**
   - In the game, the cuddlefish befriends and follows the **local** player (`game:CuteFish.cs:81`,
     `CreatureFollowPlayer.cs:24-38`). It warps to within 40 m of them every 5 s (`CuteFish.cs:99-121`). Tricks only happen
@@ -1494,6 +1494,52 @@ sets ever reaches them.
   - L1: metadata round trip.
   - L2: an exclusive request moves the lock and keeps it after dropping back; handover on disconnect.
   - L3: B plays with it, and it follows B; follow/stay persists across a restart.
+
+**Done 2026-11-03** (branch `feat/3-p1-cuddlefish`):
+- **Findings (seen windowless):**
+  - A released cuddlefish is a **cell entity**, not a global root: `Items.Dropped` records level Medium (its
+    `initialCellLevel`), so the lock follows the cells a player sees. "Whoever joined first" (`EntitySimulation.cs:133-147`)
+    only applies while it's in a tank. The tank-release path (hatch, pick up, drop in the water) gives the same entity as
+    console `spawn cutefish`; the lock goes to the player who dropped it.
+  - The game sets the friend to the local player on every game; on the lock holder's game the friend is that player
+    (read via the bridge), so the friend logic needed no change.
+  - `CuteFish.WarpToPlayer` (`InvokeRepeating`) ran on every game: the partner's copy jumped to the partner while the real
+    one was with the holder.
+  - A follow/stay command changed only the commanding game. After a stay and a long trip, the partner's game took the
+    lock and its copy, still "following", followed the partner: the stay was lost.
+  - The play scene ends by itself windowless (about 6 s); the command needs the right hand button while aiming at it
+    (`bridge hold <id> 0.4 RightHand`, the cuddlefish held still with a kinematic rigidbody).
+  - The lock fell to the partner when the holder outran the cuddlefish (teleport; a fast vehicle can do the same):
+    its cell left the holder's loaded cells before their game warped it to them.
+- **Fix:**
+  - `CuteFishHandTarget.OnHandClick` (play) and the right hand branch of `OnHandHover` (command, farewell) first take an
+    **exclusive** lock (bench pattern, `NitroxClient/GameLogic/Cuddlefish.cs`). When granted, the game starts the
+    position broadcast (a lock granted on request doesn't), and once the hand target is idle again it drops back to a
+    normal lock. A refused request (the partner is playing with it) shows the "deny" hand.
+  - `CuddlefishMetadata` (tag 95): follow/stay, the farewell and the water park state (age, breeding; an entity holds one
+    metadata, so `WaterParkCreatureMetadataExtractor` yields to it and `WaterParkCreature_ResetBreedTime_Patch` sends it).
+    Sent after a command (`PlayCommandAnimation`) and on the farewell setter; the processor sets the fields and, outside a
+    tank, the `followingPlayer` setter (inside a tank the setter would unparent it).
+  - Only the simulating game runs `WarpToPlayer`.
+  - Server (`EntitySimulation.FollowsItsHolder`): a following cuddlefish keeps its holder when its cell leaves their
+    loaded cells; a staying one is an ordinary cell creature.
+  - No "nearest player" handover; no strings added (the deny hand text exists).
+- **Tests:**
+  - L1 `WorldServiceSaveLoadTest.CuddlefishStateSurvivesSaveAndLoad`.
+  - L2 `CuddlefishLockTest` (4): an exclusive request takes the lock, a normal request doesn't, the drop back keeps it,
+    handover on disconnect; stay reaches the partner and survives a restart with the age; out of sight a following
+    cuddlefish stays with its holder (fails without the server change), a staying one goes to the partner.
+  - L3 windowless `P1-CuddlefishBoth.ps1`: PASS (33 checks). **Negative control** on the pre-P1 build: 14 of 33 fail
+    (the lock stays with A after B plays, it follows A, stay not shared or saved, it doesn't stay after the restart).
+    `dotnet test`: 394 pass, 13 skipped.
+- **Not verified, or known limits:**
+  - Windowed: the play scene and command animations, the deny hand, the tricks. The partner still doesn't see the tricks
+    (creature actions aren't synced for it): R1b.
+  - The farewell (needs a ready rocket) and the hatch-to-release path with the fix in place weren't run in game; the
+    release path was probed on the pre-P1 build only.
+  - Far from the cuddlefish, the partner's copy (kept loaded while it follows, cell level Global) stays where they last
+    saw it, until they come back into range and the moves resume.
+  - After a restart, the lock goes to whoever sees it first, not to who played with it last.
 
 ---
 
@@ -1704,3 +1750,4 @@ prices, "keeping it scary").
 | 2026-11-02 | G4 | Done: the heal that would seal the Aurora's last leak (`LiveMixin.AddHealth`) waits until every roster player is in the drive core room (box from the leaks' measured positions plus 6 m), then seals for both; remote health syncs never held. Goal key `AuroraRadiationFixed` (read in game) | Windowless `G4-DriveCoreTogether.ps1` PASS (24 checks); negative control with the coop hooks: 9 checks fail. L2 drive core presence test. Real welder button and the on-screen message not driven; room walls not measured (H) |
 | 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
 | 2026-11-02 | P2 | Done: (H) partly wrong. The holder being away doesn't matter: every game runs the egg timer. The cause is a race. When the game without the tank's lock ripens the egg first, `Hatch` destroys it without a creature and `LiveMixin.Kill` broadcasts `EntityDestroyed` (eggs are `destroyOnDeath`), so the egg is gone everywhere. A tank split off by deconstruction also had no lock holder. Fix: games without the lock skip `Hatch` and keep the ripe egg; the server claims the split-off tank for the deconstructing player. Aquarium: works, the partner sees the fish. | L2 `ContainmentTankLockTest` (split test fails without the fix). Windowless `P2-ContainmentEggs.ps1` on the new fixture `p2-containment-base`: PASS (33 checks); negative control with the pre-fix build: 12 fail (egg gone everywhere, no creature). Build + tests: 388 pass, 13 skipped, 1 failure that also happens on `coop` without this branch (`DroppedOutOfSightTest`). Not in game: stacked-tank split, the "egg discovered" message for the partner. |
+| 2026-11-03 | P1 | Done: playing with the cuddlefish or giving it a command takes its lock as exclusive (bench pattern) and drops back to a normal lock, so it follows whoever played with it last; `CuddlefishMetadata` (tag 95: follow/stay, farewell, water park state); only the simulating game warps it; a following cuddlefish keeps its holder out of their sight (server). Findings: a released cuddlefish is a cell entity; each game's copy warped to its own player; a stay was lost when the partner's game took the lock. README row | L1 save/load; L2 `CuddlefishLockTest` (out-of-sight test fails without the server change); windowless `P1-CuddlefishBoth.ps1` PASS (33 checks); negative control on the pre-P1 build: 14 fail. `dotnet test` 394 pass. Not in game: farewell, tank release with the fix, anything windowed (animations, tricks: R1b) |
