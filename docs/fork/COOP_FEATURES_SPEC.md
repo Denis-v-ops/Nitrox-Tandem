@@ -814,7 +814,11 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
 - **Not verified:** two different game languages at once (both test games run in English; the labels are compared
   with the game's own strings); the `OnIconChange` path (code-read only, the game changes no ping type of ours);
   interference from the real D2 rule (only forced); windowed rendering of the markers; drillables and breakables
-  in game (code-read; only Pickupable was pinged); a ping on a creature in another player's vehicle or base.
+  in game (code-read; only Pickupable was pinged); a ping on a creature in another player's vehicle or base. Windowed
+  only, not run: the two key bindings themselves (the scenario calls `RequestPing`/`RequestComeHerePing`, which the
+  bindings call; the bridge's `hold` doesn't fire `InputAction.started`), and Unity calling `PlayerPingManager.Update`
+  (driven from the bridge in windowless games, see Findings). The dead Reefback is gone at once, so its row is
+  reported, not checked.
 - **Later:** a hold-radial menu needs key-release wiring.
 
 ---

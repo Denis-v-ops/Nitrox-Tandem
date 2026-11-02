@@ -264,7 +264,12 @@ try {
                 # A "come here" ping names no target.
                 $want = if ($expected[$techType] -eq 'ComeHere') { 'ComeHere None' } else { "$($expected[$techType]) $techType" }
                 Assert-Equal $want $alive "a ping at a live $techType"
-                Assert-True (-not "$dead".StartsWith('"Danger')) "a dead $techType is no danger ($dead)"
+                if ("$dead" -match "isn't loaded") {
+                    Write-Host "  (a dead $techType is gone at once: nothing to ping)"
+                }
+                else {
+                    Assert-True (-not "$dead".StartsWith('"Danger') -and -not "$dead".StartsWith('ERR ')) "a dead $techType is no danger ($dead)"
+                }
             }
             $rows | Format-Table -AutoSize | Out-String | Write-Host
         }
