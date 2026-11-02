@@ -1137,9 +1137,16 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
 | **B6** | Cosmetic leftovers: repulsion and propulsion cannon beams, picture frames | Cosmetic | S | 4 |
 
 #### B1: Creature leftovers (XS + M + S)
-- **Stalker teeth (XS, confirmed):** `Stalker_CheckLoseTooth_Patch.cs:16-17` uses `&&` where it needs `||`. When the id
-  lookup succeeds, the ownership check never applies, so every game runs `CheckLoseTooth` and both may drop a tooth for
-  one bite. Fix the operator; teeth are needed early (Enameled Glass). L1 or L3: one bite, one tooth.
+- **Stalker teeth (XS, done 2026-11-02):** `Stalker_CheckLoseTooth_Patch.cs:16-17` used `&&` where it needed `||`. When
+  the id lookup succeeded, the ownership check never applied, so every game that ran `CheckLoseTooth` could drop (and
+  register with the server) its own tooth for one bite. Fixed the operator; teeth are needed early (Enameled Glass).
+  Which games call it, read in the game code: the shiny pickup (`game:CollectShiny.cs`, `OnShinyPickedUp`) only runs in
+  the simulating game, because the other game skips `Creature.ChooseBestAction` and so never picks a shiny target; a bite
+  (`game:MeleeAttack.cs` `OnTouch`, a trigger callback) can run in every game that has the stalker loaded, if that game's
+  copy is aggressive enough (its aggression isn't synced; not checked in game). Scenario
+  `tools/scenarios/B1-StalkerOneTooth.ps1` (windowless) calls `Stalker.CheckLoseTooth` 40 times with scrap metal in each
+  game: the non-simulating game gives the server no tooth, the simulating game's teeth reach both games. Negative
+  control: on the unfixed build the non-simulating game dropped 5 teeth (FAIL).
 - **Warpers (M):** each game spawns its own warpers and warp balls (`game:WarperSpawner.cs:31-34`, `game:WarpBall.cs:188`;
   no Nitrox hooks). Only the player who simulates a `WarperSpawner` spawns its warper and registers it with the server
   (`EntitySpawnedByClient`); the other game gets it as an entity. Needed before the Lost River.
@@ -1248,3 +1255,4 @@ prices, "keeping it scary").
 | 2026-11-02 | A1 | Shared plumbing: the 8 co-op options in `server.cfg` (4 of them sent to the game in `InitialPlayerSync.CoopSettings`), the saved player fields for T1 and D5b, `Interfered` on `PlayerStats` | Headless: `PlayerDataSaveLoadTest` (save and load, old save without the fields), `CoopPlumbingTest` (L2: options reach the game, `Interfered` kept and relayed), `PacketsSerializableTest`; full suite green. No game run (no in-game behaviour yet) |
 | 2026-11-02 | R1a | Done: the sleep status names who is still awake (names in `SleepStatusUpdate`, new en/de key); disconnect mid-wait counts joined players and updates when the sleeper leaves; eat/drink/stillsuit-drink sounds synced at 10 m. README co-op features table created | Headless: L2 `SleepStatusTest`, `EatingSoundTest`; L1 `FMODWhitelistTest`, `SleepStatusUpdateProcessorTest`; negative controls. Not in game |
 | 2026-11-02 | A0 | Probe run: bridge `hold`, `sounds`, `pdaqueue`, `animator`; findings in D1 (breathing and pain not heard, bubbles 2D), D2 (real biome strings), D6 (light state matches; thrown flare not synced, H), R2 (`using_pda`, `holding_tool` missing), T1 (death clips play once, no held pose), T4 (reach fine; a click with `currentSub` set not shown), B4 (fire parents have ids), B5 (no wild regrowth in vanilla: drop), F2 (icon reset, from code). P2 not probed | `tools/scenarios/A0-Probes.ps1` windowless (two runs), game code, batch cell files |
+| 2026-11-02 | B1 (teeth) | `Stalker_CheckLoseTooth_Patch` guard: or instead of and, so only the stalker's simulating game decides on a tooth | Windowless: `B1-StalkerOneTooth.ps1` PASS (11 checks); negative control on the unfixed build FAIL (5 teeth from the non-simulating game). Full test suite green. Not checked in game: how often a natural bite reaches `CheckLoseTooth` in the non-simulating game |
