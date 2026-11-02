@@ -381,6 +381,9 @@ try {
         Probe "$VehicleBiter simulated by Bob bites the Seamoth Alice pilots" {
             Test-VehicleBiteCase 'vehicle-BA' $VehicleBiter $B $A $seamothId
         }
+        # A pilot is safe from bites: scenarios run after this one with -NoLaunch need Alice on foot.
+        Exit-Seamoth $A
+        Exit-Seamoth $B
     }
 }
 catch {

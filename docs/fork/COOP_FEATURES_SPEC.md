@@ -794,6 +794,34 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   directions, plus a bite on a vehicle. Keep S14's method: wait for a natural bite, force the contact only as a
   fallback.
 - **Done when:** every creature on the list either hurts both players or has a FIX_SPEC item.
+- **Done 2026-11-02** (branch `feat/1-d4-threat-parity`). Scenario `tools/scenarios/D4-ThreatParity.ps1` (S14's
+  helpers moved to `CreatureAggroHelpers.ps1`, shared by both), windowless. A→B = Alice's game simulates the creature,
+  Bob is the target; "natural" = the creature attacked by itself, "touch" = the forced contact.
+
+  | Creature / case | Hurts the partner? | Evidence | Outcome |
+  |---|---|---|---|
+  | Crabsnake A→B, B→A | Yes: bite 20, natural, both directions | In game | Partner gets no grab cinematic and not its extra 15 → FIX_SPEC S15e |
+  | Ampeel A→B, B→A | Yes: shock 15 (Electrical) in the partner's own game, both directions; bite 30 relayed (A→B, natural) | In game | Its shock skips aggression and passes no dealer, so each game shocks its own player: parity |
+  | River prowler A→B | Yes: bite 30, natural | In game | — |
+  | Crabsquid A→B | Bite yes: 40. **EMP no**: the partner's Seamoth stays powered (disabled only in the simulating game; control B→B: disabled) | In game | FIX_SPEC S15a |
+  | Lava lizard A→B | Bite yes: 30, natural (also when Bob started 15 m away with the lava shell on). Ranged lava rock: not provoked in the time box | Bite in game; ranged from code | Ranged → FIX_SPEC S15c |
+  | Warper A→B (Bob infected 0.5) | Bite yes: 23.5, natural. Warp ball: no (it warps only `Player.main`) | Bite in game; warp ball from code | Warp ball → FIX_SPEC S15c, spawning is B1 |
+  | Mesmer A→A (control), A→B | Bite yes: 30. **Hypnosis no**: control pulled and slowed (x0.78); Bob's body never pulled, Bob never slowed | In game | FIX_SPEC S15b |
+  | Bleeder A→A (control), A→B | **No**: control attached (5 per suck); the partner's body has no attach point, 0 damage. World bleeders aren't simulated at all (B1) | In game | FIX_SPEC S15d (+ B1 whitelist) |
+  | Stalker born in a containment, A→B | Spares Bob, also when touched (as intended) | In game | — |
+  | **Bite on a vehicle**: Bone shark vs Seamoth, B→B (control), A→B, B→A | **Was no** (0 damage both directions: the simulating game may not change a vehicle it doesn't hold, the pilot's game never bites). **Fixed**: 30 per bite in the pilot's game, the simulator's game shows the new health, no double bite, pilot's body not bitten | In game + headless | Fixed on this branch (below) |
+
+- **Fix (vehicles):** a creature's bite on a vehicle whose lock another player holds is sent from the simulating game as
+  `CreatureAttackedVehicle` (`LiveMixin_TakeDamage_Patch`); the server relays it only from the creature's simulator
+  and only to the vehicle's lock holder, whose game applies it and broadcasts the vehicle's health as usual. Games that
+  don't simulate the creature no longer bite vehicles with it (`MeleeAttack_CanDealDamageTo_Patch`), as S14 did for
+  players. Leviathans keep their path. No save change; one new packet (all three must run the same build).
+- **Verification:** headless L2 `CreatureAttackRoutingTest.VehicleAttack_ReachesOnlyTheVehiclesLockHolder` (fails with
+  the creature-lock check removed). In game: the vehicle cases fail without the fix (first run: 0 damage A→B and B→A,
+  forced contact included) and pass with it; each lock direction once. On the fixed build, `D4-ThreatParity.ps1`
+  passes in full (95 checks) and `S14-CreatureAggro.ps1` (its helpers moved) passes all 11 cases.
+- **Not run:** the Lava lizard's and Warper's ranged attacks (from code), Prawn suit and Cyclops bites (same code path
+  as the Seamoth), a world (not console-spawned) Bleeder, network latency.
 
 ### D5: Your own firsts (D5a S + D5b S–M)
 - **Goal:** each player hears the PDA's biome and location lines when *they* get there, not when the partner does.
@@ -1248,3 +1276,4 @@ prices, "keeping it scary").
 | 2026-11-02 | A1 | Shared plumbing: the 8 co-op options in `server.cfg` (4 of them sent to the game in `InitialPlayerSync.CoopSettings`), the saved player fields for T1 and D5b, `Interfered` on `PlayerStats` | Headless: `PlayerDataSaveLoadTest` (save and load, old save without the fields), `CoopPlumbingTest` (L2: options reach the game, `Interfered` kept and relayed), `PacketsSerializableTest`; full suite green. No game run (no in-game behaviour yet) |
 | 2026-11-02 | R1a | Done: the sleep status names who is still awake (names in `SleepStatusUpdate`, new en/de key); disconnect mid-wait counts joined players and updates when the sleeper leaves; eat/drink/stillsuit-drink sounds synced at 10 m. README co-op features table created | Headless: L2 `SleepStatusTest`, `EatingSoundTest`; L1 `FMODWhitelistTest`, `SleepStatusUpdateProcessorTest`; negative controls. Not in game |
 | 2026-11-02 | A0 | Probe run: bridge `hold`, `sounds`, `pdaqueue`, `animator`; findings in D1 (breathing and pain not heard, bubbles 2D), D2 (real biome strings), D6 (light state matches; thrown flare not synced, H), R2 (`using_pda`, `holding_tool` missing), T1 (death clips play once, no held pose), T4 (reach fine; a click with `currentSub` set not shown), B4 (fire parents have ids), B5 (no wild regrowth in vanilla: drop), F2 (icon reset, from code). P2 not probed | `tools/scenarios/A0-Probes.ps1` windowless (two runs), game code, batch cell files |
+| 2026-11-02 | D4 | Done: probe of every creature S14 didn't run plus vehicle bites (`tools/scenarios/D4-ThreatParity.ps1`, S14's helpers shared in `CreatureAggroHelpers.ps1`). Bites of Crabsnake, Ampeel, River prowler, Crabsquid, Lava lizard, Warper and Mesmer reach the partner; the Ampeel's shock hurts each player in their own game; a containment-born Stalker spares the partner. Fixed: a vehicle took no bites from creatures its pilot's game didn't simulate (new `CreatureAttackedVehicle`, relayed to the vehicle's lock holder). Not fixed, now FIX_SPEC S15: Crabsquid EMP, Mesmer hypnosis, lava rock and warp ball, Bleeder, Crabsnake grab. README fix table row | L3 windowless: first run 84 of 86 checks (the two vehicle cases failed: negative control); fixed build: full D4 PASS 95 checks, S14 PASS (all 11 cases, the two Alice-victim ones rerun after D4 left Alice in the Seamoth, now fixed in the scenario). L2 `VehicleAttack_ReachesOnlyTheVehiclesLockHolder` (fails without the creature-lock check); `dotnet test` 331 pass, 13 skipped. Ranged attacks, Prawn suit, Cyclops, world bleeders, latency: not run |
