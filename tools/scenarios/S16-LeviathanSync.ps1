@@ -40,6 +40,9 @@ param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's16-leviathans',
     # Thresholds (metres / seconds).
     # Before S16b (runs 1-7): 0.8-4.3 m mean, up to 36 m, snaps up to 16.6 m, spawns up to 34 m off.
     [double]$MaxMeanError = 1, [double]$MaxError = 5, [double]$MaxSnap = 3, [double]$MaxHandoverJump = 5, [double]$MaxLockDelaySeconds = 10,
+    # One long frame (ms) on the watching game halfway through "ab" and "ba" (0: none). Before the physics-clock fix
+    # in S16b, a natural 353 ms frame made the copy overshoot by 3.4 m.
+    [int]$HitchMs = 350,
     [string]$OutDir = (Join-Path $env:TEMP 's16-recordings'))
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
@@ -182,7 +185,16 @@ function Measure-Pair {
     $sentBefore = Get-CreatureSent $Owner
     Start-Recording $Owner "$Name-o" $Id
     Start-Recording $observer "$Name-r" $Id
-    Start-Sleep -Seconds $Seconds
+    if ($HitchMs -gt 0 -and $Name -ne 'arrive') {
+        # Halfway, one long frame on the watching game (as when cells load): its physics catches up in the next frame
+        Start-Sleep -Milliseconds ($Seconds * 500)
+        Invoke-Bridge $observer "call Thread.Sleep $HitchMs" -AllowError | Out-Null
+        Write-Host "    one $HitchMs ms frame on $observer's game"
+        Start-Sleep -Milliseconds ($Seconds * 500)
+    }
+    else {
+        Start-Sleep -Seconds $Seconds
+    }
     $ownerTrack = Stop-Recording $Owner "$Name-o" -SaveTo (Join-Path $OutDir "$Name-$Owner.json")
     $observerTrack = Stop-Recording $observer "$Name-r" -SaveTo (Join-Path $OutDir "$Name-$observer.json")
     $sentAfter = Get-CreatureSent $Owner
@@ -326,6 +338,9 @@ try {
             if (-not (Test-Loaded $B $id)) { Invoke-Bridge $B "teleport $(Format-P (Get-Beside (Get-Copy $A $id).position ($Near * 2) 0))" | Out-Null; Wait-Until { Test-Loaded $B $id } -TimeoutSeconds 30 | Out-Null }
             Assert-Equal $A (Get-LockOwner $id) "$A still simulates it"
             $m = Measure-Pair $id $A $WindowSeconds 'ab'
+            # Swim animation follows the body's velocity (AnimateByVelocity): the watched copy must have one
+            $animator = Invoke-Bridge $B "animator $id" -AllowError
+            Write-Host "  Bob's copy, animator speed: $(($animator -split "`n" | Where-Object { $_ -match '"?speed"?\s*[:=]' } | Select-Object -First 1))"
             Assert-Measure ($m.result.instantMean -le $MaxMeanError) ('Bob sees it within {0} m of Alice on average ({1})' -f $MaxMeanError, $m.result.instantMean)
             Assert-Measure ($m.result.instantMax -le $MaxError) ('Bob never sees it more than {0} m from Alice ({1})' -f $MaxError, $m.result.instantMax)
             Show-Copies $id 'after ab' | Out-Null
