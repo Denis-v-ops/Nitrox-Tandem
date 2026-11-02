@@ -804,18 +804,52 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - `PDALog.Add` plays the voice line by default (`playSound = true`, `game:PDALog.cs:159-189`). So when A enters the
     Lost River, B's PDA describes it while B sits in the base.
   - Logs found in the world arrive the same way (`PDALogEntryAddProcessor`) and play too.
-- **D5a, game side (S, wave 1):**
+- **D5a, game side (S, wave 1). Done (2026-11-02, branch `feat/1-d5a-own-firsts`), except found logs (below).**
   - **Experiential goals** are the keys in `BiomeGoalData` and `LocationGoalData` (read at runtime from the trackers'
     `goalData`). Everything else syncs as today.
+    - In game: 58 biome + 32 location goals, 69 distinct keys: 62 PDA, 13 Radio, 15 Story goals (counted with
+      duplicates). Only **PDA** goals change; the Radio and Story ones (`Infection_Progress*`, `FindPrecursor*`) sync as today.
+    - The PDA ones include more than places: `Emperor_Telepathic_Contact1-3` (location-triggered, 1200 s delay) and the
+      Precursor logs on `LocationGoalData` (`Precursor_LostRiverBase_Log*`, `Precursor_Prison_*`), so each player
+      hears those from their own visit too.
   - On the receiver, an experiential PDA goal completes **without** `PDALog.Add`: only
-    `StoryGoalManager.main.OnGoalComplete(key)`. Side effects that hang off goal completion (unlocks, signals) still run.
-  - When B later gets there, B's own tracker fires. `BiomeGoalTracker.TrackBiome` → `BiomeGoal.Trigger` doesn't check
-    completion, `PDALog.Add` finds no entry, and the line plays for B. (H: check that the trackers keep completed goals
-    in their lists after a load.)
-  - Logs found in the world (PDAs, data boxes) arrive for the partner with `playSound: false`. They wait in the PDA log;
-    there's no place to "get to".
-  - Option `PartnerDiscoveriesSilent` (default true); false restores today's behaviour.
+    `StoryGoalManager.main.OnGoalComplete(key)` (`ExperientialGoals`, `StoryGoalExecutedClientProcessor`). Side effects that
+    hang off goal completion (unlocks, signals) still run, under the same packet suppressors as before.
+    - `StoryGoal.Execute` (`game:Story/StoryGoal.cs:31-49`) is `OnGoalComplete` plus, for PDA goals, `PDALog.Add`
+      whatever `OnGoalComplete` returns. `PDALog.Add` (`game:PDALog.cs:159-203`) stays silent only if the entry exists.
+    - The silent path leaves this game's schedule alone. If both players were there, this player's tracker already
+      scheduled the goal and removed it from its list, so the scheduled `Execute` is their only chance to hear it.
+  - When B later gets there, B's own tracker fires. **Finding:** the game doesn't block it, but Nitrox did.
+    - The game: `BiomeGoal.Trigger`/`LocationGoal.Trigger` check only biome or position and stay time.
+      `OnGoalComplete` doesn't touch the trackers' lists; only the tracker removes a goal, after its own trigger.
+    - Nitrox: `StoryGoalScheduler_Schedule_Patch` refused to schedule completed goals, so B's trigger was swallowed (L3
+      failed there). Now a biome or location PDA line that isn't in this game's PDA log schedules anyway.
+    - A partner's *delayed* line came as a `Schedule` packet and played from B's own scheduler. `ScheduleProcessor`
+      now skips biome and location PDA lines (option on); the partner's `StoryGoalExecuted` completes it silently.
+      Code-read only, not in L3 (the Kelp Forest line has no delay).
+  - **(H) answered, from code:** the game keeps completed goals in the trackers after a load
+    (`BiomeGoalTracker.Start`/`LocationGoalTracker.Start` copy all of `goalData`; the list isn't saved). Nitrox
+    removes them on join (`StoryGoalInitialSyncProcessor.SetupTrackers`, `goals.RemoveAll(completedGoals.Contains)`).
+    **For D5b:** filtering the initial PDA log isn't enough. `SetupTrackers` must keep the experiential PDA goals the
+    joining player hasn't heard, and `SetScheduledGoals` must skip a partner's delayed ones, or B can't hear them after
+    a rejoin.
+  - **Found logs: not done, the premise was wrong.** `PDALogEntryAdd` doesn't carry found logs. It carries every
+    `PDALog.Add` outside `StoryGoal.Execute`, which is the pod radio (`StoryGoalManager.ExecutePendingRadioMessage`) and
+    the `pdalog` console command. Muting it would mute the partner's radio messages. PDAs found in the world
+    (`StoryHandTarget.OnHandClick` → `goal.Trigger()`) arrive as `StoryGoalExecuted` (PDA) like any story line, and the
+    receiver can't tell them apart (`PDALog.EntryType` has no radio/found kind). Options: a "found" flag sent with
+    `StoryGoalExecuted` (patch `StoryHandTarget.OnHandClick`), or leave it. Decision needed.
+  - Option `PartnerDiscoveriesSilent` (default true); false restores today's behaviour (L3 negative control). Before
+    the initial sync, `CoopSettings` holds false, so packets processed then behave as today.
   - Within one session this gives the whole effect.
+  - **Verified:** L1 `ExperientialGoalsTest` (classification, option off, other types, own trigger until heard).
+    L3 windowless `tools/scenarios/D5a-OwnFirsts.ps1` PASS (14 checks). Alice reaches the Kelp Forest and hears
+    `Goal_BiomeKelpForest` once. Bob's game completes the goal with no PDA entry, no started line and an empty
+    `pdaqueue`. Bob then reaches it, gets the entry and hears the line once; Alice doesn't hear it again.
+    Negative controls: `-OptionOff` fails 2 checks (Bob gets the entry and the line at once), and the build without
+    the schedule fix failed 2 (Bob's own trigger swallowed). Not run: windowed games, delayed lines, location goals.
+  - The `kelpforest` goto spot (75, -28, -95) is `safeShallows` on the biome map. (100, -30, 200) is `kelpForest`.
+    After a teleport out of the pod, `GetBiomeString` reads `Lifepod` for a few seconds.
 - **D5b, server side (S–M, wave 2):**
   - **Why it's needed:** on join, the initial sync restores the whole PDA log silently with `PDALog.Deserialize`
     (`PdaInitialSyncProcessor.cs`, `RestorePDALog`). A line the partner triggered in an earlier session is then already
@@ -1248,3 +1282,4 @@ prices, "keeping it scary").
 | 2026-11-02 | A1 | Shared plumbing: the 8 co-op options in `server.cfg` (4 of them sent to the game in `InitialPlayerSync.CoopSettings`), the saved player fields for T1 and D5b, `Interfered` on `PlayerStats` | Headless: `PlayerDataSaveLoadTest` (save and load, old save without the fields), `CoopPlumbingTest` (L2: options reach the game, `Interfered` kept and relayed), `PacketsSerializableTest`; full suite green. No game run (no in-game behaviour yet) |
 | 2026-11-02 | R1a | Done: the sleep status names who is still awake (names in `SleepStatusUpdate`, new en/de key); disconnect mid-wait counts joined players and updates when the sleeper leaves; eat/drink/stillsuit-drink sounds synced at 10 m. README co-op features table created | Headless: L2 `SleepStatusTest`, `EatingSoundTest`; L1 `FMODWhitelistTest`, `SleepStatusUpdateProcessorTest`; negative controls. Not in game |
 | 2026-11-02 | A0 | Probe run: bridge `hold`, `sounds`, `pdaqueue`, `animator`; findings in D1 (breathing and pain not heard, bubbles 2D), D2 (real biome strings), D6 (light state matches; thrown flare not synced, H), R2 (`using_pda`, `holding_tool` missing), T1 (death clips play once, no held pose), T4 (reach fine; a click with `currentSub` set not shown), B4 (fire parents have ids), B5 (no wild regrowth in vanilla: drop), F2 (icon reset, from code). P2 not probed | `tools/scenarios/A0-Probes.ps1` windowless (two runs), game code, batch cell files |
+| 2026-11-02 | D5a | Done: a partner's biome and location PDA lines complete silently (`OnGoalComplete` only); this player's own tracker still schedules them (Nitrox's "completed goals don't schedule" rule excepted) and a partner's delayed one isn't scheduled here. (H) answered: the game keeps them, Nitrox's `SetupTrackers` drops them on join (a D5b hook). Found logs not done: `PDALogEntryAdd` is the pod radio, found PDAs come as `StoryGoalExecuted`; decision needed. README row | L1 `ExperientialGoalsTest`; L3 windowless `D5a-OwnFirsts.ps1` PASS; negative controls: option off (2 checks fail), without the schedule fix (2 fail). Delayed lines and location goals code-read only |
