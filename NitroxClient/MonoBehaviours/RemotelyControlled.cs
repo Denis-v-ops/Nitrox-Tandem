@@ -33,6 +33,7 @@ public class RemotelyControlled : MonoBehaviour
     private Vector3 creatureAngularVelocity;
     private double creatureRealTime;
     private float creatureLocalTime;
+    private static bool warnedFrameClock;
 
     private Locomotion disabledLocomotion;
     private WorldForces disabledWorldForces;
@@ -108,8 +109,21 @@ public class RemotelyControlled : MonoBehaviour
         // When it was taken on this game's clock (Time.time, which is Time.fixedTime in FixedUpdate). The copy is moved
         // in FixedUpdate, and after a long frame Unity runs several fixed steps in one frame to catch up: measured against
         // the wall clock, each of them saw the whole delay at once, so the copy overshot by metres (8.4 m one-frame step
-        // after a 353 ms frame, while the original swam 5 m).
-        creatureLocalTime = Time.time - (float)(timeManager.RealTimeElapsed - realTime);
+        // after a 353 ms frame, while the original swam 5 m). Time.time is when this frame started, so the pose's age is
+        // taken at the frame's start too: a long frame that is still going on (a packet handled after a 350 ms hitch in
+        // the same frame) otherwise put the copy 0.35 s of swimming ahead (5-8 m step for a Reaper).
+        float sinceFrameStart = Mathf.Max(0f, Time.realtimeSinceStartup - Time.unscaledTime);
+        if (sinceFrameStart > 2f)
+        {
+            // Both count real seconds since the game started; a gap this long would mean they don't share that start
+            if (!warnedFrameClock)
+            {
+                Log.Warn($"[{nameof(RemotelyControlled)}] realtimeSinceStartup is {sinceFrameStart:0.00} s past unscaledTime; ignoring it");
+                warnedFrameClock = true;
+            }
+            sinceFrameStart = 0f;
+        }
+        creatureLocalTime = Time.time - (float)(timeManager.RealTimeElapsed - sinceFrameStart - realTime);
     }
 
     /// <summary>

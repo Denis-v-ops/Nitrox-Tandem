@@ -927,14 +927,14 @@ The watching game never lost a leviathan (no `active = False`, no destroy, no va
   fix:** the server only learns of the crossing from a position packet, i.e. the next `GoTo` (1–5 s). In the asleep-cell
   branch the game deactivates the creature at its next `UpdateCell` (each entity about every 100 frames), which can come
   first; then the server keeps the old cell and owner, and the partner gets no spawn (S16f).
-- *Confirmed (code + measurements), not fixed:* **the watching game runs its own copy and is only corrected when it is
+- *Confirmed (code + measurements), fixed in S16b below:* **the watching game runs its own copy and is only corrected when it is
   more than 5 m off.** `EntityPositionBroadcaster` sends a creature's pose only when its AI calls `SplineFollowing.GoTo`
   (Reaper every 1–2 s, Ghost 4 s, Reefback 5 s), never on a timer. The watching game feeds that target into its own
   `SplineFollowing`/`Locomotion` (`RemotelyControlled.UpdateKnownSplineUser`) and teleports only beyond 5 m
   (`TeleportIfTooFar`), to a pose that is already 100–300 ms old. So the copies drift apart up to 5 m between packets and
   then snap 5–17 m, often backwards along the path; even the 1 m/s Reefback snapped 5.7 m. The rotation is applied only
   with a snap.
-- *Confirmed, not fixed:* **the server's record is as old as the last `GoTo`**, 5–11 m behind the Reaper in case 4, so a
+- *Confirmed, fixed in S16b/c below:* **the server's record is as old as the last `GoTo`**, 5–11 m behind the Reaper in case 4, so a
   late arrival (or a rejoin) spawns it up to 34 m away, then sees it snap at the next packet.
 - *Confirmed (game code + in game), not fixed (#2461):* **void ghosts are local.** `VoidGhostLeviathansSpawner` (a scene
   object in every game) instantiates `GhostLeviatanVoid` for `Player.main` alone, outside Nitrox's entity system, and the
