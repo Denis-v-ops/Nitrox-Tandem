@@ -51,8 +51,11 @@ public abstract class MovementReplicator : MonoBehaviour
     public void AddSnapshot(MovementData movementData, float snapshotRealTime)
     {
         float realTime = RealTime;
-        float latency = realTime - snapshotRealTime;
-
+        // Packets are processed once per frame, so a packet waited here for up to the time since the previous processing.
+        // After a long frame (cells loading, a hitch) every packet looks late by that much, but that isn't network
+        // latency and the snapshots are still in time: counting it kept the object 0.3 s further behind for 10+ s after
+        // a single 300 ms frame, then made it skip ahead when the latency was lowered again (FIX_SPEC S13).
+        float latency = Mathf.Max(0f, realTime - snapshotRealTime - Multiplayer.PacketWaitBound);
 
         RecalculateMaxAllowedLatency(latency, realTime);
 
@@ -71,7 +74,7 @@ public abstract class MovementReplicator : MonoBehaviour
             }
         }
 
-        buffer.Add(new Snapshot(movementData, occurrenceTime));
+        buffer.Add(new Snapshot(movementData, occurrenceTime, snapshotRealTime));
     }
 
     private void RecalculateMaxAllowedLatency(float latency, float realTime)
@@ -100,6 +103,51 @@ public abstract class MovementReplicator : MonoBehaviour
     }
 
     public void ClearBuffer() => buffer.Clear();
+
+    /// <summary>
+    ///     Called when the local player takes over the simulation. This game shows the object a replication delay behind
+    ///     where its owner had it, moved by its transform, so its body has no velocity: continuing from there, the object
+    ///     stopped dead and jumped back by the delay for the previous owner (FIX_SPEC S13, the Cyclops when the partner
+    ///     takes the helm while it moves). Puts it where the owner last had it (the latest snapshot, carried forward by its
+    ///     age) with the latest snapshots' velocity instead.
+    /// </summary>
+    public void HandOverMotion()
+    {
+        // Disabled: a docked vehicle, which its dock places
+        if (!enabled || !rigidbody || rigidbody.isKinematic || buffer.Count < 2)
+        {
+            return;
+        }
+
+        Snapshot previous = buffer[buffer.Count - 2];
+        Snapshot latest = buffer.Last;
+        float deltaTime = latest.SentTime - previous.SentTime;
+        // Clamped: on two PCs the clocks can differ by more than the network latency
+        float age = Mathf.Max(0f, RealTime - latest.SentTime);
+        // Old snapshots: the owner stopped sending because the object stopped moving
+        if (deltaTime <= 0f || age > SNAPSHOT_EXPIRATION_TIME)
+        {
+            return;
+        }
+
+        Vector3 velocity = (latest.Data.Position.ToUnity() - previous.Data.Position.ToUnity()) / deltaTime;
+        Quaternion rotationDelta = latest.Data.Rotation.ToUnity() * Quaternion.Inverse(previous.Data.Rotation.ToUnity());
+        rotationDelta.ToAngleAxis(out float angle, out Vector3 axis);
+        if (angle > 180f)
+        {
+            angle -= 360f;
+        }
+        Vector3 angularVelocity = float.IsNaN(axis.x) || float.IsInfinity(axis.x) ? Vector3.zero : axis * (angle * Mathf.Deg2Rad / deltaTime);
+
+        transform.position = latest.Data.Position.ToUnity() + velocity * age;
+        transform.rotation = Quaternion.AngleAxis(angularVelocity.magnitude * age * Mathf.Rad2Deg, angularVelocity.normalized) * latest.Data.Rotation.ToUnity();
+        rigidbody.position = transform.position;
+        rigidbody.rotation = transform.rotation;
+        rigidbody.velocity = velocity;
+        rigidbody.angularVelocity = angularVelocity;
+        // Destroy waits for the end of the frame: this Update mustn't put the delayed pose back meanwhile
+        enabled = false;
+    }
 
     public void Start()
     {
@@ -208,7 +256,9 @@ public abstract class MovementReplicator : MonoBehaviour
 
     public abstract void ApplyNewMovementData(MovementData newMovementData);
 
-    public record struct Snapshot(MovementData Data, float Time)
+    /// <param name="Time">When the snapshot is shown (sent time + interpolation delay + latency allowance).</param>
+    /// <param name="SentTime">When the owner sent it.</param>
+    public record struct Snapshot(MovementData Data, float Time, float SentTime)
     {
         public bool IsSnapshotNewer(float comparedTime) => comparedTime < Time;
 

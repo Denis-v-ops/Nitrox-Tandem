@@ -122,9 +122,17 @@ public class NitroxCyclops : MonoBehaviour
     {
         foreach (CyclopsPawn pawn in Pawns.Values)
         {
+            if (!pawn.IsAlive)
+            {
+                continue;
+            }
             if (pawn.MaintainPredicate())
             {
                 pawn.MaintainPosition();
+            }
+            else if (pawn.IsLocalPlayer)
+            {
+                pawn.FollowRealObject();
             }
         }
     }
@@ -158,6 +166,13 @@ public class NitroxCyclops : MonoBehaviour
     {
         worldForces.enabled = false;
         stabilizer.stabilizerEnabled = false;
+        // The replicator moves the sub from now on. Velocity left from simulating it ourselves kept moving the body
+        // between frames, against the replicator, for seconds after a helm hand-over (FIX_SPEC S13).
+        if (rigidbody && !rigidbody.isKinematic)
+        {
+            rigidbody.velocity = Vector3.zero;
+            rigidbody.angularVelocity = Vector3.zero;
+        }
     }
 
     private void WorkaroundColliders()

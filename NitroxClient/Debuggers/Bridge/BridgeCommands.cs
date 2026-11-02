@@ -41,6 +41,9 @@ internal static class BridgeCommands
                                  use <target> [ComponentType]   OnHandClick on the target's IHandTarget, as the local player
                                  screenshot <path.png>          written at the end of the frame (poll for the file)
                                  entities                       dump of all loaded entities for "bridge.ps1 diff"
+                                 record start <name> <target> [relativeTo] | record stop <name> | record list
+                                                                per-frame pose samples (wall clock, position, velocity, ...)
+                                 input move <x> <y> <z> | input off   hold the movement input (strafe/turn, up/down, forward)
                                Values: numbers, true/false, null, enum names, x,y,z vectors, NitroxIds or targets for objects.
                                """;
 
@@ -89,6 +92,10 @@ internal static class BridgeCommands
                 return Screenshot(args[0]);
             case "entities":
                 return DumpEntities();
+            case "record":
+                return BridgeRecorder.Command(args, host);
+            case "input":
+                return BridgeInput.Command(args);
             default:
                 throw new ArgumentException($"Unknown command '{command}'. Try help.");
         }

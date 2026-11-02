@@ -740,6 +740,125 @@ latency; a player dying from a relayed bite; vehicles (their path is unchanged).
 - `SeaDragonAttackTargetProcessor` sets `timeLastBite = Time.time` right before replaying `OnTouch`, so `CanBite`
   rejects the replayed non-lethal bite. *Hypothesis*, not tested.
 
+## S13: Cyclops movement and sync glitches
+
+**Report** (players, unconfirmed): "Cyclops movement / syncing is strange and can cause glitches."
+
+**How it was measured** (2026-11-02, branch `fix/s13-cyclops-movement`):
+- Two new Debug-only bridge commands:
+  - `record start|stop` samples an object every frame in `LateUpdate`: wall clock, pose, pose relative to the sub,
+    rigidbody velocity, the replicator's `MaxAllowedLatency` and buffer, the pawn handle, and state changes (lock,
+    replicator, kinematic, player mode, cinematic).
+  - `input move x y z` holds the game's movement input, so a pilot drives through `SubControl.Update` (power, RPM,
+    driven-vehicle packets) and a passenger walks through the Cyclops motor.
+- Both games run on one PC, so their tracks share a clock. `tools/scenarios/S13Helpers.ps1` (C# via `Add-Type`) compares
+  them:
+  - **lag**: the time shift that best aligns the partner's track with the simulating game's;
+  - **residual**: what's left after that shift;
+  - stalled, jumping and backward frames.
+- Setup: Bob spawns the Cyclops (he simulates it), and Alice pilots it. This is the case S6 never ran.
+- Baseline: `coop` + tooling (runs 1 and 2, two probes). After the fixes: runs 4 and 5. Both games ran at 120 fps.
+
+**Confirmed and fixed:**
+
+| Glitch | Before | After | Root cause (confirmed) |
+|---|---|---|---|
+| **#2379:** the pilot leaves the helm with a key held. The partner sees her walk off, then snap back | Pawn walked 2.76 m on Bob's screen while Alice moved 0.5 m. Snap back 2.6 m, view error max 2.66 m | View error max 0.17 m | `Player.ExitPilotingMode` starts the release cinematic, which disables the controller. The Nitrox postfix then ran `ToggleCyclopsMotor`, which always re-enabled it. So the pawn walked during the animation, and `PlayerMovementBroadcaster` sends the pawn. The same applied to hatch and docking cinematics |
+| A single long frame on the watching game (cells loading) keeps the partner's view of the sub further behind for 10+ s, then the sub skips forward | Forced 300 ms frame: `MaxAllowedLatency` 0.077 → 0.309 s, still there 15 s later. Natural 100–260 ms frames while driving: 0.346 s → lag 498 ms, 3.6–4.2 m behind at 7.2 m/s. 20 slow-motion frames after the bump. Lowering it later skipped the sub 0.98 m in 3 frames | 309 ms frame: 0.073 s stays, lag 210 ms, no stalls, residual 8–10 mm | `MovementReplicator.AddSnapshot` counted the time a packet waited for the next frame as network latency |
+| **Helm hand-over while moving:** the sub stops dead for the new pilot and snaps back for the old one | At 5.4 m/s: new owner 5.38 → 0.05 m/s. Old owner coasted on stale physics for 0.5 s, then a 1.9 m backward snap, then 0.1–0.3 m per-frame jitter for about 1 s (leftover velocity against the replicator) | At 7.0 m/s: new owner 7.03 → 6.33 m/s. Largest backward step for the old owner 0.044 m | The replicated body is moved by its transform, so it has no velocity, and it lags by the replication delay. The new owner continued from that pose at rest |
+| **A passenger who leaves the game inside a Cyclops that the partner then drives on** comes back in the water where the sub was | L2: z 68 instead of 268 (sub moved 200 m) | L2 passes, also after a restart. In game: Bob quit, Alice drove the sub 92 m on, restart: Bob is back inside, at the spot where he quit (23.6 m from the origin, at the helm), currentSub = the Cyclops, not underwater | The join payload used `Player.Position`, which only the player's own packets update. Inside a sub, the player entity is a child of the sub entity and follows it |
+
+**Measured and fine (no change):**
+- **Replication itself is smooth.** At 3–7 m/s, straight and turning, the partner's track matches the pilot's with
+  5–22 mm RMS residual, 0 backward frames and 0–1 stalled frames per 600–1000 frames. The large steps all lined up with
+  the watching game's own long frames.
+- **The replicated sub's rigidbody** picks up at most 0.09 m/s during replication, so physics barely fights the
+  replicator, except right after a hand-over (fixed above).
+- **Passengers standing in a moving, turning sub:** 0.000 m drift in their own game. The partner sees them at the
+  same spot.
+- **A passenger walking** (4 directions, 12–15 s) doesn't fall through the floor (lowest local y −4.71 against −4.43 at
+  the start). The partner sees them within 0.09–0.13 m, about 20 ms late.
+- **Docked Seamoth** (Alice's, in the sub Bob simulates): 0 m drift in the bay in both games, at rest and while
+  driving. The simulating game's sub doesn't move at rest (0.007–0.06 m in 10 s). The non-kinematic remote docked
+  vehicle (`VehicleDockingProcessor`) pushes nothing.
+- **Coasting with nobody at the helm**, simulated by the player who left it: both games agree where it comes to rest
+  (0.01–0.12 m).
+- **Terrain:** the sub hit rising ground about 100 m west of the spawn point in runs 2 and 3. The replicated residual
+  stayed ≤ 5 cm.
+- **#2832 (low FPS inside the Cyclops):** not reproduced on this PC, where both games stayed at their 120 fps cap inside the
+  moving sub. A slower PC may still show it.
+- **#2372 (NRE in `CyclopsPawn.MaintainPosition`):** not reproduced in any run or earlier log. `MaintainPawns` now skips
+  pawns whose objects are gone (defensive).
+- **Pilot after leaving the helm:** can walk (probe); the scenario's "no movement" was the console in front of the
+  chair.
+
+**Fix:**
+- `CyclopsMotor.ToggleCyclopsMotor` leaves the player controller as it found it. Cinematics, locked mode and initial
+  sync re-enable it when they end; all paths that disable it re-enable it (read in 83031). While the local player
+  isn't in control, the local pawn follows the player (`CyclopsPawn.FollowRealObject`) instead of pinning them, so the
+  broadcast position is where the player is.
+- `MovementReplicator.AddSnapshot` subtracts `Multiplayer.PacketWaitBound` from the latency sample. That's the real
+  time since the previous packet processing, which a packet waited at most in this game. The previous frame's
+  `deltaTime` wasn't enough: the long frame can come before `Multiplayer.Update` in the same frame (run 3).
+- `MovementReplicator.HandOverMotion`, called by `SimulationOwnership.TreatVehicleEntity` when this game takes over:
+  it puts the body at the latest snapshot (carried forward by its age) with the snapshots' velocity and angular
+  velocity. It skips disabled replicators (docked vehicles) and snapshots older than 0.67 s.
+- `NitroxCyclops.SetReceiving` zeroes the sub's leftover velocity.
+- `JoiningManager`: a returning player whose sub is a vehicle gets the position of their player entity (child of the
+  sub's entity). Only vehicles: see the finding below.
+
+**Verification:**
+- L2 `CyclopsMovementTest` (3):
+  - the lock follows the helm: Bob spawns, Alice pilots, Bob is denied, Alice downgrades, Bob takes over, Alice gets it
+    back when Bob leaves;
+  - pilot and passenger positions follow the sub;
+  - passenger rejoin after the partner drove on, also after a restart. **Fails without the `JoiningManager` change**
+    (z 68 instead of 268).
+- `dotnet test`: 315 pass, 13 skipped.
+- **L3 `tools/scenarios/S13-CyclopsMovement.ps1`: PASS, run 5, 63 checks** (fresh world, all fixes, `eb0a7033` + the
+  rejoin-drive tweak):
+  - lag 204–216 ms, residual 7–8 mm RMS, 0 stalled and 0 backward frames, while the sub drives at 4.4–7.3 m/s;
+  - after a 313 ms frame, `MaxAllowedLatency` stays at 0.080 s;
+  - #2379: view error max 0.14 m;
+  - hand-over at 6.95 m/s: 5.97 m/s after, largest backward step 0.003 m;
+  - passengers 0 m drift, walking error ≤ 0.12 m;
+  - docked Seamoth 0 m in both games;
+  - the rejoin after 92 m.
+  
+  Run 4 had the same results except the rejoin, where the sub hit the rising ground. Run 3 was with the first latency
+  attempt (previous frame's `deltaTime`), which didn't work: `MaxAllowedLatency` still 0.36 s. The before numbers
+  come from the same measurements on the baseline build (runs 1–2 and the two probes).
+- **Negative controls:** the L2 rejoin test fails without the fix. In game, the baseline runs and probes are the
+  before measurements for #2379, the latency and the hand-over (same scenario steps, same thresholds' quantities). No
+  separate negative-control run: all three causes are confirmed in code and in the recorded tracks.
+
+**Finding, not fixed:** a new player's `PlayerEntity` gets the escape pod as parent id but an unparented transform
+(local = world). After a restart it's linked under the pod, so its derived position is wrong.
+`PlayerPositionPersistenceTest` caught that when the rejoin fix wasn't limited to vehicles. Nothing reads it today.
+
+**Not verified:**
+- Two defensive lines added to `HandOverMotion` after run 5, not run in game:
+  - the snapshot age is clamped at 0, because on two PCs the clocks can differ by more than the latency, and a
+    negative age would have skipped the hand-over;
+  - the replicator disables itself so its own `Update` can't put the delayed pose back before `Destroy` runs.
+- Two-PC clock skew in general (the rig is one PC).
+- A long frame on the *pilot's* game. It delays the watcher's view by design, and wasn't measured.
+- The hull pushing a swimming player outside the sub (collisions with the local player).
+- Entering or leaving through a hatch at speed (S6 ran 50 hatch cycles on a slowly moving sub).
+- The partner's game crashing while inside: Debug builds use a 5-minute network timeout, so it wasn't run. A clean quit
+  is covered by the rejoin step.
+- Latency or packet loss (localhost only).
+- Hand-overs of Seamoth or Prawn: `HandOverMotion` is in the shared `MovementReplicator`.
+
+**Risks:**
+- At a hand-over, the new pilot's view jumps forward by the replication delay × speed (about 1.4 m at 7 m/s) during
+  their sit-down cinematic. Before, the old pilot saw a bigger jump backwards.
+- The latency sample is now a lower bound. On a client below about 15 fps, the interpolation delay (133 ms) plus the
+  50 ms margin may not cover the wait (estimated, not measured).
+- `ToggleCyclopsMotor` no longer forces the controller on. A path that enters or leaves a Cyclops with the controller
+  off and never turns it back on would leave the player frozen. None was found in the IL, and the rejoin and docking
+  steps passed. Rerun S6 `InteriorStateHolds` at the next `coop` integration.
+
 ---
 
 ## After the top 10 (Tier 1, in rough order)
@@ -827,3 +946,4 @@ See ISSUE_TRIAGE.md for the full verify list.
 | 2026-11-02 | S11 | Not a game bug. Cause: culture-formatted numbers (`-53,74`) in scenario scripts, accepted by the dev bridge as thousands-grouped, teleported players out of the world and the game reset them to random surface spots. Bridge now parses with `NumberStyles.Float`; `ScenarioHelpers.ps1` sets invariant culture. New L2 `PlayerPositionPersistenceTest`, L3 `S11-QuitKeepsPosition.ps1`. | L2 pass. L3 PASS (6 checks, 1 run after the fix); before the fix, the same run stored Alice ~570 m away and a sampling run showed the out-of-world teleport and reset. |
 | 2026-11-02 | S12 | `InfectionStory.Reconcile` applies the game's infection rules for completed `Infection_Progress1-5` goals in `JoiningManager.SendInitialSyncAsync`. | L1 `InfectionStoryTest` (6), L2 `OfflineInfectionTest` pass; negative control (fix removed) fails with infection 1.0. Not run in game. |
 | 2026-11-02 | S14 | Branch `fix/s14-creature-aggro`. New packet `CreatureAttackedPlayer` + server/client processors. For creatures outside `AI.syncedCreatureWhitelist`, the simulating game bites other players' bodies (`MeleeAttack_CanDealDamageTo_Patch` Prefix) and sends the damage (`LiveMixin_TakeDamage_Patch`); other games don't bite their own player with a creature they don't simulate; crash fish explosions are relayed too (`Crash_Detonate_Patch`); `AggressiveWhenSeePlayer` prefers the nearest player, local or remote. Leviathans unchanged. Read in decompiled 83031: `AggressiveWhenSeeTarget`, `AggressiveWhenSeePlayer`, `AttackLastTarget`, `MeleeAttack` (+ Reaper/Crabsnake/Shocker/Warper/SeaDragon subclasses), `LastTarget`, `Creature`, `EcoTarget`/`EcoRegionManager`, `Crash`, `ProtectCrashHome`, `DamageSystem`, `LiveMixin.TakeDamage`, `OnTouch`, `Player.CanBeAttacked`, `BehaviourLOD` (movement only, not AI). Asset values read in game: each creature's aggression scans, bite values (see S14). | `dotnet build Nitrox.slnx -m:1` (no new warnings), `dotnet test` 314 pass, 13 skipped (+2 L2 `CreatureAttackRoutingTest`, both fail without the lock check). **L3 `S14-CreatureAggro.ps1`: PASS, 65 checks** (11 cases, 9 natural bites, 2 forced contacts). **In-game negative control** (client patches reverted): 7 of 35 checks fail; the partner gets no damage even from a forced contact, and the victim's own game bites in the double-bite case. Follow-up commit (no bite through a vehicle hull, `Creature_IsFriendlyTo_Patch`): `dotnet test` 314 pass, and S14 re-run in game with stalker A→B, B→A, double-bite and crash fish: **PASS, 24 checks**. Not run: Crabsnake, Ampeel, Warper, Mesmer, Lava lizard, River prowler, Crabsquid, vehicles, containment-born creatures, latency. |
+| 2026-11-02 | S13 | Branch `fix/s13-cyclops-movement`. New bridge commands `record` (per-frame tracks) and `input move` (held game input), `S13Helpers.ps1` (track comparison) and L3 `S13-CyclopsMovement.ps1`. Fixes: #2379 (`ToggleCyclopsMotor` no longer enables the controller during cinematics; the local pawn follows the player while not in control), replication latency excludes the local wait between packet processings (`Multiplayer.PacketWaitBound`), helm hand-over keeps the sub's pose and velocity (`MovementReplicator.HandOverMotion`, `NitroxCyclops.SetReceiving` zeroes leftover velocity), a passenger rejoins inside the sub that moved on (`JoiningManager`, vehicles only), `MaintainPawns` skips dead pawns (#2372, defensive). Not reproduced: passenger sliding or falling through, docked-Seamoth drift, physics fighting the replicator (outside hand-overs), #2832 FPS. | L2 `CyclopsMovementTest` (3; the rejoin test fails without the fix). `dotnet build` (only NU190x/DIMA001 warnings), `dotnet test` 315 pass, 13 skipped. **L3: PASS, run 5, 63 checks.** Before/after: #2379 partner view error 2.66 m -> 0.14 m; one 300 ms frame raised `MaxAllowedLatency` 0.077 -> 0.309 s for 15+ s (lag 498 ms, 3.6-4.2 m behind at 7 m/s, 0.98 m skip when lowered) -> stays 0.08 s, lag 208 ms; hand-over of a moving sub: new pilot 5.4 -> 0.05 m/s and 1.9 m snap back for the old one -> 6.95 -> 5.97 m/s and 0.003 m; rejoin after the sub moved 92 m: inside. Run 5 was on `eb0a7033`; two defensive lines in `HandOverMotion` came after it and weren't run in game (the snapshot age is clamped at 0 because two PCs' clocks can differ by more than the latency; the replicator disables itself so its own `Update` can't put the delayed pose back before `Destroy`). Not verified: hatch use at speed, a crashing partner (5-min Debug timeout), latency/loss, two-PC clock skew, Seamoth/Prawn hand-overs, a long frame on the *pilot's* game, the hull pushing a swimming player. |

@@ -189,6 +189,17 @@ internal sealed class JoiningManager(
 
         player.Entity = wasBrandNewPlayer ? SetupNewPlayerEntity(player) : RespawnExistingEntity(player);
 
+        // Position only changes with the player's own packets, but inside a Cyclops the player entity is a child of the
+        // sub's entity and follows it. A passenger who left a Cyclops that the partner then drove on comes back inside it,
+        // not in the water where it was (FIX_SPEC S13). Only for vehicles: they are the subs that move, and their
+        // passengers' local positions are kept current (PlayerInCyclopsMovement, VehicleMovements for the pilot).
+        if (!wasBrandNewPlayer && player.SubRootId.HasValue && player.Entity.Transform is { Parent: { } subTransform } &&
+            entityRegistry.TryGetEntityById(player.SubRootId.Value, out VehicleEntity? sub) && sub.Transform == subTransform)
+        {
+            player.Position = player.Entity.Transform.Position;
+            player.Rotation = player.Entity.Transform.Rotation;
+        }
+
         List<GlobalRootEntity> globalRootEntities = worldEntityManager.GetGlobalRootEntities(true);
         bool isFirstPlayer = playerManager.GetConnectedPlayers().Count == 1;
 

@@ -101,6 +101,10 @@ tools\bridge.ps1 Bob use <nitroxId>                    # OnHandClick as the loca
 tools\bridge.ps1 Alice screenshot $env:TEMP\a.png
 tools\bridge.ps1 server query <nitroxId>               # any server console command, output returned (save, restart, warp, ...)
 tools\bridge.ps1 diff                                  # desync detector, see below
+tools\bridge.ps1 Alice record start sub <nitroxId> [relativeTo]   # per-frame track (S13Helpers.ps1 compares games)
+tools\bridge.ps1 Alice record stop sub                 # samples as JSON
+tools\bridge.ps1 Alice input move 0 0 1                # hold movement input (strafe/turn, up/down, forward): drive, walk
+tools\bridge.ps1 Alice call Thread.Sleep 300           # one long frame (a hitch) on purpose
 ```
 
 - **Targets:** `player`, a NitroxId, or `find:<ComponentType>` (the nearest loaded object with that component, for
