@@ -12,7 +12,10 @@ together, and the workflows we use. Claude Code loads it through `CLAUDE.md`. Ot
   scope unless they block it.
 - **What to work on:** [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md) (the top 10, in order), backed by
   [docs/fork/ISSUE_TRIAGE.md](docs/fork/ISSUE_TRIAGE.md) (every open upstream issue, tiered) and
-  [docs/fork/TESTING.md](docs/fork/TESTING.md) (how to test with two players).
+  [docs/fork/TESTING.md](docs/fork/TESTING.md) (how to test with two players). New co-op features (shared story
+  gates, rescue window, partner signal, cozy home, and more) are specified in
+  [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md); its §2 design principles apply to every
+  player-facing change.
 
 ## 2. Remotes and branches
 

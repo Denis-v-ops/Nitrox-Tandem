@@ -631,8 +631,16 @@ the description is empty):
   aimed at or driven by UI automation. **Still unverified in game:** do it with the S0.4 runner (A drives a Seamoth by
   script, B asserts its position), or ask the players to watch for it on their first session.
 - Possible item or vehicle loss: #2768 (2nd Seamoth despawns 1st), #2448 (lockers vanish in Cyclops), #2538
-  (eggs vanish in containment).
+  (eggs vanish in containment). For #2538, a probable cause was found in code: the egg is destroyed on the game of the
+  player who doesn't hold the tank's lock. See COOP_FEATURES_SPEC P2.
 - #2800 birds doubling per restart.
+- **New (2026-11-02): players rejoin at an unrelated position after a server restart.** The S1 and S7 workers saw this
+  independently in dual-client runs (e.g. Alice at (-146, -3, 56), Bob back at the escape-pod spawn). It may be the rig
+  stopping games abruptly before the last position reaches the server, or a real position-save bug. Check with an L2
+  test (send `PlayerMovement`, save, restart, rejoin, compare) before any in-game run.
+- **New (2026-11-02): a partner who is offline when the other player takes the cure may stay infected forever** (code
+  path, hypothesis). The cure is applied remotely through the shared story goal, but on rejoin the infection is restored
+  from saved stats while the cure balls stay dead. Fix planned in COOP_FEATURES_SPEC G3.
 
 See ISSUE_TRIAGE.md for the full verify list.
 

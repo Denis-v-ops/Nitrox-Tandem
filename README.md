@@ -14,7 +14,8 @@ An open-source, multiplayer modification for the game <a href="https://unknownwo
 > [!NOTE]
 > **This is a personal fork** ([Denis-v-ops/Nitrox](https://github.com/Denis-v-ops/Nitrox)) of [SubnauticaNitrox/Nitrox](https://github.com/SubnauticaNitrox/Nitrox), focused on making a two-player co-op story playthrough stable.
 > The `coop` branch carries our fixes; `master` mirrors upstream. Start with [AGENTS.md](AGENTS.md) (build, architecture, workflows),
-> then [docs/fork/ISSUE_TRIAGE.md](docs/fork/ISSUE_TRIAGE.md) and [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md).
+> then [docs/fork/ISSUE_TRIAGE.md](docs/fork/ISSUE_TRIAGE.md), [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md) (bugs) and
+> [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md) (new co-op features).
 
 ## FAQ
 
