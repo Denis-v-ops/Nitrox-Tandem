@@ -189,11 +189,19 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
 - **Transpilers:** use `NitroxPatcher/PatternMatching` (`InstructionsPattern`, `.Transform`, `.InsertAfterMarker`). Every
   transpiler must be registered with its IL instruction delta in
   `Nitrox.Test/Patcher/Patches/PatchesTranspilerTest.cs`, or the test fails.
-- Game source isn't in the repo. To read Subnautica code, decompile
-  `F:\Spiele\SteamLibrary\steamapps\common\Subnautica\Subnautica_Data\Managed\Assembly-CSharp.dll`. A copy is also in
-  `Nitrox.Test/bin/Debug/net10.0/` after a build. From the CLI: `dotnet tool install --global ilspycmd`, then
-  `ilspycmd -t <FullTypeName> <path>\Assembly-CSharp.dll`. In a GUI: ILSpy or dnSpyEx. If no decompiler is available, a
-  reflection/`System.Reflection.Metadata` IL dump works too. That's how the story investigation for #2640 was done.
+- **Game source: read the decompiled C#, it's already on this PC.** It lives *outside* the repo because it's the game's
+  code, so **never commit or paste large parts of it**:
+  - `F:\nitrox\game-src\83031\` holds `Assembly-CSharp` (1,979 files, e.g. `Player.cs`, `StoryGoalCustomEventHandler.cs`).
+  - `F:\nitrox\game-src\83031-firstpass\` holds `Assembly-CSharp-firstpass` (UWE utilities, 1,269 files).
+  - The folder name is the game version from `plastic_status.ignore`.
+  - Search it like normal code: `rg -n "void OnHandClick" F:\nitrox\game-src\83031`.
+  - After a Subnautica update, run `tools\decompile-game.ps1`. It needs `ilspycmd`, which is installed
+    (`dotnet tool install --global ilspycmd`); call it from PowerShell, because Git Bash doesn't have `~/.dotnet/tools`
+    on PATH. Then update the paths here.
+  - One-off lookups: `ilspycmd -t <FullTypeName> <...>\Subnautica_Data\Managed\Assembly-CSharp.dll`. GUI: ILSpy or
+    dnSpyEx (also the debugger, see §4).
+  - Decompiled code can be subtly off (e.g. compiler-generated state machines, field initialisers). For anything
+    timing-critical, confirm in the IL or in game.
   **Never guess game behaviour.** Upstream's CONTRIBUTING warns that AI-written Nitrox code goes wrong
   mostly because of wrong assumptions about game internals. Mark unverified assumptions as such.
 
