@@ -1588,7 +1588,7 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   partner's `Fires.Douse` calls `Fire.Extinguished`, which destroys the fire's parent 4 s later
   (`game:Fire.cs`, `Extinguished`). The fires come from the batch files, and the server saves which batches it has
   parsed (`WorldData.ParsedBatchCells`), so a removed fire isn't generated again on load; a late joiner only gets what
-  the registry still has. Single player behaves the same way: the destroyed parent isn't saved. No new metadata, no
+  the registry still has. Single player most likely behaves the same way, since the parent is destroyed (inferred from the code, not tested in single player). No new metadata, no
   save-format tag used.
 - **Tests:** L2 `AuroraFireTest` with the real batch (fire class ids from `prefabs.db`): partner gets the packet,
   server drops the record, a late joiner and a rejoin after a restart don't get it, the untouched fires stay; fails if
