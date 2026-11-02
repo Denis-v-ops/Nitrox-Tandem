@@ -48,6 +48,13 @@ public class ItemContainers
             return;
         }
 
+        // A new item created by the machine itself (FiltrationMachine.Spawn), it has no id yet
+        if (items.MachineProducingCount > 0)
+        {
+            items.ProducedInContainer(pickupable.gameObject, ownerId);
+            return;
+        }
+
         if (!pickupable.TryGetIdOrWarn(out NitroxId itemId))
         {
             return;

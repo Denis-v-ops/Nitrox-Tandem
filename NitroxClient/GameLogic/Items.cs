@@ -29,6 +29,13 @@ public class Items
 
     public int PickingUpCount;
 
+    /// <summary>
+    /// Greater than 0 while a base machine creates an item straight into its own container (<c>FiltrationMachine.Spawn</c>).
+    /// The game calls <see cref="Pickupable.Pickup"/> on such an item, but it was never in the world nor in the player's
+    /// inventory, so it is announced once as a new item of the machine's container (<see cref="ProducedInContainer"/>).
+    /// </summary>
+    public int MachineProducingCount;
+
     public Items(IPacketSender packetSender, Entities entities, EntityMetadataManager entityMetadataManager)
     {
         this.packetSender = packetSender;
@@ -86,6 +93,20 @@ public class Items
         if (packetSender.Send(new EntitySpawnedByClient(inventoryItemEntity, true)))
         {
             Log.Debug($"Recreated item {inventoryItemEntity} (planted or moved out of equipment)");
+        }
+    }
+
+    /// <summary>
+    /// A machine created this item in its own container (see <see cref="MachineProducingCount"/>): the server records it
+    /// there and the other players spawn it there. No simulation lock, it is an item in a container.
+    /// </summary>
+    public void ProducedInContainer(GameObject gameObject, NitroxId containerId)
+    {
+        InventoryItemEntity inventoryItemEntity = ConvertToInventoryEntityUntracked(gameObject, containerId);
+
+        if (packetSender.Send(new EntitySpawnedByClient(inventoryItemEntity, false, false)))
+        {
+            Log.Debug($"Produced item {inventoryItemEntity} in container {containerId}");
         }
     }
 
