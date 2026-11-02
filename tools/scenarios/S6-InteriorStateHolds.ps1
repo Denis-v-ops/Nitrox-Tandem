@@ -143,6 +143,38 @@ function Format-Vector3Arg {
     ($P | ForEach-Object { $_.ToString('0.###', $inv) }) -join ','
 }
 
+<#
+    The bay doors' animator (on the Cyclops, not under the bay): culling mode, state and clips. Docking needs the state
+    "opened" (VehicleDockingBay.requiresAnimationStateForDocking, read in game).
+#>
+$script:openedHash = -1386862757    # Animator.StringToHash("opened")
+function Get-BayAnimator {
+    (Invoke-BridgeJson $A "animator $script:cyclopsId all") | Where-Object { $_.object -eq 'cyclops_launch_bay_launch_cin' } | Select-Object -First 1
+}
+
+<#
+    What VehicleDockingBay.OnTriggerEnter checks, as Alice's game sees it, for a docking try that didn't dock.
+#>
+function Write-DockDiagnostics {
+    param([string]$BayId)
+    $values = [ordered]@{}
+    foreach ($member in 'interpolatingVehicle', '_dockedVehicle', 'nearbyVehicle') {
+        $values["bay.$member set"] = (Invoke-Bridge $A -AllowError "get $BayId VehicleDockingBay.$member") -ne 'null'
+    }
+    foreach ($member in '_docked', 'timeUndocked') {
+        $values["seamoth.$member"] = Invoke-Bridge $A -AllowError "get $seamothId Vehicle.$member"
+    }
+    $values['Time.time'] = Invoke-Bridge $A -AllowError 'get UnityEngine.Time.time'
+    $values['seamoth/bay position'] = "$(Invoke-Bridge $A -AllowError "get $seamothId Transform.position") / $(Format-Vector (Get-DockingBayPosition))"
+    $values['server'] = ((Invoke-Bridge 'server' -AllowError "query $seamothId") -split "`n" | Where-Object { $_ -match 'Owner' }) -join ' '
+    try {
+        $animator = Get-BayAnimator
+        $values['bay animator'] = "$($animator.cullingMode), state $($animator.layers[0].stateHash) (opened: $script:openedHash), $($animator.layers[0].clips -join ', ')"
+    }
+    catch { $values['bay animator'] = $_.Exception.Message }
+    $values.GetEnumerator() | ForEach-Object { Write-Host "    $($_.Key) = $($_.Value)" }
+}
+
 function Invoke-DockCycle {
     param([int]$Cycle)
     $p = Get-DockingBayPosition
@@ -178,11 +210,16 @@ function Invoke-DockCycle {
         $p = Get-DockingBayPosition
         Invoke-Bridge $A ("set $seamothId Transform.position " + (Format-Vector3Arg @($p[0], ($p[1] - 8), $p[2]))) | Out-Null
         Wait-Until { (Invoke-Bridge $A "get $bayId VehicleDockingBay.nearbyVehicle") -ne 'null' } -TimeoutSeconds 8 | Out-Null
-        Start-Sleep -Seconds 3
+        $opened = Wait-Until { (Get-BayAnimator).layers[0].stateHash -eq $script:openedHash } -TimeoutSeconds 8 -IntervalSeconds 0.5
+        if (-not $opened) { Write-Host "  docking try $try : the bay doors didn't open" }
+        Start-Sleep -Seconds 1
         $p = Get-DockingBayPosition
         Invoke-Bridge $A ("set $seamothId Transform.position " + (Format-Vector3Arg @($p[0], ($p[1] - 0.4), $p[2]))) | Out-Null
         $docked = Wait-Until { (Test-InCyclops (Get-State $A)) -and -not (Get-State $A).vehicle } -TimeoutSeconds 15 -IntervalSeconds 0.5
-        if (-not $docked) { Write-Host "  docking try $try didn't dock" }
+        if (-not $docked) {
+            Write-Host "  docking try $try didn't dock"
+            Write-DockDiagnostics $bayId
+        }
     }
     Wait-NoCinematic $A | Out-Null
     if (-not $docked) { Add-Problem "cycle $Cycle : docking didn't put Alice in the Cyclops (state $((Get-State $A) | ConvertTo-Json -Compress -Depth 3))"; return }
