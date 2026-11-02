@@ -10,16 +10,30 @@ public class StoryGoalExecuted : Packet
     public EventType Type { get; }
     public float? Timestamp { get; set; }
 
-    public StoryGoalExecuted(string key, EventType type, float? timestamp = null)
+    /// <summary>
+    ///     A biome or location PDA line (COOP_FEATURES_SPEC D5) that the sender's own game executed, so the sender heard it.
+    ///     The server adds it to the sender's heard goals. Set by the game, which knows the biome and location goals.
+    /// </summary>
+    public bool Experiential { get; }
+
+    /// <summary>
+    ///     A log found in the world (<c>StoryHandTarget</c>, COOP_FEATURES_SPEC D5; survivor PDAs are Encyclopedia goals):
+    ///     the partner's game adds the entry without the voice line.
+    /// </summary>
+    public bool Found { get; }
+
+    public StoryGoalExecuted(string key, EventType type, float? timestamp = null, bool experiential = false, bool found = false)
     {
         Key = key;
         Type = type;
         Timestamp = timestamp;
+        Experiential = experiential;
+        Found = found;
     }
 
     public override string ToString()
     {
-        return $"[StoryGoalExecuted Key: {Key}, Type: {Type}, Timestamp: {Timestamp}]";
+        return $"[StoryGoalExecuted Key: {Key}, Type: {Type}, Timestamp: {Timestamp}, Experiential: {Experiential}, Found: {Found}]";
     }
 
     public enum EventType

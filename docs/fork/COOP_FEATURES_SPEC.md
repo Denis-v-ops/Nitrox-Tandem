@@ -272,7 +272,7 @@ Client settings: partner signal Off / Faint / Always (F1; "Always" also ignores 
 
 ## 5. Story gates (shared story moments)
 
-### G0: Gate foundation, the roster and the solo lock
+### G0: Gate foundation, the roster and the solo lock — done 2026-11-02 (branch `feat/2-g0-g4-story-gates`)
 
 **Goal:**
 - A major beat starts only when both players are there and have each confirmed it.
@@ -322,6 +322,58 @@ Client settings: partner signal Off / Faint / Always (F1; "Always" also ignores 
   - solo with a roster → locked, naming the absent player;
   - option off → immediate start;
   - admin release works.
+
+**Done 2026-11-02** (branch `feat/2-g0-g4-story-gates`, with G4):
+- **Server:** `Models/GameLogic/StoryGates/`. `StoryGateState` is the state machine without networking (ready per gate
+  and player with its time, release flag, `Evaluate` → `NONE`/`LOCKED`/`WAITING`/`START`); `StoryGateService` wraps it
+  (lock, `ISessionCleaner`, sends status and start); `StoryGateRules` holds one rule per gate. `StoryGateReadyProcessor`
+  feeds it. A status is only sent when it differs from the last one for that gate, so renewals don't flood.
+- **Options** (`server.cfg`, server only): `StoryGatesEnabled` (default true; false = every gate starts as soon as one
+  player asks) and `StoryGatePlayers` (default `""` = every saved player; recommended: the two names, e.g.
+  `"Alice,Bob"`, so a test or guest player doesn't lock the story). Both are read at each ask, so `config` changes take
+  effect without a restart (H: not tried).
+- **Roster:** `StoryGatePlayers` split at commas, trimmed, case-insensitive; empty means every saved player
+  (`PlayerManager.GetAllPlayers`, which includes the players loaded from `PlayerData.json`). A name on the roster that
+  never joined counts as offline, so a typo shows up as "Waiting for *typo* to come online".
+- **Rules** (`StoryGateRule`): every rule first needs the whole roster online (else `LOCKED`, naming who is offline).
+  `ONLINE_ONLY` then starts at once (the radio lock). `ALL_READY`: every roster player sends ready within the timeout.
+  `ONE_READY_ALL_PRESENT`: one player asks, every roster player must be inside the gate's `StoryGateArea` (a box, checked
+  against the server's positions from `PlayerMovement`). A ready is dropped when it expires, its player leaves the
+  gate's area, or disconnects. Players who aren't on the roster may ask, but are never waited for.
+- **Option off:** every ready answers with `StoryGateStart` at once, so the game needs no copy of the option.
+- **Admin:** `storygate status` (roster, who is online, each gate's rule and what it waits for) and
+  `storygate release <kind>` (starts a waiting gate now, otherwise lets its next ask through; used up by that start, kept
+  in memory only). For good, set `StoryGatePlayers` to one name or `StoryGatesEnabled=false`.
+- **Game side:** `NitroxClient/GameLogic/StoryGates.cs` holds at most one moment per gate, sends ready (renewed at most
+  once a second while an attempt goes on), shows the status through `Log.InGame` (shown again after 4 s if the player
+  keeps trying) and runs the held moment on `StoryGateStart` with `IsPassing(kind)` true. A game that holds nothing
+  ignores the start. Texts in en/de: `Nitrox_StoryGateOffline`, `..WaitingFor`, `..PartnerReady`, `..DriveCoreWait`,
+  `..DriveCoreJoin`.
+- **Radio lock:** `Radio_PlayRadioMessage_Patch` holds `Radio.PlayRadioMessage` while `pendingRadioMessages[0]` is
+  `RadioSunbeam4` (compared like the game, ignoring case). Verified in `game:Radio.cs` and
+  `game:Story/StoryGoalManager.cs:116-130`: the click only schedules `PlayRadioMessage`, and only
+  `ExecutePendingRadioMessage` takes the message from the queue and completes `OnPlayRadioSunbeam4`; held, nothing is
+  taken (also not from the server's queue, since `RadioPlayPendingMessage` isn't sent), so the message stays playable.
+  `OnHandClick` already hid the HUD icon, so the patch pulses the pending messages to show it again. The partner's
+  `RadioPlayPendingMessageProcessor` calls `ExecutePendingRadioMessage` directly and isn't gated. The admin `sunbeam`
+  command and the `sunbeamcountdownstart` console command aren't gated either.
+
+**API for G1–G3:**
+1. Pick the gate's line in `StoryGateRules.For` (rule, ready timeout, area). The kinds already exist: `DISABLE_GUN`,
+   `ROCKET_LAUNCH`, `SEA_EMPEROR`, `HATCHING`, `CURE` (all `ALL_READY`, 2 min, no area until their item sets one; G2's
+   "aboard" is an area). New kinds are appended to `StoryGateKind` (it's sent over the network).
+2. In the gate's Prefix: `if (!Resolve<StoryGates>().IsPassing(kind)) { Resolve<StoryGates>().Hold(kind, () => __instance.Method(args)); return false; }`.
+   The re-run goes through the same Prefix, so whatever the patch did before (lock requests, packets) still happens once.
+3. Where the game has an area exit (G1: `OnTerminalAreaExit`), call `Resolve<StoryGates>().Cancel(kind)`.
+4. Gate-specific texts: add a case in `StoryGates.FormatStatus` and keys in en/de; otherwise the generic texts apply.
+5. Tests: an L2 test of the gate's rule like `StoryGateTest`, and the item's scenario.
+
+**Verified:** L1 `StoryGateStateTest` (roster parsing, ready set, lock, presence, timeout and renewal, area exit,
+disconnect, release used up once, empty roster) and `StoryGatesTest` (each player's text). L2 `StoryGateTest`: one
+ready → status to both, both ready → start to both, renewals unanswered, disconnect clears the ready and tells the
+other, solo with a roster → locked naming the absent player until they're online, drive core presence, option off,
+admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProcessor` removed. Windowless:
+`G4-DriveCoreTogether.ps1` (radio part below in G4).
 
 ### G1: Disabling the gun
 - **Gate:** a Prefix on `PrecursorDisableGunTerminal.OnHandClick` (`game:` 110-135), **only when `playerCured`**. The
@@ -386,7 +438,7 @@ Three beats. Size L in total.
   - L3: a fixture inside the containment facility; both end at infection 0. Plus the offline-cure regression: cure with B
     offline (gate released by admin), B rejoins cured.
 
-### G4: Aurora drive core
+### G4: Aurora drive core — done 2026-11-02 (branch `feat/2-g0-g4-story-gates`)
 - **There's no single click.** Players weld many radiation leaks, and the last weld calls `LeakingRadiation.NotifyLeaksFixed`
   (`game:LeakingRadiation.cs:106-122`).
 - **Today:** leak health is metadata, and the partner runs their own `NotifyLeaksFixed` through `LiveMixinManager.cs:146-153`.
@@ -404,6 +456,43 @@ Three beats. Size L in total.
   - L3: a fixture after the explosion; the `fixleaks` console command (`game:LeakingRadiation.cs:130`) on all leaks but
     one; the last weld is held until B arrives.
 - **Size:** M.
+
+**Done 2026-11-02** (branch `feat/2-g0-g4-story-gates`, on G0):
+- **Hook: `LiveMixin.AddHealth`**, in the existing `LiveMixin_AddHealth_Patch` Prefix, not `Welder.Weld`: `Weld` runs
+  from an animation event (`Welder.OnToolUseAnim`), which windowless games don't fire, and `AddHealth` also catches the
+  `fixleaks` console command. A heal is held when the target has a `RadiationLeak`, it is the only one of
+  `LeakingRadiation.main.leaks` still leaking (the same count as `GetNumLeaks`, which decides in `NotifyLeaksFixed`
+  whether the goal completes, `game:LeakingRadiation.cs:106-122`), and it would reach `maxHealth` with the same checks as
+  `game:LiveMixin.cs:271-291` (alive or `canResurrect`). Held, `AddHealth` returns 0, so `Welder.Weld` uses no energy and
+  shows no effect; welding below full health goes on as usual (the last leak sits at 90 % while it waits).
+- **Rule:** `ONE_READY_ALL_PRESENT` with the area `StoryGateRules.DriveCoreRoom`. The welder's game renews the ready
+  with each held heal (at most once a second, expiry 5 s), and each renewal re-checks the positions. So the leak seals
+  when the partner arrives *while the welder keeps welding*; a welder who stopped welds once more.
+- **On start** the welder's game runs the held heal again (`AddHealth(maxHealth)`): the leak seals, `NotifyLeaksFixed`
+  completes the goal, and the patch's Postfix sends the leak's metadata; the partner's game seals it through
+  `RadiationMetadataProcessor` → `LiveMixinManager.SyncRemoteHealth` → `AddHealth`, which runs its own
+  `NotifyLeaksFixed`. **The remote path is never held** (`IsRemoteHealthChanging`): it applies what the server already
+  accepted, and it can't complete the leak early because a held heal never sends a full-health metadata.
+- **Findings (read in game, windowless):** the 11 leaks lie within x 849.9..881.5, y -16.0..2.7, z -7.7..18.9; the room
+  box is that plus 6 m (x 844..888, y -22..9, z -14..25). The room is under water (`isUnderwater` true) and the game has
+  no volume or biome of its own for it (`GetBiomeString` is `crashedShip` everywhere in the wreck). The leaks have
+  `maxHealth` 100, `canResurrect` true, start at 0 and exist (with ids) before the explosion. `leaksFixedGoal.key` is
+  **`AuroraRadiationFixed`**.
+- **(H) left:** the box isn't checked against the room's walls: a player in a neighbouring corridor within 6 m of the
+  box's edge counts as "in the room". If both players weld the last two leaks in the same instant, each game sees the
+  other leak still leaking and neither is held; they're both in the room then anyway. The real welder (hold the
+  button, `Welder.Weld`) wasn't driven; it reaches the same `AddHealth` (`Welder_Weld_Patch` swaps the call, then calls
+  `AddHealth` itself for non-vehicles). Not checked windowed (the message on screen).
+- **Verified:** windowless `tools/scenarios/G4-DriveCoreTogether.ps1` PASS (24 checks): Aurora exploded, 10 leaks healed
+  and synced, Alice's heals on the last leak held at 90 % on both games with the goal incomplete while Bob is outside
+  (server: `WAITING ... waiting for Bob`), Bob teleports in and the next heals seal it on both and complete
+  `AuroraRadiationFixed` on both, the server stores it at 100; radio: `RadioSunbeam4` queued on both, Bob quits, Alice's
+  `PlayRadioMessage` is held (message still queued, countdown not started, server `LOCKED ... waiting for Bob`), after
+  both rejoin it plays and `OnPlayRadioSunbeam4` completes on both. **Negative control:** the same scenario with the two
+  patches as on `coop` before G0 fails 9 checks (the last leak seals alone and completes the goal on both; the radio
+  plays with Bob offline). The bridge `diff` reports every sealed leak as a METADATA difference because
+  `RadiationMetadataExtractor` gives "now" as `FixRealTime` for a sealed leak; that's representation noise, so the
+  scenario checks the server's record instead.
 
 ### Seeing each other in cinematics
 Most of this is covered by R1b (adopting #2859). Story cinematics are first-person, so "together" means each player sees
@@ -566,7 +655,7 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - Not checked: windowed (the reticle text and the bubbles heard); the hand target while a tool that overrides the
     hand is held (`PlayerTool.DoesOverrideHand`: no target, so no sharing then); a partner in a vehicle or the Cyclops.
 
-### T3: Hand items over
+### T3: Hand items over — done 2026-11-02 (branch `feat/2-t3-hand-items`)
 - **Today:**
   - The partner's inventory already exists on both sides: `InventoryItemEntity` children of the `PlayerEntity`, mirrored
     into `RemotePlayer.Inventory` (`RemotePlayer.cs:96-98`).
@@ -590,6 +679,46 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
     clients get the reparent, `SaveLoadRoundTrip`.
   - L3: give one item; both inventories are right; relog.
 - **Size:** S (one-step) to M (with a capacity check on the receiving client).
+- **Done (2026-11-02), size S:**
+  - **Give** (`GiveItemAction`, priority -10, so buddy breathing wins when both apply; not offered while the partner is
+    down): pressing interact on the partner sets the local copy of their inventory as the used storage and opens the
+    PDA on the inventory tab, with the partner's body as the PDA's target (`BaseBioReactor.OnUse` does the same). Verified
+    in game code: `PDA.Open` puts the held item away itself (`Inventory.ReturnHeld`) and closes when the target is
+    gone; its range is raised to 3 m (`activeSqrDistance`). `uGUI_InventoryTab.OnClosePDA` clears the used storage.
+    The panel is titled "Give to *name*" (the container's label, translated by the tab).
+  - **How the add is intercepted:** the copy's `isAllowedToAdd`/`isAllowedToRemove` delegates. The game asks
+    `AllowedToAdd(item, verbose: false)` to offer the click action (`Inventory.GetAllItemActions` → `Switch`) and
+    `AllowedToAdd(item, verbose: true)` when it moves it (`IItemsContainer.AddItem`, from a click or a drag:
+    `Inventory.AddOrSwap`, `uGUI_ItemsContainer.OnDrop`). Verbose false answers whether the item can be given; verbose
+    true sends `ItemGiveRequest(item, target)` and returns false, so `AddItem` stops before it takes the item out of the
+    source and nothing moves. `isAllowedToRemove` is false. Nitrox's own adds and removes on the copy (`UnsafeAdd`,
+    `RemoveItem(forced: true)`) skip both delegates. The copy has no error sound, so the refusal is silent.
+  - **Server** `ItemGiveRequestProcessor`: `PartnerInteractions.Check` (no downed player on either side, 4 m), then the
+    item must be an `InventoryItemEntity` whose parent is the giver and not in the giver's `EquippedItems` (equipped
+    items stay `InventoryItemEntity` children of the player; the slots are in `Player.EquippedItems`). It reparents
+    the item to the target's player entity and sends `EntityReparented` to everyone. The giver's game moves the item
+    into its copy of the target's inventory (`AddFromRemote` force-removes it from the local inventory), the target's
+    game into its own. A refused request is only logged: nothing moved anywhere, so nothing needs undoing.
+  - **Capacity: on the giver's game.** The server has no item sizes. `ItemsContainer.HasRoomFor` packs by tech type
+    groups, not by position, so the copy gives the same answer as the partner's own inventory when it holds the same
+    items. It also holds what the partner wears (only `PlayerMetadata` changes on equip), so the check errs on "no room".
+    A race (the partner picks something up while the request travels) falls back to S7's warn-and-`UnsafeAdd`: an
+    overfull inventory, no loss, no dupe. M (asking the receiving game first) wasn't needed for that.
+  - Items given: same id, never destroyed or respawned; a tool's battery moves with the tool (server: child of the
+    tool; game: child GameObject). Equipped items and items not in the inventory get "Take it off first" / nothing;
+    no room: "*name* has no room for that" (en, de).
+  - Tests: L2 `ItemGiveTest` (both games get the reparent, the battery rides along, a late joiner and a restart see the
+    item under the receiver; refused: equipped, the partner's own item, a world item, an unknown item, out of range,
+    self, unknown session, either player down); both tests fail without the processor (the default one only relays
+    the request). Windowless `tools/scenarios/T3-HandItemsOver.ps1` PASS (37 checks): the hold opens the screen, a click
+    and a drag move titanium and a flashlight with its battery, the equipped tank and taking an item back are refused,
+    a restart keeps them with the receiver, no desync. Without the T3 code 21 of 37 fail (the moves happen only in the
+    giver's game, the equipped tank included).
+  - Not checked: windowed (the panel, its title and the messages on screen); a real mouse click and drag (the bridge
+    calls the same game methods); the no-room refusal in game (code-read); a give while either player is in a vehicle
+    or the Cyclops; Give isn't reachable while a tool that overrides the hand is held (as T2). The quick-slot binding
+    of a given item isn't resent (`AddFromRemote` suppresses it): the giver's stale binding and the receiver's
+    auto-binding are dropped at the next join. A refused give tells the giver nothing.
 
 ### T4: Cyclops crew roles — done 2026-11-02 (branch `feat/1-t4-cyclops-crew`)
 - **The game doesn't block it:**
@@ -905,7 +1034,7 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
 - **Open:** how it sounds (windowed, with sound; windowless games are muted): volume, and the 2D breathing. Bubbles stay
   2D (unchanged). The downed sound (T1, through `PlayPain`).
 
-### D2: The deep cuts the line (M)
+### D2: The deep cuts the line (M) — done 2026-11-02 (branch `feat/2-d2-deep-cuts-line`)
 - **Goal:** the partner's signal works in open water and drops to a **last contact** in caves, below 300 m, in the Lost
   River, the lava zones and Precursor facilities. Beacons and scanner rooms you build bring it back. (Decided
   2026-11-02.)
@@ -948,6 +1077,66 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - L2: state relay; a late joiner gets the partner's state.
   - L3: teleport B to 400 m: A's marker freezes and the label counts up. Place a beacon next to B: contact returns. Remove
     it and bring B back to 50 m: contact returns.
+- **What was built:**
+  - The rule, pure: `SignalInterferenceRules` (`NitroxClient/GameLogic/SignalInterferenceRules.cs`). Deeper than the
+    option (strictly), or the biome starts with `LostRiver`, `ILZ`, `InactiveLavaZone`, `Lava`, `ALZ`, `Precursor` or
+    `Prison`, or contains `cave` (all ignoring case; `jellyshroomCaves` is covered by `cave`). From the A0 list that
+    matches every `LostRiver_*`, `ILZ*`/`ilz*`, `InactiveLavaZone`, `LavaLakes*`, `LavaFalls`, `LavaPit`, `ALZ*`,
+    `Precursor_*` (the gun's rooms too), `PrecursorCave_*`, `PrecursorThermalRoom`, `precursorCache`, `Prison_*`,
+    `JellyshroomCaves`/`jellyshroomCaves*`, every `*_Cave*`/`*_cave_*` and `FloatingIslandCaveTeleporter`. The
+    `*_CaveEntrance` names match too, so the line drops at a cave mouth. Not matched: `Lifepod`, the Aurora
+    (`crashedShip`, `CrashedShip_Interior_*`: not in the decided list), open water and wrecks. An empty biome (before the
+    player's first `LateUpdate`) is no interference.
+  - Relays: a beacon that is deployed (`BeaconManager` lists every beacon, also the ones in inventories and lockers:
+    active and `!pickupable.attached`) within 150 m, or a scanner room in `MapRoomFunctionality.mapRooms` (the ones this
+    game has loaded) that is powered (`powered`, or no power needed in the game mode) within its own `GetScanRange()`
+    (`Mathf.Min(500, 300 + 50 × range upgrades)`, `game:MapRoomFunctionality.cs:272`), measured to the room.
+  - `SignalInterference.IsLocalPlayerInterfered()` works it out from `Player.main` (position, `Ocean.GetDepthOf`,
+    `GetBiomeString()`), at most every 0.25 s, and keeps why in `SignalInterference.LocalReason` (for the bridge, e.g.
+    "relayed by beacon 3 m (depth 400 m > 300 m)"). `IsLinkCut(partner)` is local or partner.
+  - The marker: `LastContactRule` goes in front of "faint" in `PartnerSignalRules.Rules` (room for D3's "distress" in
+    front of it). It answers only in the Faint setting, when the link is cut and the partner isn't up close (within
+    12 m, or in sight under 25 m: then "faint" answers, so up close nothing changes). Its look is faint (`minDist` 12,
+    `range` 150) with `Frozen`, and the marker is gone for 0.5 s at the end of every 3 s (`minDist` hidden). The
+    context gained `LinkCut` and `SecondsSinceContact`, the look `Frozen`.
+  - `PartnerSignal` points `PingInstance.origin` at a scene-root object `last_contact_<name>` placed where the marker
+    last followed the partner, and back at the body's own origin when contact returns. Contact is any refresh that
+    isn't frozen (also up close, or with Off/Always). Distance, sight and name tag are measured to the body now, not to
+    the marker. Label: "<name> · last contact 42 s", from a minute on "· last contact 2 min" (en + de), via `SetLabel`.
+  - Server: `Player.Interfered` is reset when the player joins (`CreatePlayerData`) and leaves. A joining player gets
+    each partner's latest `PlayerStats` (with `Interfered`) right after the pose replay, so a late joiner's marker is
+    right before the partner's next stats (up to 3 s) and their vitals show at once.
+  - F2's ping price now uses the real rule.
+- **Verified:**
+  - L1 `SignalInterferenceRulesTest` (depth 300 vs 300.01, the A0 names in and out, beacon 150 m, scanner range
+    300/350/500 and power, either player), `PartnerSignalRulesTest` (frozen look, flicker phases, up close equals faint,
+    Always and Off, rule order, label age).
+  - L2 `DeepCutsLineTest`: the flag reaches the partner, a late joiner gets it at once with the stats, it's back to false
+    after a disconnect and after a rejoin (a late joiner then gets false). Both tests fail without the server changes.
+  - L3 windowless `tools/scenarios/D2-DeepCutsLine.ps1` PASS (34 checks): at 50 m the marker is faint and on Bob; at
+    400 m (above Lifepod 29, `bloodKelpTwo`: depth decides) Alice's marker drops to the last contact, stays put while
+    Bob moves 40 m on, the label counts up (0 s → 4 s), no name tag, the marker flickers (2 of 16 reads dark); a beacon
+    spawned next to Bob ("relayed by beacon 3 m") brings contact back; picked up, contact is lost again; back at 50 m
+    contact returns; in the Jellyshroom Cave at 258 m (`JellyshroomCaves`) the biome cuts the line; Alice at 400 m
+    loses Bob and Bob loses Alice; Alice's setting Always shows Bob live.
+  - Negative control: on unfixed `coop` the scenario FAILs (20 checks with an earlier revision whose two depth-label patterns were stricter; 18 expected now): the marker follows Bob 40 m at 400 m, no last
+    contact anywhere.
+- **Findings:**
+  - Right after a teleport out of the lifepod, `GetBiomeString()` still said `Lifepod` at 50 m in Grassy Plateaus (the
+    atmosphere override isn't cleared by a teleport). Harmless here; whether a Precursor teleporter leaves a stale
+    override the same way is (H).
+  - With a beacon in Bob's inventory, `get <bobId> PingInstance...` on Alice's game reaches the beacon's `PingInstance`
+    under his body (`minDist` 10). The scenario reads the marker through `PartnerSignal`. `PartnerSignal` found the
+    marker with the first `GetComponentInChildren<PingInstance>`, so a partner who joins carrying a beacon could, before
+    the signal is attached, have had the beacon's ping taken as their marker (since F1, not seen in game). **Fixed:**
+    `PartnerSignal` takes only the `PingInstance` on the object `PlayerModelManager.AttachPing` names
+    `signal_<name>` (`PartnerSignalRules.MarkerObjectName`/`IsPartnerMarker`, both sides use the same name; L1
+    `TheMarkerIsThePartnersSignal_NotACarriedBeacon`). The D2 scenario passed again with it (34 checks); joining while
+    the partner already carries a beacon wasn't run in game (the selection is the pure function).
+- **Not verified:** a scanner room in game (L1 only; also whether a scanner room reports `powered` in a game that
+  doesn't simulate its base, B3); the frozen marker and its flicker on screen (windowed); a beacon thrown by the player
+  (the scenario spawns one with the console, which also leaves it unattached); two game languages at once; the F2
+  scenario wasn't re-run with the real rule (its spots are shallow open water).
 
 ### D3: Distress call (S, with T1)
 - **Goal:** when your partner goes down, their marker becomes a distress signal you can follow, even where the signal
@@ -1029,9 +1218,9 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - `PDALog.Add` plays the voice line by default (`playSound = true`, `game:PDALog.cs:159-189`). So when A enters the
     Lost River, B's PDA describes it while B sits in the base.
   - Logs found in the world (`StoryHandTarget.OnHandClick` → `goal.Trigger()`) arrive the same way, as
-    `StoryGoalExecuted`, and play too. (`PDALogEntryAddProcessor` carries the pod radio and the `pdalog` command, not
-    found logs; see "Found logs" below.)
-- **D5a, game side (S, wave 1). Done (2026-11-02, branch `feat/1-d5a-own-firsts`), except found logs (below).**
+    `StoryGoalExecuted`, and play too (until D5b). (`PDALogEntryAddProcessor` carries the pod radio and the `pdalog`
+    command, not found logs; see "Found logs" below.)
+- **D5a, game side (S, wave 1). Done (2026-11-02, branch `feat/1-d5a-own-firsts`); found logs were done in D5b.**
   - **Experiential goals** are the keys in `BiomeGoalData` and `LocationGoalData` (read at runtime from the trackers'
     `goalData`). Everything else syncs as today.
     - In game: 58 biome + 32 location goals, 69 distinct keys: 62 PDA, 13 Radio, 15 Story goals (counted with
@@ -1060,12 +1249,11 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     **For D5b:** filtering the initial PDA log isn't enough. `SetupTrackers` must keep the experiential PDA goals the
     joining player hasn't heard, and `SetScheduledGoals` must skip a partner's delayed ones, or B can't hear them after
     a rejoin.
-  - **Found logs: not done, the premise was wrong.** `PDALogEntryAdd` doesn't carry found logs. It carries every
-    `PDALog.Add` outside `StoryGoal.Execute`, which is the pod radio (`StoryGoalManager.ExecutePendingRadioMessage`) and
-    the `pdalog` console command. Muting it would mute the partner's radio messages. PDAs found in the world
-    (`StoryHandTarget.OnHandClick` → `goal.Trigger()`) arrive as `StoryGoalExecuted` (PDA) like any story line, and the
-    receiver can't tell them apart (`PDALog.EntryType` has no radio/found kind). Options: a "found" flag sent with
-    `StoryGoalExecuted` (patch `StoryHandTarget.OnHandClick`), or leave it. Decision needed.
+  - **Found logs: the premise was wrong; done in D5b with a "found" flag.** `PDALogEntryAdd` doesn't carry found logs.
+    It carries every `PDALog.Add` outside `StoryGoal.Execute`, which is the pod radio
+    (`StoryGoalManager.ExecutePendingRadioMessage`) and the `pdalog` console command; it stays as it is, so the
+    partner's radio messages still play. PDAs found in the world arrive as `StoryGoalExecuted` like any story goal
+    (survivor PDAs are Encyclopedia goals, see D5b), and the receiver couldn't tell them apart, hence the flag.
   - Option `PartnerDiscoveriesSilent` (default true); false restores today's behaviour (L3 negative control). Before
     the initial sync, `CoopSettings` holds false, so packets processed then behave as today. (Since MULTINAUGHTICA_SPEC
     M2, story goals that arrive before the initial sync wait for it, so the option applies to them too.)
@@ -1078,19 +1266,68 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     the schedule fix failed 2 (Bob's own trigger swallowed). Not run: windowed games, delayed lines, location goals.
   - The `kelpforest` goto spot (75, -28, -95) is `safeShallows` on the biome map. (100, -30, 200) is `kelpForest`.
     After a teleport out of the pod, `GetBiomeString` reads `Lifepod` for a few seconds.
-- **D5b, server side (S–M, wave 2):**
+- **D5b, server side (S–M, wave 2). Done (2026-11-02, branch `feat/2-d5b-heard-goals`).**
   - **Why it's needed:** on join, the initial sync restores the whole PDA log silently with `PDALog.Deserialize`
     (`PdaInitialSyncProcessor.cs`, `RestorePDALog`). A line the partner triggered in an earlier session is then already
     in your log, so `PDALog.Add` finds it when you get there and stays silent. With daily sessions, most lines would
     be lost without D5b.
-  - A per-player `heardGoals` set in the player's saved record (field added in A1). A player's own `StoryGoalExecuted`
-    for an experiential key adds it. Initial sync leaves out experiential entries the joining player hasn't heard.
+  - **Heard set:** `Player.HeardGoals` (saved, field from A1). `StoryGoal_Execute_Patch` flags a game's own execute of
+    a biome or location PDA line (`StoryGoalExecuted.Experiential`, classified by `ExperientialGoals` from the game's
+    goal data); `StoryGoalExecutedProcessor` adds it to the *sender's* set. A relayed goal never counts: the partner's
+    game applies it under `PacketSuppressor<StoryGoalExecuted>` and sends nothing.
+    - **Why a flag and not a server-side list:** the classification lives in the game's assets (`BiomeGoalData`,
+      `LocationGoalData`), which the server doesn't load; the game already reads it for D5a. A hard-coded server list
+      would be a second copy that can drift. The server needs no world-level list either: every biome or location line
+      in the shared PDA log got there from someone's flagged execute, so the union of all players' heard sets holds
+      them all.
+  - **Initial sync:** `OwnFirsts.UnheardBy` = lines in any player's heard set that the joining player hasn't heard;
+    `PdaManager.GetInitialPDAData` leaves them out of the joining player's PDA log (option off: nothing left out).
+    The game then (option read from the packet's `CoopSettings`, because `PlayerInitialSyncProcessor` may run later):
+    - `SetupTrackers` keeps a completed biome or location PDA goal in its tracker when it isn't in the PDA log the
+      server sent (`ExperientialGoals.StaysInTracker`), so this player's visit still fires it; D5a's schedule rule then
+      lets it play.
+    - `SetScheduledGoals` skips pending delayed biome and location PDA lines, as `ScheduleProcessor` does in session.
+      **Limit:** the server doesn't know whose trigger scheduled one, so a player's *own* pending delayed line is
+      dropped on rejoin too; their tracker keeps the goal, so it fires again (delay restarted) the next time they're
+      there. Read in game: the biome and location PDA lines with a delay are `Emperor_Telepathic_Contact1` and `2`
+      (1200 s), `Goal_BiomeJellyCave2` (2800 s), `Emperor_Telepathic_Contact3` (10 s) and
+      `Precursor_Prison_MoonPool_Log1` (3 s). An owner on `NitroxScheduledGoal` would fix it (a save-format
+      addition); not done.
+  - **Saves from before D5b:** every player's heard set is empty, so their existing log entries are in nobody's set and
+    stay shared as before (no line re-heard, none recovered). Only lines heard from now on are per player.
+  - **Found logs:** `StoryHandTarget.OnHandClick` only calls `goal.Trigger()`, which adds the goal to
+    `StoryGoalScheduler.schedule`; the scheduler's `Update` executes it on a later frame (`game:Story/StoryGoal.cs`,
+    `game:Story/StoryGoalScheduler.cs`). So `StoryHandTarget_OnHandClick_Patch` remembers the key of a PDA or
+    Encyclopedia goal it scheduled, and `StoryGoal_Execute_Patch` sends `StoryGoalExecuted.Found` when it executes.
+    - **Finding (read in game):** the survivor PDAs in wrecks and at lifepods are **Encyclopedia** goals, not PDA
+      goals (`Wreck17_KelpForest_PDA1` → `InnerBiomeWreckLore2`, `Wreck15_SafeShallows_PDA1` → `InnerBiomeWreckLore1`,
+      `EscapePod_3_PDA_SeaglideCompass` → `Lifepod3`; all without delay). `StoryGoal.Execute` plays them through
+      `PDAEncyclopedia.AddAndPlaySound` (`game:PDAEncyclopedia.cs:142`): `Add(key, verbose: true)`, whose popup
+      (`uGUI_PopupNotification.OnEncyclopediaAdd`) plays the entry's sound, plus `PDASounds.queue.PlayQueued`.
+    - The partner's game (option on) completes the goal, then for an Encyclopedia goal `PDAEncyclopedia.Add(key,
+      false)` and the databank's "new" marker (`NotificationManager` group Encyclopedia, what verbose adds besides the
+      popup); for a PDA goal `PDALog.Add(key, playSound: false)` (`game:PDALog.cs:159`: no voice line or subtitles,
+      timestamped now, with the log notification). Later joiners get them from the shared databank and PDA log as
+      before. The finder's `PDAEncyclopediaEntryAdd` (verbose) comes after the goal and finds the entry there.
+  - **Small effects:** after Bob hears a line Alice heard first, the server keeps Alice's timestamp, so Bob's entry
+    shows her time after his next rejoin. A player who heard a partner's line while the option was off has no heard
+    record for it and hears it again from their own visit once the option is on.
 - **Tests:**
   - L1: classification of keys.
   - L2 (D5b): `heardGoals` per player, the initial-sync filter, `SaveLoadRoundTrip`.
   - L3 (D5a): A teleports into the Kelp Forest (an early biome line); B's PDA queue stays empty (bridge read of
-    `PDASounds.queue`, from A0); B teleports there and hears it once. D5b adds: B rejoins before going there, then
-    still hears it once.
+    `PDASounds.queue`, from A0); B teleports there and hears it once. D5b adds (`D5b-OwnFirstsAfterRejoin.ps1`): B
+    rejoins before going there, then still hears it once; A picks up a found PDA, B gets the entry without the line.
+  - **Verified (D5b):** L1 `ExperientialGoalsTest` (flag, found types, `StaysInTracker`), `OwnFirstsTest` (the
+    left-out set, option off). L2 `OwnFirstsRejoinTest`: only the sender's flagged execute is heard, the heard set
+    survives a restart, a joiner who hasn't heard the line doesn't get it in the PDA log and one who has does, option
+    off sends it, `Found` is relayed (fails without the server change). `PlayerDataSaveLoadTest` (A1) covers the saved
+    set. L3 windowless `tools/scenarios/D5b-OwnFirstsAfterRejoin.ps1` PASS (21 checks): after a server restart Bob
+    has the goal completed, no entry and the goal in his tracker; at the Kelp Forest he hears it once and Alice
+    doesn't; Alice picks up the wreck PDA, Bob's databank gets it with no voice line started or queued. Negative
+    control on the code before D5b: 5 checks fail (Bob gets the entry on rejoin, his tracker loses the goal, he never
+    hears it; he hears Alice's found log). Not run: windowed games, delayed lines after a rejoin, location goals,
+    PDA-type found logs (none seen in game), `-OptionOff` in game (covered headless).
 
 ### D6: Lights in the dark (S probe, then fixes)
 - **Goal:** at night and in caves you see your partner's light from far off: the flashlight beam, the Seaglide light, a
@@ -1311,17 +1548,61 @@ sets ever reaches them.
     rejoin starts empty. Negative controls: without the replay call both tests fail; with the reveal kept, the first
     fails. **Not verified in game:** the rejoin itself (B rejoins, A's body stands and holds the tool). The packets are
     the ones the game already applies live.
-- **R2b: Arm states (M).** Sync `using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump` and
-  `diving` (`game:ArmsController.cs:255-261,454-577`) as new `AnimChangeType` values, sent on change from a watcher like
-  `UnderwaterStateTracker`. The partner then visibly scans, builds, welds, cuts, opens the PDA, swims at the surface
-  (#2281) and jumps. No new packet; `PacketsSerializableTest` covers it.
-  - (H) Also call `ArmsController.Reconfigure(tool)` on the partner's body when a tool is drawn or put away, for aim and
-    the two-handed grip.
+- **R2b: Arm states (M)** — done 2026-11-02 (branch `feat/2-r2b-arm-states`). Sync `using_tool`, `using_tool_alt`,
+  `using_builder`, `using_pda`, `on_surface`, `jump` and `diving` (`game:ArmsController.cs:255-261,454-577`) as new
+  `AnimChangeType` values, sent on change from a watcher like `UnderwaterStateTracker`. The partner then visibly scans,
+  builds, welds, cuts, opens the PDA, swims at the surface (#2281) and jumps. No new packet; `PacketsSerializableTest`
+  covers it.
+  - Also call `ArmsController.Reconfigure(tool)` on the partner's body when a tool is drawn or put away, for aim and
+    the two-handed grip (done; the aim checked windowless, the grip not, see below).
   - **A0 probe (2026-11-02, windowless, `animator` on both games):** with the PDA open, A's own animator has
     `using_pda` true, B's copy false. With the scanner or builder drawn, A has `holding_tool` true, B false;
     `holding_scanner`/`holding_builder` and `using_tool_first` do reach B (held-item packet). `using_tool` stayed false
     on A's *own* animator in the samples taken while A scanned a fish (the scan completed), so check the sender side of
     `using_tool` windowed before relying on it (H). Add `holding_tool` to R2b's list.
+  - **What was built:**
+    - Nine new `AnimChangeType` values: the seven above plus `holding_tool` and `diving_land` (written next to `diving`
+      by the same `UpdateDiving`). `ArmStates` maps each to its animator parameter.
+    - **Sender:** `ArmStateTracker` reads the local player's own arms animator in `LateUpdate`, i.e. whatever the game
+      wrote there (`ArmsController.Update`, `ConditionRules`, the PDA), instead of recomputing the game's conditions.
+      `ArmStateWatch` (pure) sends every state once after loading, then on change. An "off" is sent only after the value
+      has been off for 0.15 s: a click tool sets `using_tool` for one frame (`GUIHand.usedToolThisFrame` is set on the
+      button's down frame only, `game:GUIHand.cs:185,299`), so an on and an off would often reach the partner in the
+      same frame and their animator would never see the on, and a flickering value would cost a packet per frame.
+    - **Receiver:** `RemotePlayer.SetArmState(parameter, value)` is the **single entry point** for arm writes on the
+      partner's body: the synced states and the held-item processor's `holding_<tool>` and `using_tool_first`. The
+      `if (!InCinematic)` of #2859 and T1's downed-pose lock go there. A change of `holding_tool` or a `holding_<tool>`
+      calls `ArmsController.Reconfigure` with the tool plugged into the hand (none while `holding_tool` is off, which
+      the sender's game already turns off while the PDA is open).
+    - **Server:** keeps the latest state per type for late joiners (R2a's map), except the infection reveal and the fall
+      states `jump`, `diving` and `diving_land` (`AnimChangeTypeExtensions.IsReplayedToLateJoiners`). The join
+      payload's pose (`PlayerContext.Animation`) is now the underwater state only; before, it was whichever type came
+      last.
+  - **Findings (from code unless said):**
+    - `jump` is not a trigger: `ArmsController.Update` sets it every frame to `Player.GetPlayFallingAnimation()`, true
+      while the player has been falling out of water for 0.45 s (`game:Player.cs:1642-1653,1660-1667`). Synced as a plain state.
+    - `using_builder` has no writer in the game: `ArmsController.SetUsingBuilder` has no caller. Building shows as
+      `using_tool` (`BuilderTool.GetUsedToolThisFrame` returns `isConstructing`). Synced anyway; it stays off.
+    - `Reconfigure` is safe on the partner's body once `ArmsController.Start` has run (checked: the method touches the
+      body's own IK, aimers and bleeder target, which `ArmsController_Update_Patch` already uses every frame). Its
+      no-tool branch reads the *local* player's PDA (`Start` takes the local player), like the existing world-target
+      reconfigure in that patch. The patch's world-target path calls `Reconfigure(null)`, which would drop a tool's IK
+      if a vehicle or chair change came while a tool was out (tools are put away there; not handled).
+    - Windowless (seen): opening the PDA puts the held tool away (`PDA.Open` → `Inventory.ReturnHeld`), so
+      `holding_tool` and `holding_<tool>` go off on both sides. The scanner and builder have no hand IK targets; what
+      `Reconfigure` changes for them is the right arm's aim (`rightAim.shouldAim`), which now matches on both sides.
+      `using_tool` can't be produced on the sender windowless (`GUIHand.GetUsingTool` needs
+      `AvatarInputHandler.IsEnabled()`, false without a locked cursor).
+  - **Verified:** L1 `ArmStatesTest` (initial send, on-change, the off delay with a one-frame click and a flicker, the
+    replay predicate). L2 `PartnerArmStatesReplayTest`: a late joiner gets the PDA, surface and holding states and not
+    the fall; fails on the old processor. **L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks)**: PDA, scanner and
+    builder drawn (with the arm aim), surface, a 40 m fall into the sea (`jump` and `diving` seen on B's copy), and a
+    rejoin of B with the PDA open at the surface. Tool use (`using_tool`, `using_tool_alt`, `using_builder`) was driven
+    on A's own animator with her `ArmsController` off, since the game never sets it windowless. Negative control: on
+    unfixed `coop`, 12 of 33 checks fail (no rejoin). **Not verified:** a real tool click or weld through input, how the
+    poses look (bones don't move windowless), a fall onto land (`diving_land`), the two-handed grip of a tool that has
+    hand IK targets, and a late joiner arriving while the partner has a tool out (the replay sends `holding_tool` before
+    the held item; `SetArmState` recomputes the arms on either, from code). Needs a windowed run.
 - **R2c: Tool effects (M–L).** Each tool plays its beam or sparks only for the local user (`game:BuilderTool.cs:362`,
   `Welder.cs:61`, `LaserCutter.cs:100`, `ScannerTool.cs:146`, the Seaglide propeller `Seaglide.cs:110-117`). Play them on
   the partner's body when R2b's `using_tool` turns on. Scanner, builder and welder first; the laser cutter beam also
@@ -1512,6 +1793,23 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   `_Medium_Tall` world entity with a NitroxId (from the batch), so `Fires.cs`'s `fire.transform.parent` lookup finds an
   id; no server-side creation is needed. What's left for B4: whether dousing them is relayed, persisted on the server
   and kept after a restart (headless first: `FireDoused` / `EntityDestroyed` for these world entities).
+- **Done (2026-11-02): nothing to fix, it already works.** Dousing an Aurora fire goes through the same path as a
+  Cyclops fire: `Fire_Douse_Patch` → `Fires.OnDouse` sends `FireDoused` with the parent's id (health 0 once it's out);
+  the server's `FireDousedProcessor` removes the entity from the registry and its cell and relays the packet; the
+  partner's `Fires.Douse` calls `Fire.Extinguished`, which destroys the fire's parent 4 s later
+  (`game:Fire.cs`, `Extinguished`). The fires come from the batch files, and the server saves which batches it has
+  parsed (`WorldData.ParsedBatchCells`), so a removed fire isn't generated again on load; a late joiner only gets what
+  the registry still has. Single player most likely behaves the same way, since the parent is destroyed (inferred from the code, not tested in single player). No new metadata, no
+  save-format tag used.
+- **Tests:** L2 `AuroraFireTest` with the real batch (fire class ids from `prefabs.db`): partner gets the packet,
+  server drops the record, a late joiner and a rejoin after a restart don't get it, the untouched fires stay; fails if
+  the server doesn't destroy the entity. Windowless `B4-AuroraFiresStayOut.ps1` PASS (12 checks): after
+  `/aurora explode`, Alice douses a cargo-room fire (five small `Fire.Douse` calls as the extinguisher does per frame,
+  then one that puts it out); it's gone in both games and on the server, and after a restart it stays out for both
+  while the other 32 burn. On unchanged `coop`, so there is no failing negative control.
+- **Not covered:** a half-doused fire's health isn't stored on the server, so after a restart or rejoin it is full
+  again (whether these fires regrow anyway, `Fire.fireGrowRate`, wasn't read); the real extinguisher's aiming wasn't
+  driven, only `Fire.Douse`.
 
 #### B5: Wild fruit regrowth (S, probe first)
 - **Today (H):** `FruitPlant_Update_Patch.cs:22-26` waits for a lock; planters get one, wild plants may not. Check which
@@ -1589,3 +1887,12 @@ prices, "keeping it scary").
 | 2026-11-02 | D6 | Flare fixed: thrown out of the partner's loaded cells it stayed unlit in the thrower's inventory in the partner's game (no spawn sent); the server now sends those players `EntityDestroyed` for their stale copy. Metadata was fine | L2 `DroppedOutOfSightTest`; windowless `D6-ThrownFlare` PASS, fails the 120 m check without the fix. Lights drawn at 60–120 m: open (windowed) |
 | 2026-11-02 | T4 | Done: the helm screen is interactable for the crew; engine and horn only for the pilot (engine still applies the partner's change); silent running paid only by the game with the lock; decoy patch type and relay fixed; bridge `hold` Down reaches `LeftHandButton`. Finding: the CanvasGroup never blocked the helm buttons (a standing player could already start the engine); silent running drained erratically in two games. README row | L2 `CyclopsCrewTest`; L3 windowless `T4-CyclopsCrew.ps1` PASS (56 checks); negative control on the unfixed patches FAIL (4 checks; silent running drain measured by hand). Not windowed, no real mouse click |
 | 2026-11-02 | F2 | Done: `PingKind` + target tech type in `PlayerPingCreated`, labels built by each game (en/de); Danger/Look/Come here from the crosshair hit (creature aggression read from its components and the player's eco target type); "Ping: come here" on H; `uGUI_Pings` OnAdd/OnIconChange patches keep the icon and colour (the colour was lost on a re-add before too); price via `SignalInterference` (partners' `Interfered`, the local D2 hook returns false until D2). README row | L1 `PingRulesTest`; L2 `ContextPingTest` (fails with send-to-all); L3 windowless `F2-ContextPings.ps1` PASS (146 checks, creature table of 24 types); negative controls: without the patches FAIL (12 checks), unfixed `coop` FAIL. Not verified: two languages at once, real D2 interference, windowed markers, drillables/breakables in game |
+| 2026-11-02 | G0 | Done: story gates (`StoryGateService`/`StoryGateState`/`StoryGateRules`, packets `StoryGateReady`/`Status`/`Start`, `StoryGateKind` with room for G1–G3), roster from `StoryGatePlayers` or every saved player, locked while a roster player is offline, readies cleared on timeout, area exit and disconnect, option off starts at once, admin `storygate status`/`release <kind>`; game-side `StoryGates` hold-and-resume API for G1–G3; Sunbeam radio lock (`RadioSunbeam4` stays queued while held); en/de texts; README co-op rows | L1 `StoryGateStateTest`, `StoryGatesTest`; L2 `StoryGateTest` (6 tests, all fail without `StoryGateReadyProcessor`); windowless `G4-DriveCoreTogether.ps1` radio part (lock across a quit and rejoin) PASS, fails without the radio hook. Full suite green |
+| 2026-11-02 | G4 | Done: the heal that would seal the Aurora's last leak (`LiveMixin.AddHealth`) waits until every roster player is in the drive core room (box from the leaks' measured positions plus 6 m), then seals for both; remote health syncs never held. Goal key `AuroraRadiationFixed` (read in game) | Windowless `G4-DriveCoreTogether.ps1` PASS (24 checks); negative control with the coop hooks: 9 checks fail. L2 drive core presence test. Real welder button and the on-screen message not driven; room walls not measured (H) |
+| 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine). Resolved: a windowless-only difference, not a regression (the bay's door animator stays culled after a cinematic in batch mode; Debug-only fix, S6 then 14/14 windowless, see FIX_SPEC S6). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
+| 2026-11-02 | T3 | Done: Give on the partner hand-target opens the transfer screen with the partner's inventory copy; the copy refuses removals and turns an add into `ItemGiveRequest`; the server checks the pair, ownership, item kind and equipment, reparents and tells everyone; room checked on the giver's copy; en/de strings; README row | Headless: L2 `ItemGiveTest` (2 tests, fail without the processor). Windowless: `T3-HandItemsOver.ps1` PASS (37 checks); without the T3 code 21 fail. Full test suite green. Not checked windowed, no-room refusal code-read |
+| 2026-11-02 | D2 | Done: each game decides its own interference (deeper than `SignalInterferenceDepth`, or a biome starting with `LostRiver`/`ILZ`/`InactiveLavaZone`/`Lava`/`ALZ`/`Precursor`/`Prison` or containing `cave`, case-insensitive; relayed by a deployed beacon within 150 m or a powered scanner room within its scan range) and sends it on `PlayerStats`; when either player is in interference the faint marker stays at the last contact (`origin` on a static object), flickers and reads "last contact 42 s / 2 min" (en, de); up close and with Always nothing changes; the server resets `Interfered` on join and leave and replays the partners' stats to a joining player; the partner marker is found by its `signal_<name>` object, never a carried beacon's ping. README row | L1 `SignalInterferenceRulesTest`, `PartnerSignalRulesTest`; L2 `DeepCutsLineTest` (fails without the server changes); L3 windowless `D2-DeepCutsLine.ps1` PASS (34 checks: 400 m, beacon, pocketed beacon, 50 m, Jellyshroom Cave, Alice deep, Always); unfixed `coop` FAIL (18 checks expected on the final script; 20 on an earlier revision). Marker selection: L1, D2 scenario re-run PASS. Not verified: scanner room in game, windowed look, thrown beacon, two languages, F2 scenario not re-run, joining while the partner carries a beacon |
+| 2026-11-02 | D5b | Done: `HeardGoals` per player from the game's own flagged execute (`StoryGoalExecuted.Experiential`); the join payload leaves out lines another player heard and the joiner hasn't (`OwnFirsts`), the trackers keep them and pending delayed ones are skipped; old saves stay shared. Found logs resolved: a `Found` flag from `StoryHandTarget`; survivor PDAs turned out to be Encyclopedia goals, the partner gets the databank entry without the voice log. Limit: a player's own delayed line pending at a rejoin needs a new visit. README row | L1 `ExperientialGoalsTest`, `OwnFirstsTest`; L2 `OwnFirstsRejoinTest` (fails without the server change); L3 windowless `D5b-OwnFirstsAfterRejoin.ps1` PASS (21 checks), 5 fail on the code before D5b. Delayed lines, location goals, windowed not run |
+| 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
+| 2026-11-02 | R2b | Done: nine arm states as `AnimChangeType` values (`using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump`, `diving`, `diving_land`, `holding_tool`), sent from the local arms animator on change (off after 0.15 s); every arm write on the partner's body through `RemotePlayer.SetArmState` (single entry point for #2859 and T1), which also calls `ArmsController.Reconfigure` on a tool change; server replays them to late joiners except the fall states; join payload pose is the underwater state only. Findings: `jump` is a per-frame state, not a trigger; `using_builder` has no writer in the game; opening the PDA puts the tool away. README row | L1 `ArmStatesTest`; L2 `PartnerArmStatesReplayTest` (fails on the old processor); L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks, incl. a rejoin; tool use driven on the sender's animator); unfixed `coop` FAIL (12 checks). Not verified: real tool input, the look of the poses, a fall onto land (windowed) |
+| 2026-11-02 | B4 | Done, no code change: dousing an Aurora fire already reaches the partner, the server and late joiners and stays out after a restart (Cyclops fire path: `FireDoused` with the parent id, server destroys the batch entity, parsed batches are saved) | L2 `AuroraFireTest` (fails without the server destroy); windowless `B4-AuroraFiresStayOut.ps1` PASS (12 checks) on unchanged `coop`, so no failing negative control. Not covered: half-doused health after a restart, the real extinguisher aim |

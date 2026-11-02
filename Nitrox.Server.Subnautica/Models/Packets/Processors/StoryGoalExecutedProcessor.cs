@@ -31,6 +31,12 @@ internal sealed class StoryGoalExecutedProcessor(IPacketSender packetSender, Sto
                 {
                     pdaManager.AddPDALogEntry(new(packet.Key, packet.Timestamp.Value));
                 }
+                // D5b: games send only their own executes (a partner's are applied under a packet suppressor), so the
+                // sender heard this biome or location line themselves.
+                if (packet.Experiential)
+                {
+                    context.Sender.HeardGoals.Add(packet.Key);
+                }
                 break;
         }
         await storyScheduler.UnscheduleStory(packet.Key);

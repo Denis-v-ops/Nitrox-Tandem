@@ -78,8 +78,14 @@ public sealed class StoryGoalInitialSyncProcessor : InitialSyncProcessor
         storyGoalManager.OnSceneObjectsLoaded();
         
         // Clean LocationGoalTracker, BiomeGoalTracker and ItemGoalTracker already completed goals
-        storyGoalManager.locationGoalTracker.goals.RemoveAll(goal => completedGoals.Contains(goal.key));
-        storyGoalManager.biomeGoalTracker.goals.RemoveAll(goal => completedGoals.Contains(goal.key));
+        // D5b: except the partner's biome and location lines this player hasn't heard (the server left them out of the
+        // PDA log), so this player's own visit still plays them. CoopSettings is read from the packet because the
+        // player's initial sync, which stores it, may run after this one.
+        bool partnerDiscoveriesSilent = packet.CoopSettings is { PartnerDiscoveriesSilent: true };
+        ISet<string> experientialKeys = ExperientialGoals.Keys;
+        HashSet<string> pdaLogKeys = new(packet.PDAData.PDALogEntries.Select(entry => entry.Key), StringComparer.OrdinalIgnoreCase);
+        storyGoalManager.locationGoalTracker.goals.RemoveAll(goal => !ExperientialGoals.StaysInTracker(goal.key, goal.goalType == Story.GoalType.PDA, partnerDiscoveriesSilent, experientialKeys, completedGoals, pdaLogKeys));
+        storyGoalManager.biomeGoalTracker.goals.RemoveAll(goal => !ExperientialGoals.StaysInTracker(goal.key, goal.goalType == Story.GoalType.PDA, partnerDiscoveriesSilent, experientialKeys, completedGoals, pdaLogKeys));
 
         List<TechType> techTypesToRemove = new();
         foreach (KeyValuePair<TechType, List<ItemGoal>> entry in storyGoalManager.itemGoalTracker.goals)
@@ -150,6 +156,7 @@ public sealed class StoryGoalInitialSyncProcessor : InitialSyncProcessor
     private static void SetScheduledGoals(InitialPlayerSync packet)
     {
         List<NitroxScheduledGoal> scheduledGoals = packet.StoryGoalData.ScheduledGoals;
+        bool partnerDiscoveriesSilent = packet.CoopSettings is { PartnerDiscoveriesSilent: true };
 
         // We don't want any scheduled goal we add now to be executed before initial sync has finished, else they might not get broadcasted
         StoryGoalScheduler.main.paused = true;
@@ -166,7 +173,10 @@ public sealed class StoryGoalInitialSyncProcessor : InitialSyncProcessor
                 goalType = (Story.GoalType)scheduledGoal.GoalType,
                 timeExecute = scheduledGoal.TimeExecute,
             };
-            if (!StoryGoalManager.main.completedGoals.Contains(goal.goalKey))
+            // D5a/D5b: a pending biome or location line is skipped, as in ScheduleProcessor. The server doesn't know whose
+            // trigger scheduled it; this player's own tracker schedules it again when they are there.
+            if (!StoryGoalManager.main.completedGoals.Contains(goal.goalKey) &&
+                !ExperientialGoals.IsOwnFirst(goal.goalKey, goal.goalType == Story.GoalType.PDA, partnerDiscoveriesSilent, ExperientialGoals.Keys))
             {
                 StoryGoalScheduler.main.schedule.Add(goal);
             }

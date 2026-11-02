@@ -169,13 +169,14 @@ internal sealed class PdaManager(ILogger<PdaManager> logger) : ISummarize
         }
     }
 
-    public InitialPDAData GetInitialPDAData()
+    /// <param name="leftOutLogKeys">PDA log entries the joining player doesn't get (COOP_FEATURES_SPEC D5b, <see cref="OwnFirsts" />).</param>
+    public InitialPDAData GetInitialPDAData(ISet<string>? leftOutLogKeys = null)
     {
         lock (pdaStateLock)
         {
             return new(PdaState.KnownTechTypes.ToList(),
                        PdaState.AnalyzedTechTypes.ToList(),
-                       PdaState.PdaLog.ToList(),
+                       PdaState.PdaLog.Where(entry => leftOutLogKeys == null || !leftOutLogKeys.Contains(entry.Key)).ToList(),
                        PdaState.EncyclopediaEntries.ToList(),
                        PdaState.ScannerFragments.ToList(),
                        PdaState.ScannerPartial.ToList(),

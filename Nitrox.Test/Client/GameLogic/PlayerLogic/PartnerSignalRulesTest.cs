@@ -3,7 +3,8 @@ using NitroxClient.GameLogic.PlayerLogic;
 namespace Nitrox.Test.Client.GameLogic.PlayerLogic;
 
 /// <summary>
-///     COOP_FEATURES_SPEC F1: how the partner's marker and name tag look by distance, sight and setting (L1).
+///     COOP_FEATURES_SPEC F1: how the partner's marker and name tag look by distance, sight and setting; D2: the last
+///     contact while the line is cut (L1).
 /// </summary>
 [TestClass]
 public class PartnerSignalRulesTest
@@ -77,6 +78,85 @@ public class PartnerSignalRulesTest
             PartnerSignalRules.Rules.Remove(distress);
         }
         Look(PartnerSignalMode.FAINT, 300).Rule.Should().Be("faint");
+    }
+
+    private static PartnerSignalLook CutLook(PartnerSignalMode mode, float distance, float secondsSinceContact = 1, bool inSight = false) =>
+        PartnerSignalRules.GetLook(new PartnerSignalContext(mode, distance, inSight, NAME_TAG_RANGE, PREFAB_MIN_DIST, PREFAB_RANGE, LinkCut: true, SecondsSinceContact: secondsSinceContact));
+
+    [TestMethod]
+    public void D2_LinkCut_TheFaintMarkerFreezesAtLastContact()
+    {
+        PartnerSignalLook look = CutLook(PartnerSignalMode.FAINT, 400);
+        look.Rule.Should().Be(LastContactRule.NAME);
+        look.Frozen.Should().BeTrue();
+        look.MinDist.Should().Be(FaintSignalRule.MIN_DIST);
+        look.Range.Should().Be(FaintSignalRule.RANGE, "as faint as the faint marker");
+        look.NameTagVisible.Should().BeFalse();
+
+        PartnerSignalLook intact = Look(PartnerSignalMode.FAINT, 400);
+        intact.Rule.Should().Be("faint");
+        intact.Frozen.Should().BeFalse("the marker follows the partner while neither is in interference");
+    }
+
+    [TestMethod]
+    public void D2_TheFrozenMarkerFlickersSlowly()
+    {
+        CutLook(PartnerSignalMode.FAINT, 400, secondsSinceContact: 0.5f).MarkerHidden.Should().BeFalse();
+        CutLook(PartnerSignalMode.FAINT, 400, secondsSinceContact: 2.4f).MarkerHidden.Should().BeFalse();
+        CutLook(PartnerSignalMode.FAINT, 400, secondsSinceContact: 2.6f).MarkerHidden.Should().BeTrue("gone for half a second every 3 s");
+        CutLook(PartnerSignalMode.FAINT, 400, secondsSinceContact: 3.1f).MarkerHidden.Should().BeFalse();
+        CutLook(PartnerSignalMode.FAINT, 400, secondsSinceContact: 125.7f).MarkerHidden.Should().BeTrue();
+        CutLook(PartnerSignalMode.FAINT, 400, secondsSinceContact: 2.6f).Frozen.Should().BeTrue("still the last-contact rule while dark");
+    }
+
+    [TestMethod]
+    public void D2_UpCloseNothingChanges()
+    {
+        foreach ((float distance, bool inSight) in new[] { (5f, false), (11f, false), (20f, true) })
+        {
+            CutLook(PartnerSignalMode.FAINT, distance, inSight: inSight).Should().Be(Look(PartnerSignalMode.FAINT, distance, inSight), $"at {distance} m, in sight {inSight}");
+        }
+        CutLook(PartnerSignalMode.FAINT, 5).NameTagVisible.Should().BeTrue("the name tag keeps its range");
+        CutLook(PartnerSignalMode.FAINT, 20, inSight: false).Frozen.Should().BeTrue("out of sight at 20 m the partner is out of contact");
+    }
+
+    [TestMethod]
+    public void D2_AlwaysIgnoresInterference_OffStaysOff()
+    {
+        CutLook(PartnerSignalMode.ALWAYS, 400).Should().Be(Look(PartnerSignalMode.ALWAYS, 400));
+        CutLook(PartnerSignalMode.OFF, 400).MarkerHidden.Should().BeTrue();
+        CutLook(PartnerSignalMode.OFF, 400).Frozen.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void D2_LastContactRuleComesBeforeFaint()
+    {
+        PartnerSignalRules.Rules[0].Should().BeOfType<LastContactRule>();
+        PartnerSignalRules.Rules[^1].Should().BeOfType<FaintSignalRule>();
+    }
+
+    [TestMethod]
+    public void D2_LabelAge_SecondsThenMinutes()
+    {
+        LastContactRule.Age(0).Should().Be((0, false));
+        LastContactRule.Age(42.9f).Should().Be((42, false));
+        LastContactRule.Age(59.99f).Should().Be((59, false));
+        LastContactRule.Age(60).Should().Be((1, true));
+        LastContactRule.Age(150).Should().Be((2, true));
+        LastContactRule.Age(-1).Should().Be((0, false));
+    }
+
+    [TestMethod]
+    public void TheMarkerIsThePartnersSignal_NotACarriedBeacon()
+    {
+        string markerName = PartnerSignalRules.MarkerObjectName("Bob");
+        markerName.Should().Be("signal_Bob");
+        PartnerSignalRules.IsPartnerMarker(markerName, "Bob").Should().BeTrue();
+        // What else under a partner's body has a PingInstance: a beacon in their inventory
+        PartnerSignalRules.IsPartnerMarker("Beacon(Clone)", "Bob").Should().BeFalse();
+        PartnerSignalRules.IsPartnerMarker("Beacon", "Bob").Should().BeFalse();
+        PartnerSignalRules.IsPartnerMarker("signal_Alice", "Bob").Should().BeFalse();
+        PartnerSignalRules.IsPartnerMarker("signal_Bob(Clone)", "Bob").Should().BeFalse("AttachPing sets the exact name");
     }
 
     private sealed class FixedRule(PartnerSignalLook fixedLook) : IPartnerSignalRule

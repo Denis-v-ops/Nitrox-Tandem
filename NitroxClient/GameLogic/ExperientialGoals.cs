@@ -70,11 +70,39 @@ public static class ExperientialGoals
     }
 
     /// <summary>
+    ///     True for a biome or location PDA line, whatever the option. This game flags its own executes of them, so the
+    ///     server can keep them as heard by this player (D5b).
+    /// </summary>
+    public static bool IsExperiential(string key, bool isPdaGoal, ISet<string> experientialKeys)
+    {
+        return isPdaGoal && experientialKeys.Contains(key);
+    }
+
+    /// <summary>
     ///     True for a biome or location PDA line while the option is on: each player hears it from their own trigger only.
     /// </summary>
     public static bool IsOwnFirst(string key, bool isPdaGoal, bool partnerDiscoveriesSilent, ISet<string> experientialKeys)
     {
-        return partnerDiscoveriesSilent && isPdaGoal && experientialKeys.Contains(key);
+        return partnerDiscoveriesSilent && IsExperiential(key, isPdaGoal, experientialKeys);
+    }
+
+    /// <summary>
+    ///     True if a log the partner found in the world should reach this game's PDA (its log or, for survivor PDAs, the
+    ///     databank) without its voice line (D5).
+    /// </summary>
+    public static bool FoundArrivesSilently(bool found, StoryGoalExecuted.EventType type, bool partnerDiscoveriesSilent)
+    {
+        return partnerDiscoveriesSilent && found && type is StoryGoalExecuted.EventType.PDA or StoryGoalExecuted.EventType.ENCYCLOPEDIA;
+    }
+
+    /// <summary>
+    ///     D5b, on join: true if a completed tracker goal stays in this game's biome or location tracker, so this player's
+    ///     own visit can still play it. That is a biome or location PDA line that isn't in the PDA log the server sent
+    ///     (the server leaves out the ones this player hasn't heard). Everything else completed is removed, as before.
+    /// </summary>
+    public static bool StaysInTracker(string key, bool isPdaGoal, bool partnerDiscoveriesSilent, ISet<string> experientialKeys, ICollection<string> completedGoals, ISet<string> pdaLogKeys)
+    {
+        return !completedGoals.Contains(key) || OwnTriggerPlays(key, isPdaGoal, partnerDiscoveriesSilent, experientialKeys, pdaLogKeys.Contains(key));
     }
 
     /// <summary>

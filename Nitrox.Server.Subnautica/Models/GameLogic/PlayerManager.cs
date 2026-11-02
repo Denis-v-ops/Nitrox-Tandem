@@ -212,6 +212,8 @@ internal sealed partial class PlayerManager(SessionManager sessionManager, BanSe
         // A joining game starts with empty hands and sends its pose again (COOP_FEATURES_SPEC R2a)
         player.Animations.Clear();
         player.HeldItem = null;
+        // Interference belongs to the session: a stale "cut off" mustn't show before the game's first PlayerStats (D2)
+        player.Interfered = false;
 
         // reconnecting players need to have their cell visibility refreshed
         player.ClearVisibleCells();
@@ -266,6 +268,7 @@ internal sealed partial class PlayerManager(SessionManager sessionManager, BanSe
         }
         reservedPlayerNames.Remove(player.Name);
         player.IsOnline = false;
+        player.Interfered = false;
         logger.ZLogInformation($"{player.Name} left the game");
         return Task.CompletedTask;
     }
