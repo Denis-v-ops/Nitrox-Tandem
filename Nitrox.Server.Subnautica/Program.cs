@@ -122,6 +122,10 @@ internal sealed class Program
                .AddSingleton<SubnauticaServerProtoBufSerializer>()
                .AddSingleton<ServerJsonSerializer>()
             ;
+#if DEBUG
+        // Lets agents run server commands from the shell (tools/bridge.ps1). Never in Release builds.
+        builder.Services.AddHostedSingletonService<DevBridgeService>();
+#endif
 
         await builder.Build().RunAsync();
     }

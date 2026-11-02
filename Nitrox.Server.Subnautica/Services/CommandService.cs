@@ -137,7 +137,7 @@ internal sealed partial class CommandService(CommandRegistryService registry, IL
             return true;
         }
 
-        RunHandler(handler, args[.. (handler.Parameters.Length + 1)], inputText.ToString());
+        commandTask = RunHandler(handler, args[.. (handler.Parameters.Length + 1)], inputText.ToString());
         return true;
     }
 
@@ -200,8 +200,7 @@ internal sealed partial class CommandService(CommandRegistryService registry, IL
                     continue;
                 }
 
-                RunHandler(handler, [context, ..values.Select(v => v.LastOrDefault().Value).ToArray()], argsInput);
-                return true;
+                return await RunHandler(handler, [context, ..values.Select(v => v.LastOrDefault().Value).ToArray()], argsInput);
             }
 
             logger.ZLogInformation($"Command '{$"{looselyCompatibleHandlers[0].Name} {argsInput}":@Command}' failed to match to any command handlers.{Environment.NewLine}{GetErrorMessagesFromFailedHandlers(failedHandlers)}");
@@ -271,7 +270,8 @@ internal sealed partial class CommandService(CommandRegistryService registry, IL
         }
     }
 
-    private void RunHandler(CommandHandlerEntry handler, Span<object> args, string inputText)
+    /// <returns>The running command: true if it finished without throwing.</returns>
+    private Task<bool> RunHandler(CommandHandlerEntry handler, Span<object> args, string inputText)
     {
         ILogger? commandLogger = NullLogger.Instance;
         if (args.Length > 0 && args[0] is ICommandContext context)
@@ -281,25 +281,30 @@ internal sealed partial class CommandService(CommandRegistryService registry, IL
 
         try
         {
-            if (!runningCommands.Writer.TryWrite(RunHandlerWithExceptionLoggingAsync(commandLogger, handler, args.ToArray(), inputText)))
+            Task<bool> task = RunHandlerWithExceptionLoggingAsync(commandLogger, handler, args.ToArray(), inputText);
+            if (!runningCommands.Writer.TryWrite(task))
             {
                 logger.ZLogError($"Failed to track command task");
             }
+            return task;
         }
         catch (Exception ex)
         {
             logger.ZLogError(ex, $"Error occurred while executing command {inputText:@Command}");
+            return Task.FromResult(false);
         }
 
-        static async Task RunHandlerWithExceptionLoggingAsync(ILogger logger, CommandHandlerEntry handler, object[] args, string inputText)
+        static async Task<bool> RunHandlerWithExceptionLoggingAsync(ILogger logger, CommandHandlerEntry handler, object[] args, string inputText)
         {
             try
             {
                 await handler.InvokeAsync(args);
+                return true;
             }
             catch (Exception ex)
             {
                 logger.ZLogError(ex, $"Error occurred while executing command '{inputText:@Command}'");
+                return false;
             }
         }
     }

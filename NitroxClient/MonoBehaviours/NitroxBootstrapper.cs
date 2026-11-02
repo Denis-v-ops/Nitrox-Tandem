@@ -44,6 +44,8 @@ public class NitroxBootstrapper : MonoBehaviour
         debugger.name = "Debug manager";
         debugger.AddComponent<NitroxDebugManager>();
         debugger.transform.SetParent(transform);
+        // Lets agents drive this game from the shell (tools/bridge.ps1). Never in Release builds.
+        debugger.AddComponent<Debuggers.Bridge.DevBridge>();
     }
 #endif
 }
