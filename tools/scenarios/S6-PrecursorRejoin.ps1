@@ -13,13 +13,17 @@
     3. Bob uses /back (out of water again) and /warp Alice.
     4. Both relog (server save, games closed, same save started again): both still out of water, the server agrees.
     5. Both go into a Cyclops near the Quarantine Enforcement Platform. In Alice's game, the platform's moon pool trigger
-       and a ForceWalk door trigger are touched by Bob's body (a child of the Cyclops there): Alice's state must not
-       change, and once she leaves the Cyclops she must swim in the open water.
+       and a ForceWalk door trigger get OnTriggerEnter from Bob's body and from the Cyclops' docking bay collider (both
+       children of the Cyclops there): Alice's state must not change, and once she leaves the Cyclops she must swim in
+       the open water. Without the CyclopsTriggerFilter patches the docking bay flips Alice's precursorOutOfWater and
+       gives her the moon pool's water plane (Bob's body doesn't: it resolves to its own entity root).
 
     Checked: precursorOutOfWater, IsUnderwater, motor mode (not Dive/Seaglide), server InPrecursor.
     Starts a fresh world (save s6-precursor) and two games (opens windows), unless -NoLaunch. Needs a Debug build.
 #>
-param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's6-precursor', [switch]$SkipCyclops)
+param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's6-precursor', [switch]$SkipCyclops,
+    # Only the Cyclops part (steps 5-6).
+    [switch]$CyclopsOnly)
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
 $A = 'Alice'
@@ -80,6 +84,7 @@ function Wait-Loaded {
 try {
     Start-ScenarioGames -Players $A, $B -SaveName $SaveName -NoLaunch:$NoLaunch
 
+    if (-not $CyclopsOnly) {
     Step 'Alice walks into the Primary Containment Facility' {
         Invoke-Bridge $A "teleport $moonPoolAboveWater" | Out-Null
         Assert-True ([bool](Wait-Loaded $A $moonPoolTrigger)) 'the moon pool trigger is loaded'
@@ -127,6 +132,7 @@ try {
             Assert-Walking $player '5 s after relogging'
         }
     }
+    }
 
     if (-not $SkipCyclops) {
         Step 'A Cyclops near the Quarantine Enforcement Platform, both inside' {
@@ -167,18 +173,30 @@ try {
             Write-Host "  ForceWalk door trigger: $forceWalkDoor"
         }
 
-        Step "Bob's body (inside the Cyclops) touches precursor triggers in Alice's game" {
-            $bobId = (Get-State $B).playerId
-            $before = Get-WaterState $A
-            $waterPlaneBefore = Invoke-Bridge $A 'get player Player.waterPlaneOverride'
-            Invoke-Bridge $A "call find:PrecursorMoonPoolTrigger PrecursorMoonPoolTrigger.OnTriggerEnter $bobId" | Out-Null
-            if ($forceWalkDoor) {
-                Invoke-Bridge $A "call find:PrecursorDoorMotorModeSetter#$forceWalkDoor PrecursorDoorMotorModeSetter.OnTriggerEnter $bobId" | Out-Null
+        Step "Colliders inside the Cyclops touch precursor triggers in Alice's game" {
+            # Bob's body (a child of the Cyclops there) and the Cyclops' docking bay trigger (a Cyclops child collider
+            # without its own PrefabIdentifier, so UWE.Utils.GetEntityRoot resolves it to the Cyclops, under which Nitrox
+            # parents Alice).
+            $bayId = ((Invoke-BridgeJson $A 'find VehicleDockingBay 5') | Where-Object { $_.id -match '^[0-9a-f-]{36}$' } | Select-Object -First 1).id
+            $colliders = [ordered]@{ "$B's body" = (Get-State $B).playerId; 'the docking bay' = $bayId }
+            foreach ($what in $colliders.Keys) {
+                $id = $colliders[$what]
+                $before = Get-WaterState $A
+                Invoke-Bridge $A "call find:PrecursorMoonPoolTrigger PrecursorMoonPoolTrigger.OnTriggerEnter $id" | Out-Null
+                Start-Sleep -Seconds 1
+                Assert-Equal 'null' (Invoke-Bridge $A 'get player Player.waterPlaneOverride') "$what in the platform's moon pool trigger: $A didn't get its water plane"
+                Assert-Equal $before.OutOfWater (Get-WaterState $A).OutOfWater "$what in the moon pool trigger: $A's precursorOutOfWater didn't change"
+                # Undo whatever an unfiltered trigger did, so the next collider starts clean.
+                Invoke-Bridge $A "call find:PrecursorMoonPoolTrigger PrecursorMoonPoolTrigger.OnTriggerExit $id" | Out-Null
+                Invoke-Bridge $A 'set player Player.precursorOutOfWater false' | Out-Null
+                if ($forceWalkDoor) {
+                    Invoke-Bridge $A "call find:PrecursorDoorMotorModeSetter#$forceWalkDoor PrecursorDoorMotorModeSetter.OnTriggerEnter $id" | Out-Null
+                    Start-Sleep -Milliseconds 500
+                    Assert-Equal 'False' (Get-WaterState $A).OutOfWater "$what in a ForceWalk door trigger: $A's precursorOutOfWater stays false"
+                    Invoke-Bridge $A 'set player Player.precursorOutOfWater false' | Out-Null
+                }
             }
-            Start-Sleep -Seconds 1
             $after = Get-WaterState $A
-            Assert-Equal $before.OutOfWater $after.OutOfWater "$A's precursorOutOfWater didn't change"
-            Assert-Equal $waterPlaneBefore (Invoke-Bridge $A 'get player Player.waterPlaneOverride') "$A didn't get the moon pool's water plane"
             Assert-True ($after.Motor -eq 'Walk' -and -not $after.Underwater) "$A still walks in the Cyclops (motor $($after.Motor), underwater $($after.Underwater))"
         }
 
