@@ -493,6 +493,9 @@ Needs an instrumented two-player repro (step 3 of the plan helps).
 - `RemoveItem` on the old container notifies its listeners (planters, trash cans).
 - Removing cell entries at the wrong moment could hide real world items.
 
+**See also:** [MULTINAUGHTICA_SPEC M8](MULTINAUGHTICA_SPEC.md#m8-crafting-from-base-and-cyclops-lockers-ml) takes locker
+items for crafting as `EntityDestroyed`; the partner's container loses them through `Pickupable.OnDestroy` (checked in code).
+
 ---
 
 ## S8: Battery duplication from empty tools (#2668), p/0

@@ -1470,6 +1470,8 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   players build one corridor ghost at the same moment with real costs and pay 2 titanium between them, then both click
   the same finished knife in the escape pod's fabricator and get one between them (server too). Negative control on the
   unfixed client: 4 titanium paid and 2 knives (3 checks FAIL).
+- **See also:** crafting from base and Cyclops lockers, [MULTINAUGHTICA_SPEC M8](MULTINAUGHTICA_SPEC.md#m8-crafting-from-base-and-cyclops-lockers-ml):
+  a granted locker claim re-runs `GhostCrafter.Craft`, so the crafter lock above is taken as for any craft.
 
 #### B3: Base power (L)
 - **Today:** base power isn't synced and refills to full on every load: `InteriorPieceEntitySpawner.cs:81-84` and

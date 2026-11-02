@@ -280,6 +280,52 @@ decides whether it bites; check before building, and age the server clock in the
   `bridge.ps1 diff` is clean; the same in a Cyclops. Negative control: with the option off, a craft that needs the
   locker is refused.
 
+**Findings (2026-11-02):** implemented on `feat/m8-locker-crafting`, not verified in game (scenario
+`tools/scenarios/M8-LockerCrafting.ps1` written, not run). The item has no *hypothesis (review)* lines; each design and
+"check while porting" line was read in our code and the decompiled game (83031):
+- **Which stations: held.** Fabricator and Modification Station (`Workbench`) are `GhostCrafter`s
+  (`game:GhostCrafter.cs` ProtoIncludes); the Cyclops' and the moonpool console's fabricators sit under a `SubRoot`. The
+  escape pod has none, so its fabricator stays vanilla (B2's scenario is unaffected). `GhostCrafter.Craft` takes the
+  power before the ingredients (`ConsumeEnergy(5) && ConsumeResources`), so a craft waiting for its claim takes no power.
+- **Counts: held.** `CrafterLogic.IsCraftRecipeFulfilled` and `TooltipFactory.WriteIngredients` each have exactly one
+  `Inventory.GetPickupCount` call (the transpilers expect one match, IL delta 0). `IsCraftRecipeFulfilled` is also what
+  `ConsumeResources` asks, for the Mobile Vehicle Bay and the rocket too: the lockers only count while the crafting
+  menu's client is a `GhostCrafter` in a sub root and no vanilla craft is running. Pinned recipes (`uGUI_RecipeEntry`)
+  and the Habitat Builder keep inventory counts.
+- **Game modes:** `RequiresIngredients()` is false only with `NoCost` (Creative, the nocost cheat;
+  `game:GameModeOption.cs`). Survival, Freedom and Hardcore need ingredients, so it applies in all three.
+- **Not lockers:** in the game by component (the `storageContainer` fields of `Planter`, `Aquarium`, `Trashcan`,
+  `FiltrationMachine`, `MapRoomFunctionality`; a docked `Vehicle`, the Prawn Suit's storage is a `StorageContainer`), and,
+  ours, a container inside an item (a carry-all in a locker). Bioreactors (`ItemsContainer`), reactors and the decoy
+  tube (`Equipment`) have no `StorageContainer`. On the server by entity: player, planter, vehicle, interior piece, map
+  room, another item, and the `Aquarium`/`Trashcans`/`LabTrashcan` modules. Lockers built in a Cyclops are modules whose
+  parent is the Cyclops (`Builder_TryPlace_Patch`); its own lockers are `PathBasedChildEntity`s.
+- **No double spend: held.** The arbiter (ported) decides one claim at a time and delivers its `EntityDestroyed`s and
+  answer before the next. Both packets are `RELIABLE_ORDERED` on the default channel, so the loser hears of the removal
+  before its refusal (the L2 test asserts the order). A `CraftingClaimResponse` sent by a game isn't relayed (default
+  processor blacklist): a relayed grant would start the partner's craft with nothing taken.
+- **"The items come back": decided differently.** Theirs gives fresh copies to the inventory (`CraftData.AddToInventory`
+  → `PickupItem`): persisted and no duplicate, but a drained battery comes back full, and with a full inventory the copy
+  lies in the world unannounced (gone after a restart). Ours: `CraftingClaimReturn`. The server keeps the last 32 granted
+  claims in memory, puts the same entities back into the lockers they came from once (the claimant's inventory if the
+  locker is gone) and spawns them for everyone. A late grant after the game's 15 s timeout is returned the same way.
+- **Option:** `CraftFromLockers` (true) reaches the game through `CoopSettings` (the initial sync's co-op options), not
+  `SessionSettings` (the server's mutable cheat state). With it off the server answers `Disabled` to any claim.
+- **COOP B2: held, nothing to change.** A granted claim re-runs `GhostCrafter.Craft` → `Crafter.Craft` →
+  `OnCraftingBegin`, so `GhostCrafter_OnCraftingBegin_Patch` sends the crafter state and takes the exclusive lock as for
+  any craft. If the partner started a craft at that station while the claim was on its way (their `CrafterMetadata`
+  came first), the craft doesn't start and the claim goes back.
+- **FIX_SPEC S7: held, nothing to change.** `EntityDestroyedProcessor.DestroyPickupable` → `Pickupable.OnDestroy` →
+  `SetInventoryItem(null)` → `container.RemoveItem(forced)` (`game:Pickupable.cs`): the partner's `ItemsContainer` count
+  drops and `onRemoveItem` fires (open locker UI, open crafting menu), with `EntityDestroyed` suppressed.
+- **Not taken from theirs:** `CrafterLogic_ConsumeEnergy_Patch` (base power), their Debug harness hooks, the static
+  class (a DI service now; the transpilers' static target resolves it), `CraftingClaimRequestProcessorTest` (it builds
+  server objects by hand that differ here; its cases run in L2 instead).
+- **Open:** only the scenario covers the game half: the menu lock after a delayed start (`RestoreMenuLock`), the menu
+  refresh when the partner takes items, and whether the crafting menu opens in a windowless game (scenario step 1).
+  Placing the Fabricator and Locker in the S7 room through the bridge is untried (S7 couldn't place a wall locker); the
+  Cyclops half doesn't need it.
+
 ## M9: Ping aim (XS–S, follow-up to COOP F2)
 
 - F2 stays as built. Only the aim changes, following their `QuickPingAim`:
@@ -375,3 +421,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 |---|---|---|---|
 | 2026-11-02 | — | Spec created from the review of MultiNaughtica `99428c8` (base upstream `7815b4e4`) against `coop` @ `ddf06755`. Decisions recorded above. Game-rig tests deferred to one pass after M1–M9 are implemented (rigs in use) | Code review only, nothing built or run. Re-read in our code: Cyclops `isDestroyed` at health 0, `Battery_charge_set_Patch` Prefix, radiation `Max()`, Sea Emperor baby parent check. Everything else is *hypothesis (review)* |
 | 2026-11-02 | M3 | Implemented, not verified in game: start backups in `backups/server-starts/` (last 5); reservations wait for the world and the join re-checks the saved player; a reservation that never joined frees its name; a stale session with the same name and IP is kicked; only finished batches are recorded and failed batch loads are retried; one NTP socket per round, closed at its end; Debug `entitycount` | L2 (headless): `JoinSafetyTest` (5, each fails with its line reverted), `ServerStart_OnAnExistingSave_BacksItUpFirst` (fails without the start hook), `GeneratedBatch_StaysRecordedAcrossRestarts` (guard: fails if restored batches aren't marked done). Unit: `ServerStartBackupsTest` (zip and pruning, real files; the rolling-pruning test is a guard), `BatchLoadTasksTest` (running/failed batches not listed, failed loads retried: fail with the old behaviour), `NtpSyncerTest` (2, fail with the old round handling). Scenario written, not run |
+| 2026-11-02 | M8 | Implemented, not verified in game: crafting stations of a base or Cyclops also use its lockers (menu counts, tooltip, claims at the server, one retry, the same items go back if the craft can't start); `CraftFromLockers` (true) via `CoopSettings`; a game's `CraftingClaimResponse` isn't relayed. No ProtoInclude tags | Unit: `CraftingClaimArbiterTest` (35, incl. the 50-round race; each fails with its line reverted: gate, player and item exclusions, return once), `LockerCraftingRulesTest` (32). L2: `LockerCraftingTest` (4: race over the protocol + restart, return once + restart, option off, no relay; each fails with its line reverted). Transpilers registered (delta 0). Scenario written, not run |

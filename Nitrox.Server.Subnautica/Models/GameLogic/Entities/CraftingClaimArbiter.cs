@@ -18,8 +18,9 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic.Entities;
 ///         All or nothing. The scope must be a base (<see cref="BuildEntity" />) or a Cyclops. Every item must be an
 ///         <see cref="InventoryItemEntity" /> whose parents lead to the scope without passing a player (an inventory), a
 ///         planter, another vehicle (a docked Seamoth or Prawn Suit), a base machine (<see cref="InteriorPieceEntity" />:
-///         bioreactor, reactor, water park, filtration machine; <see cref="MapRoomEntity" />: scanner room) or a module that
-///         holds things but is no locker (<see cref="notLockerTechTypes" />). If one doesn't, nothing is removed and the answer
+///         bioreactor, reactor, water park, filtration machine; <see cref="MapRoomEntity" />: scanner room), another item (a
+///         carry-all stored in a locker) or a module that holds things but is no locker (<see cref="notLockerTechTypes" />).
+///         The game picks the same way (<c>LockerCrafting.BuildScope</c>). If one doesn't, nothing is removed and the answer
 ///         lists the ones that failed, so the game can pick others. Claims are decided one at a time (<see cref="gate" />):
 ///         the second of two claims for the same item finds it gone.
 ///     </para>
@@ -237,7 +238,7 @@ internal sealed class CraftingClaimArbiter
                 return true;
             }
             if (!entityRegistry.TryGetEntityById(parentId, out Entity? parent) ||
-                parent is PlayerEntity or PlanterEntity or VehicleEntity or InteriorPieceEntity or MapRoomEntity ||
+                parent is PlayerEntity or PlanterEntity or VehicleEntity or InteriorPieceEntity or MapRoomEntity or InventoryItemEntity ||
                 (parent.TechType != null && notLockerTechTypes.Contains(parent.TechType.Name)))
             {
                 return false;

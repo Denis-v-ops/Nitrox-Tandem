@@ -367,6 +367,17 @@ public class CraftingClaimArbiterTest
     }
 
     [TestMethod]
+    public void AnItemInsideAnotherItemIsNotClaimable()
+    {
+        // A carry-all stored in a locker: vanilla crafting doesn't reach into bags either (ours)
+        InventoryItemEntity bag = AddItem(locker, "LuggageBag");
+        InventoryItemEntity inBag = AddItem(bag);
+
+        Claim(baseEntity.Id, inBag.Id).Outcome.Should().Be(CraftingClaimOutcome.Taken);
+        Claim(baseEntity.Id, bag.Id).Outcome.Should().Be(CraftingClaimOutcome.Granted, "the bag itself lies in the locker");
+    }
+
+    [TestMethod]
     public void OnlyItemEntitiesCanBeClaimed()
     {
         Claim(baseEntity.Id, locker.Id).Outcome.Should().Be(CraftingClaimOutcome.Taken);
