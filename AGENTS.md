@@ -89,6 +89,10 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
 - **Play/test a build:** run `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe`, create or start a server, launch the
   game, then use **Multiplayer** on the main menu and join `127.0.0.1` (default port `11000`, from
   `Nitrox.Model/Constants/SubnauticaServerConstants.cs`).
+- **Headless first.** Anything about what the *server* stores, reloads or sends to whom is tested headless (unit tests
+  and the in-process server harness): seconds per test, many in parallel, no game. Only what *Subnautica itself* does
+  needs real game clients: AI, physics, player state, patches firing, a client applying state to GameObjects. The table
+  is in [TESTING.md](docs/fork/TESTING.md#which-layer-to-use-headless-first-the-game-only-where-the-game-decides).
 - **One game rig, take turns:** only one dual-client run can exist on this PC at a time. It uses fixed port 11000, and
   each worktree's launch copies its own `NitroxPatcher.dll` into the shared game install. Hold the lock from before
   launching until after `-Stop`: `tools\game-lock.ps1 -Acquire -Owner <you>` … `tools\game-lock.ps1 -Release -Owner <you>`.

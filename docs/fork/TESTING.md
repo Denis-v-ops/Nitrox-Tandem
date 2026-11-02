@@ -137,10 +137,42 @@ tools\bridge.ps1 diff                                  # desync detector, see be
 | Layer | What runs | Who runs it | Catches |
 |---|---|---|---|
 | **L1 Unit/persistence tests** | `dotnet test Nitrox.Test/Nitrox.Test.csproj` + new tests per fix. Includes a **save → load round-trip helper** (S0.5) | Agent, every change | Serialization registration, server processors, "gone after restart" bugs |
-| **L2 Bot partner** | `tools/Nitrox.Bot`, a headless 2nd player against a real server (S0.3) | Agent | Server broadcasts and persistence when another player exists; replaying recorded packets |
+| **L2 Headless server tests** | Real server hosted inside `Nitrox.Test`, with simulated players that speak the real protocol. No game window (being built: branch `fix/l2-server-harness`) | Agent, every change, in parallel | Server persistence across restart, broadcasts to the partner, late-join sync, dupes and ghost entries |
 | **L3 Automated dual-client scenarios** | Two real Subnautica instances + server on the dev PC, each running a scripted role, asserting on in-game state (S0.1–S0.2, S0.4) | Agent, unattended (PC must be free; about 3–6 min per scenario) | Real client↔client behaviour: AI, physics, Cyclops, story objects |
 
 A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passes (or L2, if that item has no L3 scenario).
+
+### Which layer to use: headless first, the game only where the game decides
+**The rule:** if the question is "what does the *server* store, reload, or send to whom?", test it **headless (L1/L2)**.
+If the question is "what does *Subnautica itself* do?", meaning AI, physics, player state, a Harmony patch firing, or
+a client applying a change to a GameObject, it **needs real game clients (L3)**. Headless tests can't see game logic,
+and a fake client only does what the test tells it, so a passing L2 test says nothing about the game side.
+
+| Use **headless (L1/L2)** — fast, parallel, no rig | Use **real game clients (L3)** — the old approach, scarce |
+|---|---|
+| Entity/metadata survives save → server restart → load | Creature AI, combat, deaths and corpses (S4) |
+| Server bookkeeping: registry, reparenting, cell lists, ghost entries (S7 step 1, #2691) | Physics, movement, vehicles, docking |
+| Who receives a broadcast (partner, late joiner, only players who can see the cell) | Player state: `currentSub`, swimming, oxygen, precursor flag (S6) |
+| Late-join payload: what the server sends a rejoining player | Game objects reacting to state: story objects (S3), Cyclops damage effects and fires, machines producing or burning items (S7 step 2) |
+| Duplicates and loss at server level (two adds, missing remove, `EntityDestroyed` deleting a record) | That a Harmony patch fires at all, and when (timing, echo loops) |
+| Packet validation, server processors, commands, save upgrades | A client spawning or applying metadata to the right GameObject (e.g. `RestoreMapRoom`) |
+| Story goals and PDA state stored per player (server side of #2508) | Anything visual, audio or animation |
+
+**Per spec item:** most fixes are *hybrid*. Prove the server half headless, then use **one** in-game scenario for the game
+half.
+
+| Item | Headless covers | Still needs the game |
+|---|---|---|
+| S1 Cyclops | Damage-point and fire entities persist and reload | The game creating and repairing damage points, fires, the explosion check |
+| S2 Equipment | Server never deletes slot items on resync/echo packets; map-room children kept | Resync not sending the delete; map-room children respawned; camera count |
+| S3 Gun | — | Everything (game-side flag) |
+| S4 Creatures | Death and corpse packets reach the partner | AI, kill path, corpse |
+| S5 Leaks/flood | Leak and flood metadata persist and are sent to rejoiners | Water level and leak objects in game |
+| S6 Swimming | `InPrecursor` / sub id stored and sent on teleport | Player state itself |
+| S7 Containers | Ghost cell entries, remote add/remove bookkeeping, server-side capacity | Machine output, bioreactor burning |
+| S8 Battery dupe | Server child count under a dropped tool | The game's pickup conversion |
+| S9 Escape pod | Pod registered and sent in the join payload | Player placed inside the pod |
+| S10 Scanner room | Scan target/camera metadata persist and reach the partner | Scanner UI, blips, `ResourceTracker` |
 
 ### Game-time budget (the rig is the bottleneck)
 There is one game rig: one PC, port 11000, `tools\game-lock.ps1`. A launch plus join takes minutes, so game time is the
