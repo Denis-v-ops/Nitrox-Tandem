@@ -11,6 +11,7 @@ using NitroxClient.GameLogic.Bases;
 using NitroxClient.GameLogic.FMOD;
 using NitroxClient.GameLogic.HUD;
 using NitroxClient.GameLogic.InitialSync.Abstract;
+using NitroxClient.GameLogic.Partner;
 using NitroxClient.GameLogic.PlayerLogic;
 using NitroxClient.GameLogic.PlayerLogic.PlayerModel;
 using NitroxClient.GameLogic.PlayerLogic.PlayerModel.Abstract;
@@ -120,6 +121,11 @@ namespace NitroxClient
             containerBuilder.RegisterType<SleepManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<BulletManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<NtpSyncer>().InstancePerLifetimeScope();
+            containerBuilder.RegisterAssemblyTypes(currentAssembly)
+                            .AssignableTo<PartnerAction>()
+                            .As<PartnerAction>()
+                            .InstancePerLifetimeScope();
+            containerBuilder.RegisterType<PartnerActions>().InstancePerLifetimeScope();
         }
 
         private void RegisterMetadataDependencies(ContainerBuilder containerBuilder)
