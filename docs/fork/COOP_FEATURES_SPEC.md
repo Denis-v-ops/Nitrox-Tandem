@@ -360,6 +360,9 @@ Three beats. Size L in total.
   - The trigger won't fire again while a player stays inside it, so the start must drive the animator directly.
   - Goal `Precursor_Prison_Aquarium_EmperorLog1` (H: that it's `onDialog1Goal`).
   - **Today:** the telepathy effect plays for the partner wherever they are, and nothing else is synced.
+  - **Since D5a:** the `Emperor_Telepathic_Contact1-3` lines and the Precursor logs on `LocationGoalData` count as
+    "your own firsts", so each player hears them from their own visit (principle 4). The gate for 3a must not rely on the
+    partner's game having played them.
 - **3b, hatching:**
   - `Incubator.OnHandClick` (`game:` 126), hooked into the existing patch before its lock request.
   - Only the player carrying the enzymes hatches; the partner confirms by clicking the incubator.
@@ -803,7 +806,9 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     (`StoryGoalExecutedClientProcessor`), which calls `PDALog.Add(key)` for PDA goals (`game:Story/StoryGoal.cs:31-49`).
   - `PDALog.Add` plays the voice line by default (`playSound = true`, `game:PDALog.cs:159-189`). So when A enters the
     Lost River, B's PDA describes it while B sits in the base.
-  - Logs found in the world arrive the same way (`PDALogEntryAddProcessor`) and play too.
+  - Logs found in the world (`StoryHandTarget.OnHandClick` → `goal.Trigger()`) arrive the same way, as
+    `StoryGoalExecuted`, and play too. (`PDALogEntryAddProcessor` carries the pod radio and the `pdalog` command, not
+    found logs; see "Found logs" below.)
 - **D5a, game side (S, wave 1). Done (2026-11-02, branch `feat/1-d5a-own-firsts`), except found logs (below).**
   - **Experiential goals** are the keys in `BiomeGoalData` and `LocationGoalData` (read at runtime from the trackers'
     `goalData`). Everything else syncs as today.
