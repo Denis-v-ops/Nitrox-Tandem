@@ -7,7 +7,7 @@ internal sealed class ModifyConstructedAmountProcessor(BuildingManager buildingM
 {
     public override async Task Process(AuthProcessorContext context, ModifyConstructedAmount packet)
     {
-        if (BuildingManager.ModifyConstructedAmount(packet))
+        if (BuildingManager.ModifyConstructedAmount(context.Sender, packet))
         {
             await context.SendToOthersAsync(packet);
         }
