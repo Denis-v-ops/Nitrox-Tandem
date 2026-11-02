@@ -1593,7 +1593,10 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   rods are back in both games after a restart. **Negative control** on the unfixed build: 11 checks FAIL (no stored
   power, the partner's game about 300 apart, 2 depleted rods on the server and in both games, refilled to about 495 of
   500 after the restart). Not run in game: a thermal plant's or solar panel's sync (same code path; L2 covers the
-  thermal merge), a lock handover between the games, night-time drain.
+  thermal merge), a lock handover between the games, night-time drain. Read, not run: a module on a base exterior
+  stays under the base's transform when spawned (`ModuleEntitySpawner.MoveToGlobalRoot` → `game:LargeWorldEntity.cs`
+  `Start` only reparents an object without a parent), so the client's lock id (`SubRoot`) matches the server's
+  (`ParentId`).
 - **Known gaps:** what a non-producer's game consumes itself (e.g. the partner's fabricator) isn't taken from the shared
   value (it is overwritten); the reactors' `_toConsume` (energy taken from the current rod/item) is neither synced nor
   saved, as before; a base saved at 0 power is really unpowered for both players after loading (correct, but new).

@@ -122,7 +122,8 @@ tools\bridge.ps1 Bob animator <alicePlayerId>          # Animator parameters and
   metadata) and the server's records, and prints mismatches: `GHOST` (game has an id the server doesn't), `MISSING`
   (server has a child of a loaded entity, the game doesn't), `TECHTYPE`, `PARENT` (container contents included),
   `POSITION` (beyond `-Tolerance`, default 1 m; `-MoverTolerance` 15 m for vehicles and loose physics objects;
-  creatures only game vs game), `METADATA` (numbers within 0.5 count as equal). Representation quirks are on a short,
+  creatures only game vs game), `METADATA` (numbers within 0.5 count as equal; `"Power"` values of base power
+  sources are ignored, they move between the throttled updates of COOP_FEATURES_SPEC B3). Representation quirks are on a short,
   commented `$KnownNoise` list in `bridge.ps1` (`-All` shows them). Takes about 3 s. Run it after every scenario step.
 - **`hold <target|none> <seconds> [button] [noaim]`** presses a game button (default `LeftHand`, the interact button;
   any `GameInput.Button` name) through the game's own input (`GameInputSystem.GetButtonState`, a Debug-only patch):
