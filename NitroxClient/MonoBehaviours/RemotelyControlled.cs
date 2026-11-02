@@ -40,6 +40,15 @@ public class RemotelyControlled : MonoBehaviour
 
     public void Awake()
     {
+        Initialize();
+    }
+
+    /// <summary>
+    ///     Also called before the first pose: a component added to an inactive object (a creature whose cell sleeps in this
+    ///     game) gets no Awake until the object is activated, but its packets are handled meanwhile.
+    /// </summary>
+    private void Initialize()
+    {
         swimBehaviour = gameObject.GetComponent<SwimBehaviour>();
         walkBehaviour = gameObject.GetComponent<WalkBehaviour>();
         rigidbody = gameObject.GetComponent<Rigidbody>();
@@ -96,6 +105,10 @@ public class RemotelyControlled : MonoBehaviour
         if (hasCreatureMovement && realTime < creatureRealTime)
         {
             return;
+        }
+        if (timeManager == null)
+        {
+            Initialize();
         }
         if (!hasCreatureMovement)
         {

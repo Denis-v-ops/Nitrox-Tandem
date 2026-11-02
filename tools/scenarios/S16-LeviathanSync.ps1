@@ -29,7 +29,7 @@ param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's16-leviathans',
     # Players aggressive targets: the leviathan chases them (attack movement instead of patrol).
     [switch]$Chase,
     # Also fail on the replication-quality thresholds below (S16b/c: the partner's copy within 1 m of the simulator's on
-    # average, never more than 5 m, no one-frame step over 3 m, spawned within 5 m). Without it they are printed as "info"
+    # average, never more than 5 m outside long frames, no snap over 1.5 m, spawned within 5 m). Without it they are printed as "info"
     # and PASS means what S16 fixed: the lock follows the leviathan, no jump at a hand-over, the partner keeps it.
     [switch]$Strict,
     # How far the players float from the leviathan, and how far the roaming leviathan travels.
@@ -39,7 +39,7 @@ param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's16-leviathans',
     [double]$Near = 40, [double]$RoamDistance = 600, [double]$RoamAngle = 0,
     # Thresholds (metres / seconds).
     # Before S16b (runs 1-7): 0.8-4.3 m mean, up to 36 m, snaps up to 16.6 m, spawns up to 34 m off.
-    [double]$MaxMeanError = 1, [double]$MaxError = 5, [double]$MaxSnap = 3, [double]$MaxHandoverJump = 5, [double]$MaxLockDelaySeconds = 10,
+    [double]$MaxMeanError = 1, [double]$MaxError = 5, [double]$MaxSnap = 1.5, [double]$MaxHandoverJump = 5, [double]$MaxLockDelaySeconds = 10,
     # One long frame (ms) on the watching game halfway through "ab" and "ba" (0: none). Before the physics-clock fix
     # in S16b, a natural 353 ms frame made the copy overshoot by 3.4 m.
     [int]$HitchMs = 350,
@@ -208,6 +208,7 @@ function Measure-Pair {
     $to = [math]::Min($t[$t.Length - 1], $ownerTrack.Times[$ownerTrack.Times.Length - 1])
     $result = [S13Analysis]::Compare($ownerTrack, $observerTrack, $from, $to, 1500)
     $snaps = Get-Snaps $observerTrack $from $to -OwnerTrack $ownerTrack
+    $steadyMax = Get-SteadyMaxError $observerTrack $ownerTrack $from $to
     Write-Host "  $Name ($Owner simulates, $observer watches): $(Format-Result $result)"
     Assert-Measure ($snaps.excessMax -le $MaxSnap) ('{0}: no snap over {1} m for {2} (a one-frame step beyond what the original moved meanwhile: {3:0.0} m)' -f $Name, $MaxSnap, $observer, $snaps.excessMax)
     Write-Host ('    observer snaps (one-frame steps over {0} m): {1} in {2:0} s, largest {3:0.0} m; beyond the original''s movement: {4} over {0} m, largest {5:0.0} m' -f $SnapMetres, $snaps.count, (($to - $from) / 1000), $snaps.max, $snaps.excessCount, $snaps.excessMax)
@@ -216,16 +217,17 @@ function Measure-Pair {
     Show-Events $ownerTrack @('lock', 'active', 'remote', 'lod', 'target')
     Show-Events $observerTrack @('lock', 'active', 'remote', 'lod', 'target')
     [void]$script:Summary.Add([pscustomobject]@{ case = $Name; owner = $Owner; lagMs = $result.lagMs; residualRms = $result.residualRms; instantMean = $result.instantMean; instantMax = $result.instantMax; speed = $result.ownerSpeed; snaps = $snaps.count; maxSnap = $snaps.max; maxExcess = $snaps.excessMax })
-    [pscustomobject]@{ result = $result; owner = $ownerTrack; observer = $observerTrack; snaps = $snaps }
+    [pscustomobject]@{ result = $result; owner = $ownerTrack; observer = $observerTrack; snaps = $snaps; steadyMax = $steadyMax }
 }
 
 <#
     One-frame steps longer than $SnapMetres (a leviathan at 25 m/s moves 0.2 m per frame at 120 fps): the observer's copy
     put back at the position in a partner's packet (before S16b: RemotelyControlled.TeleportIfTooFar, beyond 5 m).
-    With -OwnerTrack also the *excess*: how much further the copy stepped in that frame than the simulator's creature moved
-    over the same time. A long frame (100-350 ms, cells loading) moves both by metres and the physics catch-up in the next
-    frame does too, in the simulating game as well (seen after S16b: a 353 ms frame stepped the copy 8.4 m while the
-    original swam 5.3 m); a teleport moves only the copy. -Strict checks the excess.
+    With -OwnerTrack also the *excess*: how much further the copy stepped than the simulator's creature moved over the same
+    time, over this frame or over this and the previous frame, whichever is less. A long frame (100-350 ms, cells loading)
+    moves both by metres; in the watching game the sample of the long frame can come before its physics catch-up, which
+    then lands in the next, short frame (seen after S16b: the copy stood still for 359 ms, then stepped 3.5 m in 6 ms,
+    while the original swam 3.2 m over both). A teleport moves only the copy. -Strict checks the excess.
 #>
 $SnapMetres = 1.0
 function Get-Snaps {
@@ -233,23 +235,51 @@ function Get-Snaps {
     $t = $Track.Times; $x = $Track.Column('px'); $y = $Track.Column('py'); $z = $Track.Column('pz')
     if ($OwnerTrack) { $ot = $OwnerTrack.Times; $ox = $OwnerTrack.Column('px'); $oy = $OwnerTrack.Column('py'); $oz = $OwnerTrack.Column('pz') }
     $count = 0; $max = 0.0; $excessCount = 0; $excessMax = 0.0
+    # The simulator's sample at or before a time
+    $at = { param($ms) $k = [Array]::BinarySearch($ot, $ms); if ($k -lt 0) { $k = [math]::Max(0, -$k - 2) }; $k }
+    $distance = { param($ax, $ay, $az, $bx, $by, $bz) $d = [math]::Sqrt([math]::Pow($bx - $ax, 2) + [math]::Pow($by - $ay, 2) + [math]::Pow($bz - $az, 2)); if ([double]::IsNaN($d)) { 0 } else { $d } }
     for ($i = 1; $i -lt $t.Length; $i++) {
         if ($t[$i] -lt $From -or $t[$i] -gt $To -or [double]::IsNaN($x[$i]) -or [double]::IsNaN($x[$i - 1])) { continue }
         $step = [math]::Sqrt([math]::Pow($x[$i] - $x[$i - 1], 2) + [math]::Pow($y[$i] - $y[$i - 1], 2) + [math]::Pow($z[$i] - $z[$i - 1], 2))
         if ($step -gt $SnapMetres) { $count++ }
         if ($step -gt $max) { $max = $step }
         if ($OwnerTrack -and $step -gt $SnapMetres) {
-            # The simulator's samples at or before both ends of this frame
-            $a = [Array]::BinarySearch($ot, $t[$i - 1]); if ($a -lt 0) { $a = [math]::Max(0, -$a - 2) }
-            $b = [Array]::BinarySearch($ot, $t[$i]); if ($b -lt 0) { $b = [math]::Max(0, -$b - 2) }
-            $ownerStep = [math]::Sqrt([math]::Pow($ox[$b] - $ox[$a], 2) + [math]::Pow($oy[$b] - $oy[$a], 2) + [math]::Pow($oz[$b] - $oz[$a], 2))
-            if ([double]::IsNaN($ownerStep)) { $ownerStep = 0 }
-            $excess = $step - $ownerStep
+            $a = & $at $t[$i - 1]; $b = & $at $t[$i]
+            $excess = $step - (& $distance $ox[$a] $oy[$a] $oz[$a] $ox[$b] $oy[$b] $oz[$b])
+            if ($i -ge 2 -and -not [double]::IsNaN($x[$i - 2])) {
+                $c = & $at $t[$i - 2]
+                $step2 = & $distance $x[$i - 2] $y[$i - 2] $z[$i - 2] $x[$i] $y[$i] $z[$i]
+                $excess = [math]::Min($excess, $step2 - (& $distance $ox[$c] $oy[$c] $oz[$c] $ox[$b] $oy[$b] $oz[$b]))
+            }
             if ($excess -gt $SnapMetres) { $excessCount++ }
             if ($excess -gt $excessMax) { $excessMax = $excess }
         }
     }
     [pscustomobject]@{ count = $count; max = $max; excessCount = $excessCount; excessMax = $excessMax }
+}
+
+<#
+    Largest distance between the copy and the original (interpolated at the copy's sample time), leaving out samples taken
+    at the end of a frame longer than $LongFrameMs and the frame after it: the whole watching game stood still in that
+    frame, so the copy is up to a frame's swimming behind there whatever the replication does (S13Analysis' instantMax
+    includes them).
+#>
+function Get-SteadyMaxError {
+    param([S13Track]$Track, [S13Track]$OwnerTrack, [double]$From, [double]$To, [double]$LongFrameMs = 100)
+    $t = $Track.Times; $x = $Track.Column('px'); $y = $Track.Column('py'); $z = $Track.Column('pz')
+    $ot = $OwnerTrack.Times; $ox = $OwnerTrack.Column('px'); $oy = $OwnerTrack.Column('py'); $oz = $OwnerTrack.Column('pz')
+    $max = 0.0
+    for ($i = 2; $i -lt $t.Length; $i++) {
+        if ($t[$i] -lt $From -or $t[$i] -gt $To -or [double]::IsNaN($x[$i])) { continue }
+        if (($t[$i] - $t[$i - 1]) -gt $LongFrameMs -or ($t[$i - 1] - $t[$i - 2]) -gt $LongFrameMs) { continue }
+        $k = [Array]::BinarySearch($ot, $t[$i]); if ($k -lt 0) { $k = -$k - 2 }
+        if ($k -lt 0 -or $k + 1 -ge $ot.Length -or [double]::IsNaN($ox[$k]) -or [double]::IsNaN($ox[$k + 1])) { continue }
+        $f = ($t[$i] - $ot[$k]) / [math]::Max(1e-6, $ot[$k + 1] - $ot[$k])
+        $px = $ox[$k] + ($ox[$k + 1] - $ox[$k]) * $f; $py = $oy[$k] + ($oy[$k + 1] - $oy[$k]) * $f; $pz = $oz[$k] + ($oz[$k + 1] - $oz[$k]) * $f
+        $e = [math]::Sqrt([math]::Pow($x[$i] - $px, 2) + [math]::Pow($y[$i] - $py, 2) + [math]::Pow($z[$i] - $pz, 2))
+        if ($e -gt $max) { $max = $e }
+    }
+    $max
 }
 
 <# Largest per-frame step of a track (a jump) between two times. #>
@@ -342,7 +372,7 @@ try {
             $animator = Invoke-Bridge $B "animator $id" -AllowError
             Write-Host "  Bob's copy, animator speed: $(($animator -split "`n" | Where-Object { $_ -match '"?speed"?\s*[:=]' } | Select-Object -First 1))"
             Assert-Measure ($m.result.instantMean -le $MaxMeanError) ('Bob sees it within {0} m of Alice on average ({1})' -f $MaxMeanError, $m.result.instantMean)
-            Assert-Measure ($m.result.instantMax -le $MaxError) ('Bob never sees it more than {0} m from Alice ({1})' -f $MaxError, $m.result.instantMax)
+            Assert-Measure ($m.steadyMax -le $MaxError) ('Bob never sees it more than {0} m from Alice outside frames over 100 ms ({1:0.00}; with them {2})' -f $MaxError, $m.steadyMax, $m.result.instantMax)
             Show-Copies $id 'after ab' | Out-Null
         }
     }
@@ -389,7 +419,7 @@ try {
             Assert-Equal $B (Get-LockOwner $id) "$B still simulates it"
             $m = Measure-Pair $id $B $WindowSeconds 'ba'
             Assert-Measure ($m.result.instantMean -le $MaxMeanError) ('Alice sees it within {0} m of Bob on average ({1})' -f $MaxMeanError, $m.result.instantMean)
-            Assert-Measure ($m.result.instantMax -le $MaxError) ('Alice never sees it more than {0} m from Bob ({1})' -f $MaxError, $m.result.instantMax)
+            Assert-Measure ($m.steadyMax -le $MaxError) ('Alice never sees it more than {0} m from Bob outside frames over 100 ms ({1:0.00}; with them {2})' -f $MaxError, $m.steadyMax, $m.result.instantMax)
         }
     }
 
