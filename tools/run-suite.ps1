@@ -22,7 +22,9 @@ param(
     [string]$OutDir = (Join-Path $env:LOCALAPPDATA "Nitrox\suite-runs\$(Get-Date -Format 'yyyyMMdd-HHmmss')"),
     [string]$Owner = 'suite',
     [switch]$Windowless,
-    [int]$Rig = 0
+    [int]$Rig = 0,
+    # Seconds the rig is left free between scenarios, so agents' short runs can go in between (0 = hold it throughout)
+    [int]$YieldSeconds = 30
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -42,6 +44,7 @@ if ($Only) { $scenarios = $scenarios | Where-Object { $_ -in $Only } }
 $ordered = @($First | Where-Object { $_ -in $scenarios }) + @($scenarios | Where-Object { $_ -notin $First } |
     Sort-Object { if ($_ -match '^S(\d+)') { [int]$Matches[1] } else { [int]::MaxValue } }, { $_ })
 
+$commit = (git -C $repo rev-parse --short HEAD)
 & (Join-Path $PSScriptRoot 'game-lock.ps1') -Acquire -Owner $Owner
 $results = New-Object System.Collections.ArrayList
 try {
@@ -66,13 +69,19 @@ try {
         # Whatever the scenario left running on this rig
         & (Join-Path $PSScriptRoot 'dual-client.ps1') -Stop *>&1 | Out-Null
         Start-Sleep -Seconds 5
+        # Let a waiting run (game-lock -Acquire polls every 20 s) take the rig in between. Safe: every launch copies its
+        # own NitroxPatcher.dll into the game folder (dual-client.ps1), and the suite's build stays in this checkout.
+        if ($YieldSeconds -gt 0 -and $name -ne $ordered[-1]) {
+            & (Join-Path $PSScriptRoot 'game-lock.ps1') -Release -Owner $Owner | Out-Null
+            Start-Sleep -Seconds $YieldSeconds
+            & (Join-Path $PSScriptRoot 'game-lock.ps1') -Acquire -Owner $Owner | Out-Null
+        }
     }
 }
 finally {
-    & (Join-Path $PSScriptRoot 'game-lock.ps1') -Release -Owner $Owner
+    if ((& (Join-Path $PSScriptRoot 'game-lock.ps1') -Status) -match "'$Owner'") { & (Join-Path $PSScriptRoot 'game-lock.ps1') -Release -Owner $Owner }
     $env:NITROX_RIG = $callerEnv.Rig
     $env:NITROX_WINDOWLESS = $callerEnv.Windowless
-    $commit = (git -C $repo rev-parse --short HEAD)
     $lines = @("# Suite run $(Split-Path -Leaf $OutDir) on $commit (rig $Rig$(if ($Windowless) { ', windowless' }))", '', '| Scenario | Result | Minutes |', '|---|---|---|')
     $lines += $results | ForEach-Object { "| $($_.Scenario) | $($_.Result -replace '\|', '/') | $($_.Minutes) |" }
     $lines | Out-File (Join-Path $OutDir 'summary.md')
