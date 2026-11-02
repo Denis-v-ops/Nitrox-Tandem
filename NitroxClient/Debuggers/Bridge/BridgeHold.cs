@@ -27,6 +27,9 @@ public static class BridgeHold
     /// </summary>
     public static GameInput.InputStateFlags GetFlags(GameInput.Button button)
     {
+        // Readers that run before the UpdateBeforeInput queue in a frame (e.g. LeftHandButton, the helm screen buttons,
+        // from BehaviourUpdateManager.Update) would otherwise never see the first frame's Down.
+        BeforeInput();
         Hold? hold = current ?? last;
         if (hold == null || hold.Button != button || hold.FlagsFrame != Time.frameCount)
         {
@@ -98,7 +101,7 @@ public static class BridgeHold
     private static void BeforeInput()
     {
         Hold? hold = current;
-        if (hold == null)
+        if (hold == null || hold.FlagsFrame == Time.frameCount || Time.frameCount < hold.FirstFrame)
         {
             return;
         }
@@ -226,6 +229,9 @@ public static class BridgeHold
         public float StartTime;
         public float? EndAt;
         public int FlagsFrame = -1;
+        // The hold starts on the frame after the command: readers earlier in the command's frame have already run, so
+        // a Down in that frame would reach only some of them.
+        public int FirstFrame = Time.frameCount + 1;
         public GameInput.InputStateFlags Flags;
         public int Frames;
         public int TargetedFrames;

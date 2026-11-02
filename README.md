@@ -62,6 +62,7 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **Hear your partner get hurt and breathe** | Their pain sounds and their breathing from a tank play from their body | Nothing to do | Pain within about 30 m, breathing within about 20 m. No alert, no marker | None, always on |
 | **Their flare burns for you too** | A flare your partner throws is lit in your game as well, also when it lands far from you | Throw a flare as usual | You see it when you get close enough for the game to load it, as with your own | None, always on |
 | **Your partner looks right after you join** | When you join or rejoin, your partner stands or swims as they really do and holds what they hold | Nothing to do | — | None, always on |
+| **Cyclops crew** | One of you steers, the other runs sonar, shield, silent running, decoys and the cameras. The pilot's game follows what the co-pilot switches on, and the sub pays for it once | Stand behind the pilot and use the helm screen | Needs both of you in the Cyclops, and the co-pilot does nothing else meanwhile. Engine, speed and horn stay with the pilot | None, always on |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -85,7 +86,7 @@ What's planned:
 - **Story moments together:** the Aurora drive core, disabling the gun, the Sea Emperor and the cure, and the rocket
   launch wait until both players are there. Playing alone in between is fine.
 - **Teamwork survival:** a rescue window instead of instant death (revive with a first aid kit, or by hand), handing
-  items over, Cyclops crew roles, and hitching a ride on the Seamoth.
+  items over, and hitching a ride on the Seamoth.
 - **Finding each other:** "danger / look / come here" pings.
 - **Keeping it scary:** your partner's signal drops to a last contact in the deep; a distress call when they go down
   that pulses through even there.

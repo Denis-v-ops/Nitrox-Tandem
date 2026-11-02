@@ -585,7 +585,7 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - L3: give one item; both inventories are right; relog.
 - **Size:** S (one-step) to M (with a capacity check on the receiving client).
 
-### T4: Cyclops crew roles
+### T4: Cyclops crew roles — done 2026-11-02 (branch `feat/1-t4-cyclops-crew`)
 - **The game doesn't block it:**
   - No ability button checks piloting; they only check `currentSub`: sonar `game:CyclopsSonarButton.cs:71,95`, shield
     `CyclopsShieldButton.cs:47,64`, decoy `CyclopsDecoyLaunchButton.cs:46,69`, silent running
@@ -612,6 +612,49 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - L2: Cyclops state set by the player who isn't steering is stored and relayed.
   - L3: B toggles each ability and A sees it; power drains once.
 - **Size:** S.
+- **Done 2026-11-02** (branch `feat/1-t4-cyclops-crew`):
+  - `CyclopsHelmHUDManager_Update_Patch`: the helm screen is interactable for everyone whose `currentSub` is the sub.
+  - Prefixes: `CyclopsEngineChangeState.OnClick` only while `Player.main.isPiloting`, or under the
+    `EntityMetadataUpdate` suppressor (`CyclopsMetadataProcessor.SetEngineState` applies the partner's engine change
+    through `OnClick` on a passenger's game); it relays only when it ran. `OnMouseEnter` shows the engine hint only to
+    the pilot. `CyclopsHornButton.OnPress` only for the pilot. Motor mode was already pilot-only
+    (`CyclopsMotorModeButton_OnClick_Patch`, `hornObject`), unchanged.
+  - `CyclopsSilentRunningAbilityButton.SilentRunningIteration` runs only in the game that holds a lock on the sub, like
+    `ShieldIteration`.
+  - `CyclopsDecoyLaunchButton_OnClick_Patch` took a `CyclopsHornButton` as `__instance` and relayed every click; it now
+    takes the right type and relays only when a decoy left the tube.
+  - Bridge `hold`: the hold starts on the frame after the command and its flags are computed on the first read, so
+    `LeftHandButton` (updated from `BehaviourUpdateManager.Update`, before `UpdateBeforeInput`) sees the Down.
+- **Findings (windowless, 2026-11-02):**
+  - **`canvasGroup.interactable` was never the block.** The helm buttons are `EventTrigger` + `LeftHandButton`: the UI
+    raycast hovers them, and `LeftHandButton` invokes `OnClick` on `GameInput`'s LeftHand down. Neither checks the
+    CanvasGroup. On unfixed `coop` a standing player's click on the engine button (aim, then LeftHand, through the
+    bridge) started the engine in both games, and the horn handler played the horn. So before T4 a crew member could
+    already click every helm button, engine included; what T4 adds is the pilot-only gates and the power fix. The
+    interactable change keeps the screen's state honest (and covers any `Selectable` on it).
+  - Motor mode buttons (`EngineOnUI`) are active only while the engine runs. The horn button is under `Canvas_Horn`
+    (`hornObject`), shown only to the pilot.
+  - The fire suppression button isn't on the helm screen: its own panel, 4.4 m from the helm, a uGUI `Button` (mouse
+    click), untouched by Nitrox. The scenario calls its handler.
+  - **Silent running didn't drain once** (the spec's "power use runs only on the simulating client" held for shield
+    and sonar only): unfixed, with Bob's silent running on, the sub lost 5 in 22 s, then 0 in 40 s, and the games
+    disagreed (1190 vs 1195): both games consume and overwrite each other's battery charge. Fixed: 20 in 22 s
+    (5 per 5 s iteration). Shield 200 and sonar 40 in 22 s (50 and 10 per iteration): once.
+  - Known hole, not changed: sonar power is paid only with the exclusive lock (`CyclopsSonarButton_SonarPing_Patch`).
+    With nobody at the helm the simulating game turns the sonar off (Normal mode, vanilla), and a crew member who
+    doesn't simulate keeps pinging on their own game for free.
+  - The bridge can't aim a pilot's camera (the UI raycast hit `LoadingScreen`), so the pilot's clicks are handler calls.
+- **Verified:** L2 `CyclopsCrewTest` (a non-pilot's shield, sonar and silent running metadata stored, relayed to the
+  pilot and in the join payload after a restart; decoy and fire suppression packets relayed). It passes on unfixed
+  `coop` too: the server accepts `CyclopsMetadata` from anyone, so the server half needed no change. L3 windowless
+  `tools/scenarios/T4-CyclopsCrew.ps1` PASS (56 checks): Bob stands at the helm with `currentSub` set (he took the helm
+  and left it), Alice pilots and simulates; Bob clicks through the UI: engine stays off, speed unchanged, horn silent;
+  silent running, shield and sonar on and off in both games, each paid once; decoy launched in both games, fire
+  suppression (handler) in both; cameras and back. Alice starts the engine and changes the speed, Bob's game follows.
+  Negative control on the unfixed patches: FAIL (helm not interactable, engine started by Bob in both games, horn
+  played; the run stops there, the silent running drain was measured by hand on that build).
+- **Not verified:** a real mouse click (windowed); fires doused by a crew member's suppression (no fire in the test);
+  the decoy is a local object in each game, not a synced entity (unchanged).
 
 ### T5: Seamoth hitch-a-ride
 - **The game has no towing.**
@@ -1476,3 +1519,4 @@ prices, "keeping it scary").
 | 2026-11-02 | F1 | Done: `PartnerSignal` on the partner's body with a rule list (`PartnerSignalRules`, "faint" last); marker hidden within 12 m or in sight under 25 m, range 150; name tag only within its range; depth in the label; settings Off/Faint/Always and name-tag range (en + de) | L1 `PartnerSignalRulesTest`; windowless `F1-PartnerSignal` PASS. No screenshots |
 | 2026-11-02 | D1 | Done (pain, breathing): `PlayerPainSound` from a Postfix on `PlayerDamageSounds.OnTakeDamage`, played on the partner's body within 30 m; the breathing loop on the body follows their underwater state and tank; paths read from the local emitters. Breathing is a 2D event | L1, L2 `PainSoundRelayTest`; windowless `D1-HearPartner` PASS; negative control: A0 probe. Not listened to |
 | 2026-11-02 | D6 | Flare fixed: thrown out of the partner's loaded cells it stayed unlit in the thrower's inventory in the partner's game (no spawn sent); the server now sends those players `EntityDestroyed` for their stale copy. Metadata was fine | L2 `DroppedOutOfSightTest`; windowless `D6-ThrownFlare` PASS, fails the 120 m check without the fix. Lights drawn at 60–120 m: open (windowed) |
+| 2026-11-02 | T4 | Done: the helm screen is interactable for the crew; engine and horn only for the pilot (engine still applies the partner's change); silent running paid only by the game with the lock; decoy patch type and relay fixed; bridge `hold` Down reaches `LeftHandButton`. Finding: the CanvasGroup never blocked the helm buttons (a standing player could already start the engine); silent running drained erratically in two games. README row | L2 `CyclopsCrewTest`; L3 windowless `T4-CyclopsCrew.ps1` PASS (56 checks); negative control on the unfixed patches FAIL (4 checks; silent running drain measured by hand). Not windowed, no real mouse click |
