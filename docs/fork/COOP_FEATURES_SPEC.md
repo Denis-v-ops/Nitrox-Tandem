@@ -806,7 +806,7 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   | Crabsquid A→B | Bite yes: 40. **EMP no**: the partner's Seamoth stays powered (disabled only in the simulating game; control B→B: disabled) | In game | FIX_SPEC S15a |
   | Lava lizard A→B | Bite yes: 30, natural (also when Bob started 15 m away with the lava shell on). Ranged lava rock: not provoked in the time box | Bite in game; ranged from code | Ranged → FIX_SPEC S15c |
   | Warper A→B (Bob infected 0.5) | Bite yes: 23.5, natural. Warp ball: no (it warps only `Player.main`) | Bite in game; warp ball from code | Warp ball → FIX_SPEC S15c, spawning is B1 |
-  | Mesmer A→A (control), A→B | Bite yes: 30. **Hypnosis no**: control pulled and slowed (x0.78); Bob's body never pulled, Bob never slowed | In game | FIX_SPEC S15b |
+  | Mesmer A→A (control), A→B | Bite yes: 30. **Hypnosis no**: control pulled and slowed (x0.78); no pull of Bob's body and no slowing of Bob observed (whether the body met the eye-contact check wasn't read); the code acts on `Player.main` only | In game + code | FIX_SPEC S15b |
   | Bleeder A→A (control), A→B | **No**: control attached (5 per suck); the partner's body has no attach point, 0 damage. World bleeders aren't simulated at all (B1) | In game | FIX_SPEC S15d (+ B1 whitelist) |
   | Stalker born in a containment, A→B | Spares Bob, also when touched (as intended) | In game | — |
   | **Bite on a vehicle**: Bone shark vs Seamoth, B→B (control), A→B, B→A | **Was no** (0 damage both directions: the simulating game may not change a vehicle it doesn't hold, the pilot's game never bites). **Fixed**: 30 per bite in the pilot's game, the simulator's game shows the new health, no double bite, pilot's body not bitten | In game + headless | Fixed on this branch (below) |
@@ -821,7 +821,9 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   forced contact included) and pass with it; each lock direction once. On the fixed build, `D4-ThreatParity.ps1`
   passes in full (95 checks) and `S14-CreatureAggro.ps1` (its helpers moved) passes all 11 cases.
 - **Not run:** the Lava lizard's and Warper's ranged attacks (from code), Prawn suit and Cyclops bites (same code path
-  as the Seamoth), a world (not console-spawned) Bleeder, network latency.
+  as the Seamoth; whether any non-leviathan bites a Cyclops, `canBiteCyclops`, wasn't read), the Ampeel's shock on a
+  partner's vehicle (no dealer, so not relayed; by reasoning the pilot's game shocks it locally, like the player
+  shock), a world (not console-spawned) Bleeder, network latency.
 
 ### D5: Your own firsts (D5a S + D5b S–M)
 - **Goal:** each player hears the PDA's biome and location lines when *they* get there, not when the partner does.
