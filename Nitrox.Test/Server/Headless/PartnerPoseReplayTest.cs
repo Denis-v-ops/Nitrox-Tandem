@@ -22,27 +22,27 @@ public class PartnerPoseReplayTest
     {
         await using ServerHarness server = await ServerHarness.StartAsync("L2-PoseReplay");
         FakePlayer alice = await server.JoinAsync("Alice");
+        FakePlayer carol = await server.JoinAsync("Carol");
         NitroxId flashlightId = new();
 
-        // Standing in a base after the infection reveal, flashlight in hand. The reveal comes last, so the server's
-        // single "last animation" would only keep it and lose the standing pose.
+        // Standing in a base when the infection reveal plays, flashlight in hand. The reveal came last, so the server's
+        // single "last animation" kept only it and lost the standing pose.
         alice.Send(new AnimationChangeEvent(alice.SessionId, new PlayerAnimation(AnimChangeType.UNDERWATER, AnimChangeState.OFF)));
         alice.Send(new PlayerHeldItemChanged(alice.SessionId, flashlightId, PlayerHeldItemChanged.ChangeType.DRAW_AS_TOOL, new NitroxTechType("Flashlight")));
         alice.Send(new AnimationChangeEvent(alice.SessionId, new PlayerAnimation(AnimChangeType.INFECTION_REVEAL, AnimChangeState.ON)));
-        ServerPlayer aliceOnServer = await GetPlayerAsync(server, "Alice");
-        await ServerHarness.WaitUntilAsync(() => aliceOnServer.PlayerContext!.Animation.Type == AnimChangeType.INFECTION_REVEAL && aliceOnServer.HeldItem != null,
-                                           "the server has Alice's pose");
+        await carol.WaitForAsync<AnimationChangeEvent>(p => p.Animation.Type == AnimChangeType.INFECTION_REVEAL);
 
         FakePlayer bob = await server.JoinAsync("Bob");
 
+        bob.InitialSync.OtherPlayers.Single(p => p.PlayerName == "Alice").Animation.Type.Should().Be(AnimChangeType.UNDERWATER, "the join payload's pose is a state");
         AnimationChangeEvent underwater = await bob.WaitForAsync<AnimationChangeEvent>(p => p.SessionId == alice.SessionId && p.Animation.Type == AnimChangeType.UNDERWATER);
         underwater.Animation.State.Should().Be(AnimChangeState.OFF, "Alice stands, she doesn't swim");
-        AnimationChangeEvent reveal = await bob.WaitForAsync<AnimationChangeEvent>(p => p.SessionId == alice.SessionId && p.Animation.Type == AnimChangeType.INFECTION_REVEAL);
-        reveal.Animation.State.Should().Be(AnimChangeState.ON);
         PlayerHeldItemChanged held = await bob.WaitForAsync<PlayerHeldItemChanged>(p => p.SessionId == alice.SessionId);
         held.ItemId.Should().Be(flashlightId);
         held.Type.Should().Be(PlayerHeldItemChanged.ChangeType.DRAW_AS_TOOL);
         held.IsFirstTime.Should().BeNull("the first-use animation must not play again for a late joiner");
+        bob.ReceivedOf<AnimationChangeEvent>().Should().NotContain(p => p.Animation.Type == AnimChangeType.INFECTION_REVEAL,
+                                                                    "the reveal is a one-time animation, not a pose");
     }
 
     [TestMethod]
