@@ -174,6 +174,17 @@ internal sealed class JoiningManager(
             player.Permissions = Perms.ADMIN;
         }
 
+        // Infection story goals (progress, cure) completed while this player was offline never ran in their game
+        if (player.Stats is { } stats)
+        {
+            float infection = InfectionStory.Reconcile(stats.InfectionAmount, storyManager.StoryGoalData.CompletedGoals);
+            if (infection != stats.InfectionAmount)
+            {
+                logger.ZLogInformation($"Infection of '{player.Name}' updated from {stats.InfectionAmount} to {infection} by story goals completed while they were offline");
+                player.Stats = new PlayerStatsData(stats.Oxygen, stats.MaxOxygen, stats.Health, stats.Food, stats.Water, infection);
+            }
+        }
+
         List<SimulatedEntity> simulations = entitySimulation.AssignGlobalRootEntitiesAndGetData(player);
 
         player.Entity = wasBrandNewPlayer ? SetupNewPlayerEntity(player) : RespawnExistingEntity(player);
