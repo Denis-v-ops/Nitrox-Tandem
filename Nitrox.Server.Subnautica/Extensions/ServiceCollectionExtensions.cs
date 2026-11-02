@@ -142,11 +142,10 @@ internal static partial class ServiceCollectionExtensions
         }
 
         /// <summary>
-        ///     Provides a console reader, command registration and command handling to facilitate server administration.
+        ///     Provides command registration and command handling to facilitate server administration.
         /// </summary>
         public IServiceCollection AddCommands() =>
             services.AddHostedSingletonService<CommandService>()
-                    .AddHostedSingletonService<ConsoleInputService>()
                     .AddHostedSingletonService<CommandRegistryService>()
                     .AddSingleton<Func<CommandRegistryService>>(provider => provider.GetRequiredService<CommandRegistryService>)
                     .AddCommandHandlers()
@@ -198,6 +197,12 @@ internal static partial class ServiceCollectionExtensions
                     .AddSingleton<IPacketSender>(provider => provider.GetRequiredService<LiteNetLibServerService>());
             return services;
         }
+
+        /// <summary>
+        ///     Reads commands typed into the server console.
+        /// </summary>
+        public IServiceCollection AddConsoleInput() =>
+            services.AddHostedSingletonService<ConsoleInputService>();
 
         /// <summary>
         ///     Provides an API for local processes on the current machine to communicate and manage this server.

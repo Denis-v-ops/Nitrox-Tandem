@@ -273,7 +273,7 @@ internal sealed class LiteNetLibServerService : IHostedService, IPacketSender, I
                     using (EasyPool<AnonProcessorContext>.Lease lease = EasyPool<AnonProcessorContext>.Rent())
                     {
                         ref AnonProcessorContext context = ref lease.GetRef();
-                        if (context == null)
+                        if (context == null || !context.SendsThrough(this))
                         {
                             context = new AnonProcessorContext((peerContext.SessionId, peerContext.Peer), this);
                         }
@@ -288,7 +288,7 @@ internal sealed class LiteNetLibServerService : IHostedService, IPacketSender, I
                     using (EasyPool<AuthProcessorContext>.Lease lease = EasyPool<AuthProcessorContext>.Rent())
                     {
                         ref AuthProcessorContext context = ref lease.GetRef();
-                        if (context == null)
+                        if (context == null || !context.SendsThrough(this))
                         {
                             context = new AuthProcessorContext(player!, this); // ! operator: Player can't be null if AUTHENTICATED.
                         }

@@ -35,6 +35,10 @@ function Start-ScenarioGames {
     foreach ($player in $Players) {
         $state = Wait-BridgeJoined $player
         Write-Host "$player joined at $(Format-Vector ([double[]]$state.position))"
+        # The intro (skipped in Debug builds) ends with EscapePod.DamageRadio, a LiveMixin.TakeDamage that the no-damage
+        # cheat zeroes: cheating before it ends leaves that game's radio repaired (FIX_SPEC Log, diff finding 1).
+        $introDone = Wait-Until { (Invoke-Bridge $player 'get uGUI.main.intro.showing') -eq 'false' } -TimeoutSeconds 60
+        if (-not $introDone) { Write-Host "  $player's intro is still showing" -ForegroundColor Yellow }
         # Tests shouldn't die of drowning or creatures while they wait.
         Invoke-Bridge $player 'call GameModeUtils.ActivateCheat NoOxygen' | Out-Null
         Invoke-Bridge $player 'set NoDamageConsoleCommand.main.noDamageCheat true' | Out-Null
