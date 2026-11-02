@@ -1449,7 +1449,8 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   the module with its items again (`SpawnEntities` with `ForceRespawn`). The module stays at the last amount the server
   stored, so that game keeps the materials refunded for the last step (at most one resource), and the items are safe.
   Not used: `BuildingResync` for a single module: its client side destroys every other loose module it isn't sent and
-  can't respawn a missing one (`BuildingResyncProcessor.UpdateEntities`). Headless: `StorageModuleDeconstructionTest`
+  can't respawn a missing one (`BuildingResyncProcessor.UpdateEntities`; the respawn is fixed by
+  [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M1). Headless: `StorageModuleDeconstructionTest`
   (locker with an item, charger with a battery; restart), fails without the check. Not checked in game: the respawned
   locker in the game that deconstructed it. Open (H): whether vanilla planters block deconstruction with plants in them
   (`StorageContainer.preventDeconstructionIfNotEmpty` comes from the prefab); the server now keeps a planter with plants.
