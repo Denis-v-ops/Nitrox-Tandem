@@ -801,7 +801,7 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
 
 ## 9. Cozy home
 
-### R1a: Small comforts (S)
+### R1a: Small comforts (S) — done 2026-11-02 (branch `feat/1-r1a-small-comforts`)
 - **Sleep:** `SleepManager` already waits for everyone, but says only "{SLEEPING}/{TOTAL} players sleeping" (`en.json:96`).
   Name who's still awake: "Waiting for <name>…".
 - **Eating and drinking:** the game has no eating animation, only a sound (`game:Survival.cs:187`). Those sounds are marked
@@ -810,6 +810,40 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
 - **Tests:**
   - L2: sleep flow: A in bed, both see "1/2" with the right name; B in bed, sleep completes; a disconnect mid-wait.
   - L1: whitelist entries.
+- **What was built:**
+  - `SleepStatusUpdate` carries `AwakePlayerNames` (connected players not in bed, sorted). The client builds the text:
+    new key `Nitrox_SleepingPlayersWaitingFor` ("{SLEEPING}/{TOTAL} players sleeping. Waiting for {PLAYERS}…", en +
+    de); with nobody awake it keeps `Nitrox_SleepingPlayers`. The other 37 language files show the English line for the new
+    key: `Language_LoadLanguageFile_Patch` loads `en.json` first as the fallback, so their files stay untouched.
+  - `SleepManager` on disconnect: counts the remaining *joined* players (before: raw sessions, `NewSessionTotal`,
+    which also counted someone still in the join queue) and leaves the leaver out explicitly, because the session
+    cleaners run in no fixed order and `PlayerManager` may not have dropped them yet. It now also sends a status when
+    the only sleeper leaves (before: nothing, so the last status still counted them in bed). The client shows nothing
+    for a status with nobody in bed, so this keeps the packets consistent; the earlier "Waiting for…" line simply
+    fades from the message log.
+  - `event:/player/eat`, `drink`, `drink_stillsuit`: synced, 10 m, not global (the partner must be in the same base or
+    vehicle, or both outside, like `bubbles`).
+- **Findings (read, not guessed):**
+  - `Survival.Eat` and `Survival.Use` play `TechData.GetSoundUse(techType)` through `FMODUWE.PlayOneShot` at
+    `Player.main.transform.position`. The default is `event:/player/eat` (`game:TechData.cs:141`); the game's
+    `Balance/TechData` (in `resources.assets`) overrides it with `drink` (water items, e.g. disinfected and big filtered water),
+    `drink_stillsuit` and `use_first_aid` (first aid kit, left as is).
+  - The whitelist flip is enough: `FMODUWE_PlayOneShotImpl_Patch` sends whitelisted paths as `FMODAssetPacket`; the
+    server's `FMODAssetProcessor` forwards it to players within the radius and the same sub root, with the volume
+    scaled by distance; the client's `FMODAssetProcessor` plays it at the eater's position via
+    `FMODEmitterController.PlayEventOneShot` (`FMODUWE.GetEventImpl`, which isn't patched, so no echo).
+  - Not changed, noted: the server's `FMODAssetProcessor` writes the scaled volume back into the shared packet inside
+    its loop, so with three or more players a later recipient gets an already-scaled volume. Harmless for two players.
+- **Verified:** headless. L2 `SleepStatusTest` (A in bed → both get 1/2 with `["Bob"]`; B in bed → 2/2, then
+  `SleepComplete`; awake player leaves → sleeper sleeps; sleeper leaves → status 0/1) and `EatingSoundTest` (6 m: the
+  partner gets the sound at the eater's position; 15 m: nothing). L1 `FMODWhitelistTest`, `SleepStatusUpdateProcessorTest`
+  (text from `en.json`). Negative controls: with the old CSV the whitelist tests and `EatingSoundTest` fail; with the
+  old disconnect early return the sleeper-leaves test fails; the other sleep tests need the new packet field to
+  compile. **Not verified:** hearing the sound and seeing the message in a real game. No `tools/scenarios/` script was
+  written and no game rig was run for this item, on purpose (headless-only build pass). The eating sound takes the same
+  path as `bubbles` and `cold_damage` (volume scaled by distance on the server, then by FMOD on the client), so if it's
+  too quiet in play, that's this shared path. Seen, not changed: `it.json` uses `{DORMENDO}/{TOTALE}` in
+  `Nitrox_SleepingPlayers`, so Italian shows the placeholders unfilled.
 
 ### R1b: See each other sit, sleep and use things (adopt upstream PR #2859, L)
 - **Why it's off:** all remote-player cinematic sync patches have been in `#if false` since 1.8 (#2349 → #2287: benches
@@ -1136,3 +1170,4 @@ prices, "keeping it scary").
 | 2026-11-02 | D4, §12, §13.1 | D4 rebased on FIX_SPEC S14 (merged): what S14 fixed and tested, the creatures left, the probe extends S14's scenario. AGENTS.md Drillable note corrected; README "Planned co-op features" rewritten per §13.1 and S13/S14 added to its fix table | FIX_SPEC S13/S14 entries; `Drillable_ManagedUpdate_Patch.cs`, `PacketSuppressorPatch.cs` read |
 | 2026-11-02 | A2, R1b | Trial merge of #2859 into `coop` (not built): no conflicts, two overlapping files merge cleanly; its hatch state is keyed by session id and has no save test; coupling table per item; decision: build R2b before #2859 | `git merge --no-commit` of `pr-2859` (aborted); PR and #2642 review comments, decompiled `Bed.cs`/`DayNightCycle.cs` read; scratch Newtonsoft check of a `SessionId`-shaped struct |
 | 2026-11-02 | A1 | Shared plumbing: the 8 co-op options in `server.cfg` (4 of them sent to the game in `InitialPlayerSync.CoopSettings`), the saved player fields for T1 and D5b, `Interfered` on `PlayerStats` | Headless: `PlayerDataSaveLoadTest` (save and load, old save without the fields), `CoopPlumbingTest` (L2: options reach the game, `Interfered` kept and relayed), `PacketsSerializableTest`; full suite green. No game run (no in-game behaviour yet) |
+| 2026-11-02 | R1a | Done: the sleep status names who is still awake (names in `SleepStatusUpdate`, new en/de key); disconnect mid-wait counts joined players and updates when the sleeper leaves; eat/drink/stillsuit-drink sounds synced at 10 m. README co-op features table created | Headless: L2 `SleepStatusTest`, `EatingSoundTest`; L1 `FMODWhitelistTest`, `SleepStatusUpdateProcessorTest`; negative controls. Not in game |

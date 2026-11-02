@@ -92,6 +92,7 @@
     "Nitrox_SilenceChat": "Chat stumm schalten",
     "Nitrox_SilencedChatNotif": "Chat ist nun stumm geschaltet",
     "Nitrox_SleepingPlayers": "{SLEEPING}/{TOTAL} Spieler sind am schlafen.",
+    "Nitrox_SleepingPlayersWaitingFor": "{SLEEPING}/{TOTAL} Spieler schlafen. Warte auf {PLAYERS}…",
     "Nitrox_StartServer": "Bitte starte zuerst den Server um deine selbst gehostete Welt zu betreten",
     "Nitrox_SyncingWorld": "Synchronisiere Mehrspieler-Welt…",
     "Nitrox_TeleportTo": "Zu {PLAYER} teleportieren",

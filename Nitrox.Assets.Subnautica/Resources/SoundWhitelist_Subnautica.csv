@@ -373,9 +373,9 @@ event:/player/damage;false;false;20
 event:/player/data_terminal_use;false;false;0
 event:/player/depth_100;false;false;0
 event:/player/depth_200;false;false;0
-event:/player/drink;false;false;0
-event:/player/drink_stillsuit;false;false;0
-event:/player/eat;false;false;0
+event:/player/drink;true;false;10
+event:/player/drink_stillsuit;true;false;10
+event:/player/eat;true;false;10
 event:/player/elevator_down;false;false;0
 event:/player/elevator_up;false;false;0
 event:/player/end_freedive;false;false;0
