@@ -10,17 +10,19 @@
        with a key's doorActivationKey) reaches Bob. Fails without StoryGoalManager_OnGoalComplete_Patch: nothing is sent.
     2. Alice activates a teleporter pair (TeleporterManager.ActivateTeleporter): Bob has its Nitrox_TeleporterActive goal
        and the pair is active in his game. Fails without TeleporterManager_ActivateTeleporter_Patch / TeleporterPairs.
-    3. Alice respawns in the pod (Player.MovePlayerToRespawnPoint): the server keeps her in the pod (SubRootId, parent).
-       Fails without PlayerParentRules: the last packet ("no sub root") cleared it.
-    4. At the gun terminal: Bob stands in the terminal area (open), Alice queues RadioSunbeam4 and disables the gun
+    3. At the gun terminal: Bob stands in the terminal area (open), Alice queues RadioSunbeam4 and disables the gun
        (console goal). Bob's terminal closes (fails without the NotifyGoalComplete Postfix: it stays open).
-    5. Sea Emperor: Alice spawns a baby near the Emperor; in both games it swims to the mother (a swim target). Fails
+    4. Sea Emperor: Alice spawns a baby near the Emperor; in both games it swims to the mother (a swim target). Fails
        without the Start patch change: the spawner parented it to the cell root, and the old patch skipped every baby
        with a parent. Alice's baby reaches the teleporter (SeaEmperorBaby.Teleport): the server forgets it. Fails
        without SeaEmperorBaby_Teleport_Patch.
-    6. Bob gets the same fragment scan twice (StoryManager.ScanCompleted): no exception. Fails with PDAScanner.fragments.Add.
-    7. Both relog: Bob still has the door goal and the teleporter goal (the server stored them), and the server's radio
-       queue no longer brings back RadioSunbeam4 (fails without StoryManager.RemoveRadioMessagesCancelledBy).
+    5. Bob gets the same fragment scan twice (StoryManager.ScanCompleted): no exception. Fails with PDAScanner.fragments.Add.
+    6. Alice respawns in the pod (Player.MovePlayerToRespawnPoint): the server keeps her in the pod (SubRootId, parent).
+       Fails without PlayerParentRules: the last packet ("no sub root") cleared it. Last before the relog: a teleport
+       takes her out of the pod.
+    7. Both relog: Bob still has the door goal and the teleporter goal (the server stored them), the server's radio
+       queue no longer brings back RadioSunbeam4 (fails without StoryManager.RemoveRadioMessagesCancelledBy), and Alice
+       is still in the pod on the server.
     8. Bob's game is restarted; while it loads, Alice completes goals every half second. Bob joins with all of them and
        his log has no "Error trying to process packet" for StoryGoalExecuted (without InitialSyncDeferral the goals
        that arrive in the menu or while loading throw: StoryGoalScheduler.main is null).
@@ -115,17 +117,6 @@ try {
         Assert-Equal 'true' (Invoke-Bridge $B "call TeleporterManager.GetTeleporterActive $pairId") "the pair is active in $B's game"
     }
 
-    Step 'Alice respawns in the pod: the server keeps her in it' {
-        Assert-True ($podId -ne '<null>' -and $podId -ne '?') "the server had Alice in a pod at the start ($podId)"
-        Invoke-Bridge $A 'teleport 30 -10 30' | Out-Null
-        $left = Wait-Until { (Get-ServerSubRoot $aliceId) -eq '<null>' } -TimeoutSeconds 10
-        Assert-True ([bool]$left) 'the teleport took her out of the pod on the server'
-        Invoke-Bridge $A 'call Player.main.MovePlayerToRespawnPoint' | Out-Null
-        Start-Sleep -Seconds 3
-        Assert-Equal $podId (Get-ServerSubRoot $aliceId) 'the server has Alice in the pod after the respawn'
-        Assert-True ((Get-ServerQuery $aliceId) -match "ParentId: $podId") "her entity's parent is the pod"
-    }
-
     Step "Bob's open gun terminal closes when Alice disables the gun" {
         Invoke-Bridge $A "teleport $terminalRoom" | Out-Null
         Invoke-Bridge $B 'teleport 370 -72.7 1076' | Out-Null
@@ -181,6 +172,17 @@ try {
         $second = $null
         try { $second = Invoke-Bridge $B "call NitroxClient.GameLogic.StoryManager.ScanCompleted $podId false" } catch { $second = "threw: $($_.Exception.Message)" }
         Assert-True (-not ("$first$second" -match 'threw|exception|already been added')) "the second scan of one fragment doesn't throw ('$second')"
+    }
+
+    Step 'Alice respawns in the pod: the server keeps her in it' {
+        Assert-True ($podId -ne '<null>' -and $podId -ne '?') "the server had Alice in a pod at the start ($podId)"
+        Invoke-Bridge $A 'teleport 30 -10 30' | Out-Null
+        $left = Wait-Until { (Get-ServerSubRoot $aliceId) -eq '<null>' } -TimeoutSeconds 10
+        Assert-True ([bool]$left) 'the teleport took her out of the pod on the server'
+        Invoke-Bridge $A 'call Player.main.MovePlayerToRespawnPoint' | Out-Null
+        Start-Sleep -Seconds 3
+        Assert-Equal $podId (Get-ServerSubRoot $aliceId) 'the server has Alice in the pod after the respawn'
+        Assert-True ((Get-ServerQuery $aliceId) -match "ParentId: $podId") "her entity's parent is the pod"
     }
 
     Step 'Both relog: the goals came back from the server, the Sunbeam radio message did not' {

@@ -137,7 +137,15 @@ Game-rig scenarios run once at the end, after all nine are implemented ("Testing
   would restart every egg (`game:Incubator.OnHatched` → `StartHatch`): both now only once. Their 30 s animation-baby
   cleanup not taken. **Risk:** a save whose babies were never removed: on the next load they swim to the mother and the
   interaction plays once more, then they teleport and are removed. **Unverified:** that a copy the partner doesn't
-  simulate really swims to the mother (their notes say the Emperor reacted on the second screen).
+  simulate really swims to the mother (their notes say the Emperor reacted on the second screen). **Open risk, bigger
+  (pre-existing, not fixed):** every cell load makes a new incubator object (`hatched` false), and the spawner applies
+  its metadata, so `OnHatched` runs on every load. That is harmless only if the metadata comes before `Incubator.Start`
+  makes the eggs (`Entities.SpawnBatchAsync` applies it right after the spawn coroutine; whether a frame passes is
+  unverified). If `Start` ran first, every egg hatches again: temporary babies for most games, but five new real babies
+  from a game holding the platform's lock (`IncubatorEgg_HatchNow_Patch`), which with the new `Start` patch swim to the
+  mother and replay the interaction. Rig check: hatch, unload and reload the incubator's cell, count the server's
+  `SeaEmperorBaby` entities. The fix then: on a spawn set `hatched` and the eggs' `SetHatched` (the game's load path),
+  `OnHatched` only for a live update.
 - **Radiation for a joiner: held.** `RecalculateRadiationRadius` took the latest fix time of any leak as "all fixed";
   `game:LeakingRadiation.NotifyLeaksFixed` triggers `leaksFixedGoal` only while `!radiationFixed`, and `Update` grows
   the radius while any leak leaks. `RadiationRadiusModel.Compute` taken. **The `IsProgress` guard** protects against a
