@@ -21,7 +21,7 @@ public class OfflineInfectionTest
         FakePlayer bob = await server.JoinAsync("Bob");
 
         // Bob is fully infected when he logs off
-        bob.Send(new PlayerStats(bob.SessionId, 45, 45, 80, 50, 90, 1f));
+        bob.Send(new PlayerStats(bob.SessionId, 45, 45, 80, 50, 90, 1f, false));
         PlayerManager playerManager = server.Get<PlayerManager>();
         await ServerHarness.WaitUntilAsync(() => playerManager.TryGetPlayerByName("Bob", out var p) && p.Stats?.InfectionAmount == 1f,
                                            "the server stores Bob's infection");

@@ -230,7 +230,14 @@ internal sealed class JoiningManager(
             sessionSettings,
             player.InPrecursor,
             player.DisplaySurfaceWater,
-            options.Value.MarkDeathPointsWithBeacon
+            options.Value.MarkDeathPointsWithBeacon,
+            new CoopSettings
+            {
+                RescueWindowSeconds = options.Value.RescueWindowSeconds,
+                PartnerSignalInterference = options.Value.PartnerSignalInterference,
+                SignalInterferenceDepth = options.Value.SignalInterferenceDepth,
+                PartnerDiscoveriesSilent = options.Value.PartnerDiscoveriesSilent
+            }
         );
 
         await packetSender.SendPacketAsync(initialPlayerSync, player.SessionId);

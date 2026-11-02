@@ -15,6 +15,7 @@ internal sealed class PlayerStatsProcessor(ILogger<PlayerStatsProcessor> logger)
             packet.SessionId = context.Sender.SessionId;
         }
         context.Sender.Stats = new PlayerStatsData(packet.Oxygen, packet.MaxOxygen, packet.Health, packet.Food, packet.Water, packet.InfectionAmount);
+        context.Sender.Interfered = packet.Interfered;
         await context.SendToOthersAsync(packet);
     }
 }

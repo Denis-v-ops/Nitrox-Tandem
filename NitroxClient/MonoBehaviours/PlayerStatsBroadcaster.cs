@@ -36,7 +36,9 @@ public class PlayerStatsBroadcaster : MonoBehaviour
             float food = survival.food;
             float water = survival.water;
             float infectionAmount = Player.main.infectedMixin.GetInfectedAmount();
-            localPlayer.BroadcastStats(oxygen, maxOxygen, health, food, water, infectionAmount);
+            // The partner-signal interference (COOP_FEATURES_SPEC D2) isn't computed yet.
+            bool interfered = false;
+            localPlayer.BroadcastStats(oxygen, maxOxygen, health, food, water, infectionAmount, interfered);
         }
     }
 }

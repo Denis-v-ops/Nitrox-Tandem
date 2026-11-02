@@ -219,12 +219,28 @@ on its own (see R1b). Until T1 lands, the death penalty is plain vanilla, which 
 - **Bridge additions, in one change:** `hold <id> <seconds>` (T1, T2, T3), a read of recently played FMOD events (D1,
   D3), a read of `PDASounds.queue` (D5), and the partner body's animator values if `get` can't reach them (R2).
 
-**A1: Shared plumbing (S).** One change that every later item only reads:
+**A1: Shared plumbing (S). Done (2026-11-02, branch `feat/0-a1-shared-plumbing`).** One change that every later item
+only reads:
 - all server options from the table below, with their defaults, in `SubnauticaServerOptions` and, where the game needs
   them, `InitialPlayerSync`. They do nothing until their item lands; don't list them in the README before that;
+  - **Sent to the game** in `InitialPlayerSync.CoopSettings` (stored in `LocalPlayer.CoopSettings`):
+    `RescueWindowSeconds` (the `Kill` prefix must know 0 = off), `PartnerSignalInterference` and
+    `SignalInterferenceDepth` (each game decides its own interference), `PartnerDiscoveriesSilent` (D5a mutes on the
+    receiver). A later item that needs another option in the game adds a field to `CoopSettings`.
+  - **Server only:** `StoryGatesEnabled`, `StoryGatePlayers`, `RescueEscalation` (the server sends the window with
+    `PlayerDowned`), `BuddyBreathingEfficiency` (the server scales the oxygen).
 - the saved player fields `downedUntil`, `downsSinceRest`, `lastDownedAt` (T1) and `heardGoals` (D5b), with one
   `SaveLoadRoundTrip` test and one check whether `SaveDataUpgrades` needs a step (they're additive);
+  - On the server `Player` and in `PersistedPlayerData` (`PlayerData.json`): `double? DownedUntil`, `int DownsSinceRest`,
+    `double? LastDownedAt`, `HeardGoals` (`ThreadSafeSet<string>`, saved as a `HashSet<string>`).
+  - Times are seconds of `TimeService.ActiveTime`: it is saved (`RealTimeElapsed`), stops while the server sleeps with
+    nobody online, and doesn't jump on sleep or time skips. Null means not downed / never downed. An absolute
+    `DownedUntil` doesn't pause while only the downed player is offline: T1 must shift it on rejoin (or keep the
+    remaining time) to get "paused while that player is offline".
+  - No upgrade step: a save without the fields loads with null/0/empty (`PlayerDataSaveLoadTest`).
 - an `Interfered` flag on the `PlayerStats` packet for D2, kept in memory on the server (not saved).
+  - `Player.Interfered` on the server, set by `PlayerStatsProcessor` and relayed with the stats. The game sends false
+    until D2 (`PlayerStatsBroadcaster`).
 
 **A2: Trial merge of #2859 (XS).** Merge PR #2859 into a throwaway branch from `coop` without building, and list the
 conflicts with this spec's planned edits to `RemotePlayer`, `AnimationController` and the escape pod. Record the list
@@ -1119,3 +1135,4 @@ prices, "keeping it scary").
 | 2026-11-02 | §2–§3, §8, T1, T2, F1, F2 | Fear and difficulty review: principles 2–4 and 6, analysis, price table, journey map, D1–D6, prices on T1/T2/F2, options table; second round of design decisions; README showcase rule (§13.1); basics sweep (§12.1) with R2 and the D4 update; gaps made items B1–B6 (§12); build-efficiency pass: wave 0 (A0 probe run, A1 shared plumbing, A2 #2859 trial merge), D5 split into D5a/D5b, shared partner hand-target (T2), D2 state on `PlayerStats`, shared branches per wave (§13) | Code and decompiled-game reads (cited inline) |
 | 2026-11-02 | D4, §12, §13.1 | D4 rebased on FIX_SPEC S14 (merged): what S14 fixed and tested, the creatures left, the probe extends S14's scenario. AGENTS.md Drillable note corrected; README "Planned co-op features" rewritten per §13.1 and S13/S14 added to its fix table | FIX_SPEC S13/S14 entries; `Drillable_ManagedUpdate_Patch.cs`, `PacketSuppressorPatch.cs` read |
 | 2026-11-02 | A2, R1b | Trial merge of #2859 into `coop` (not built): no conflicts, two overlapping files merge cleanly; its hatch state is keyed by session id and has no save test; coupling table per item; decision: build R2b before #2859 | `git merge --no-commit` of `pr-2859` (aborted); PR and #2642 review comments, decompiled `Bed.cs`/`DayNightCycle.cs` read; scratch Newtonsoft check of a `SessionId`-shaped struct |
+| 2026-11-02 | A1 | Shared plumbing: the 8 co-op options in `server.cfg` (4 of them sent to the game in `InitialPlayerSync.CoopSettings`), the saved player fields for T1 and D5b, `Interfered` on `PlayerStats` | Headless: `PlayerDataSaveLoadTest` (save and load, old save without the fields), `CoopPlumbingTest` (L2: options reach the game, `Interfered` kept and relayed), `PacketsSerializableTest`; full suite green. No game run (no in-game behaviour yet) |

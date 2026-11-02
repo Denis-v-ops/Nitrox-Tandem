@@ -65,6 +65,35 @@ namespace Nitrox.Server.Subnautica.Models
         public bool InPrecursor { get; set; }
         public bool DisplaySurfaceWater { get; set; }
 
+        /// <summary>
+        ///     When the player's rescue window ends (COOP_FEATURES_SPEC T1), in seconds of <c>TimeService.ActiveTime</c>.
+        ///     Null when the player isn't down. Saved.
+        /// </summary>
+        public double? DownedUntil { get; set; }
+
+        /// <summary>
+        ///     How often the player went down since they last rested (COOP_FEATURES_SPEC T1). Saved.
+        /// </summary>
+        public int DownsSinceRest { get; set; }
+
+        /// <summary>
+        ///     When the player last went down (COOP_FEATURES_SPEC T1), in seconds of <c>TimeService.ActiveTime</c>. Null if
+        ///     never. Saved.
+        /// </summary>
+        public double? LastDownedAt { get; set; }
+
+        /// <summary>
+        ///     Keys of the biome and location goals whose PDA line this player heard themselves (COOP_FEATURES_SPEC D5b).
+        ///     Saved.
+        /// </summary>
+        public ThreadSafeSet<string> HeardGoals { get; init; } = [];
+
+        /// <summary>
+        ///     Whether the player's signal is cut off, from their latest <see cref="PlayerStats" /> (COOP_FEATURES_SPEC D2).
+        ///     Not saved.
+        /// </summary>
+        public bool Interfered { get; set; }
+
         public PlayerEntity Entity { get; set; }
 
         public Player(PeerId peerId, SessionId sessionId, string name, bool isPermaDeath, PlayerContext? playerContext,
