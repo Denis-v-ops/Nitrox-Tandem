@@ -17,7 +17,8 @@ internal static class RaycastHelper
             return null;
         }
 
-        Ray ray = MainCamera.ScreenPointToRay(Input.mousePosition);
+        // The crosshair is the screen centre. The cursor is locked there during play, but not in windowless test games.
+        Ray ray = MainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
         int layerMask = ~LayerMask.GetMask("UI", "Ignore Raycast");
         RaycastHit[] hits = ArrayPool<RaycastHit>.Shared.Rent(hitBufferSize);
         try

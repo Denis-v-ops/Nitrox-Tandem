@@ -47,12 +47,14 @@ $results = New-Object System.Collections.ArrayList
 try {
     if (-not $NoBuild) {
         Write-Host 'Building Debug (-m:1)...'
-        dotnet build (Join-Path $repo 'Nitrox.slnx') -m:1 -v q | Out-File (Join-Path $OutDir 'build.log')
+        dotnet build (Join-Path $repo 'Nitrox.slnx') -m:1 -v q -p:UseSharedCompilation=false | Out-File (Join-Path $OutDir 'build.log')
         if ($LASTEXITCODE -ne 0) { throw "Build failed, see $OutDir\build.log" }
     }
     foreach ($name in $ordered) {
         $log = Join-Path $OutDir "$name.log"
         $started = Get-Date
+        # Longer than game-lock's stale limit in total, so renew the lock before each scenario
+        & (Join-Path $PSScriptRoot 'game-lock.ps1') -Refresh -Owner $Owner | Out-Null
         Write-Host "== $name" -ForegroundColor Cyan
         & pwsh -NoProfile -File (Join-Path $scenarioDir "$name.ps1") *>&1 | Out-File $log
         $exit = $LASTEXITCODE

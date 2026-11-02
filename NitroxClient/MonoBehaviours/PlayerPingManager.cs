@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nitrox.Model.Core;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.DataStructures.Unity;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Abstract;
 using NitroxClient.GameLogic;
@@ -12,6 +14,10 @@ using UnityEngine;
 
 namespace NitroxClient.MonoBehaviours;
 
+/// <summary>
+///     Context pings (COOP_FEATURES_SPEC F2): the ping key picks Danger, Look or Come here from what the crosshair hits,
+///     the "come here" key always sends Come here. Each game builds the label in its own language.
+/// </summary>
 internal sealed class PlayerPingManager : MonoBehaviour
 {
     private const float MAX_PING_DISTANCE = 250f;
@@ -23,11 +29,17 @@ internal sealed class PlayerPingManager : MonoBehaviour
     private static PlayerPingManager instance = null!;
 
     private RaycastHit? queuedRaycastHit;
+    private bool queuedComeHere;
     private IPacketSender packetSender = null!;
     private LocalPlayer localPlayer = null!;
+    private PlayerManager playerManager = null!;
+    private SignalInterference signalInterference = null!;
     private float lastPingTime;
     private readonly Dictionary<SessionId, List<PlayerPing>> playerPings = [];
     private readonly List<PlayerPing> localPlayerPings = new(MAX_ACTIVE_PINGS);
+
+    /// <summary>Pings from others that weren't shown because of interference (the price, COOP_FEATURES_SPEC §2.2).</summary>
+    public static int DroppedByInterference { get; private set; }
 
     public void Awake()
     {
@@ -40,6 +52,8 @@ internal sealed class PlayerPingManager : MonoBehaviour
         instance = this;
         packetSender = this.Resolve<IPacketSender>();
         localPlayer = this.Resolve<LocalPlayer>();
+        playerManager = this.Resolve<PlayerManager>();
+        signalInterference = this.Resolve<SignalInterference>();
     }
 
     private void Update()
@@ -47,22 +61,34 @@ internal sealed class PlayerPingManager : MonoBehaviour
         if (queuedRaycastHit is { } hit && CanCreatePing())
         {
             queuedRaycastHit = null;
-            CreatePing(hit.point + hit.normal * 0.5f, hit.collider.gameObject);
+            CreatePing(hit.point + hit.normal * 0.5f, hit.collider.gameObject, queuedComeHere);
         }
     }
 
+    /// <summary>The ping key: the kind comes from what the crosshair hits.</summary>
     public static void RequestPing()
     {
         if (!instance)
         {
             return;
         }
-        instance.RequestPingInternal();
+        instance.RequestPingInternal(false);
     }
 
-    private void RequestPingInternal()
+    /// <summary>The "Ping: come here" key: always a "come here" ping where the crosshair hits.</summary>
+    public static void RequestComeHerePing()
+    {
+        if (!instance)
+        {
+            return;
+        }
+        instance.RequestPingInternal(true);
+    }
+
+    private void RequestPingInternal(bool comeHere)
     {
         queuedRaycastHit = RaycastHelper.GetClosestHitFromAim(MAX_PING_DISTANCE);
+        queuedComeHere = comeHere;
         if (queuedRaycastHit == null)
         {
             // Invalid ping raycast so we play an error sound.
@@ -84,7 +110,7 @@ internal sealed class PlayerPingManager : MonoBehaviour
         return true;
     }
 
-    private void CreatePing(Vector3 position, GameObject entityHit)
+    private void CreatePing(Vector3 position, GameObject entityHit, bool comeHere)
     {
         if (!entityHit)
         {
@@ -96,52 +122,78 @@ internal sealed class PlayerPingManager : MonoBehaviour
             return;
         }
 
-        localPlayerPings.RemoveAll(ping => !ping);
-
-        if (localPlayerPings.Count >= MAX_ACTIVE_PINGS)
+        PingKind kind = PingKind.ComeHere;
+        TechType targetTechType = TechType.None;
+        if (!comeHere)
         {
-            PlayerPing oldestPing = localPlayerPings[0];
-            if (oldestPing)
-            {
-                Destroy(oldestPing.gameObject);
-            }
-            localPlayerPings.RemoveAt(0);
+            kind = PingTarget.Classify(entityHit, out targetTechType);
         }
+
+        RemoveOldestIfFull(localPlayerPings);
 
         NitroxId pingId = new();
         SessionId sessionId = localPlayer.SessionId.Value;
         Color playerColor = localPlayer.PlayerSettings.PlayerColor.ToUnity();
-        string label = $"{localPlayer.PlayerName} pinged {entityHit.GetFriendlyName()}";
+        string label = BuildLabel(kind, localPlayer.PlayerName, targetTechType);
 
-        PlayerPing newPing = PlayerPing.SpawnPlayerPing(position.ToDto(), label, pingId, playerColor);
+        PlayerPing newPing = PlayerPing.SpawnPlayerPing(kind, position, localPlayer.PlayerName, label, targetTechType, pingId, playerColor, IsAnyPartnerAt);
         if (newPing)
         {
             localPlayerPings.Add(newPing);
         }
 
-        packetSender.Send(new PlayerPingCreated(sessionId, label, position.ToDto(), pingId));
+        packetSender.Send(new PlayerPingCreated(sessionId, kind, targetTechType.ToDto(), position.ToDto(), pingId));
     }
 
-    public static void CreateRemotePing(SessionId sessionId, string labelText, NitroxVector3 position, NitroxId pingId)
+    public static void CreateRemotePing(PlayerPingCreated packet)
     {
         if (!instance)
         {
             return;
         }
-        
-        instance.CreateRemotePingInternal(sessionId, labelText, position, pingId);
+
+        instance.CreateRemotePingInternal(packet);
     }
-    
-    private void CreateRemotePingInternal(SessionId sessionId, string labelText, NitroxVector3 position, NitroxId pingId)
+
+    private void CreateRemotePingInternal(PlayerPingCreated packet)
     {
-        if (!playerPings.TryGetValue(sessionId, out List<PlayerPing> pings))
+        Vector3 position = packet.Position.ToUnity();
+        Optional<RemotePlayer> sender = playerManager.Find(packet.SessionId);
+        GameObject? senderBody = sender.HasValue ? sender.Value.Body : null;
+
+        // The price (COOP_FEATURES_SPEC §2.2): when either player is in interference, only show it near the sender.
+        // Without the sender's body, measure to the ping.
+        Vector3 senderPosition = senderBody ? senderBody.transform.position : position;
+        float distanceToSender = Player.main ? Vector3.Distance(Player.main.transform.position, senderPosition) : 0f;
+        if (!PingRules.ShowsForReceiver(signalInterference.IsLocalPlayerInterfered(), signalInterference.IsPartnerInterfered(packet.SessionId), distanceToSender))
         {
-            pings = new List<PlayerPing>();
-            playerPings[sessionId] = pings;
+            DroppedByInterference++;
+            Log.Debug($"Ping {packet.PingId} from {packet.SessionId} not shown: interference, {distanceToSender:0} m from the sender");
+            return;
         }
-        
+
+        if (!playerPings.TryGetValue(packet.SessionId, out List<PlayerPing> pings))
+        {
+            pings = [];
+            playerPings[packet.SessionId] = pings;
+        }
+        RemoveOldestIfFull(pings);
+
+        string senderName = sender.HasValue ? sender.Value.PlayerName : "?";
+        Color playerColor = sender.HasValue ? sender.Value.PlayerSettings.PlayerColor.ToUnity() : Color.yellow;
+        TechType targetTechType = packet.TargetTechType.ToUnity();
+        string label = BuildLabel(packet.Kind, senderName, targetTechType);
+
+        PlayerPing newPing = PlayerPing.SpawnPlayerPing(packet.Kind, position, senderName, label, targetTechType, packet.PingId, playerColor, IsLocalPlayerAt);
+        if (newPing)
+        {
+            pings.Add(newPing);
+        }
+    }
+
+    private static void RemoveOldestIfFull(List<PlayerPing> pings)
+    {
         pings.RemoveAll(ping => !ping);
-        
         if (pings.Count >= MAX_ACTIVE_PINGS)
         {
             PlayerPing oldestPing = pings[0];
@@ -151,18 +203,73 @@ internal sealed class PlayerPingManager : MonoBehaviour
             }
             pings.RemoveAt(0);
         }
-        
-        PlayerManager playerManager = this.Resolve<PlayerManager>();
-        Optional<RemotePlayer> remotePlayerOptional = playerManager.Find(sessionId);
-        
-        Color playerColor = remotePlayerOptional.HasValue 
-            ? remotePlayerOptional.Value.PlayerSettings.PlayerColor.ToUnity() 
-            : Color.yellow;
-        
-        PlayerPing newPing = PlayerPing.SpawnPlayerPing(position, labelText, pingId, playerColor);
-        if (newPing)
-        {
-            pings.Add(newPing);
-        }
     }
+
+    /// <summary>The label in this game's language, e.g. "Alice: Danger! Stalker".</summary>
+    private static string BuildLabel(PingKind kind, string senderName, TechType targetTechType)
+    {
+        string target = targetTechType == TechType.None ? "" : Language.main.Get(targetTechType.AsString());
+        string label = kind switch
+        {
+            PingKind.Danger => Language.main.GetFormat("Nitrox_Ping_Danger", senderName, target),
+            PingKind.Look => Language.main.GetFormat("Nitrox_Ping_Look", senderName, target),
+            _ => Language.main.GetFormat("Nitrox_Ping_ComeHere", senderName)
+        };
+        return label.Trim();
+    }
+
+    private static bool IsLocalPlayerAt(Vector3 pingPosition)
+    {
+        return Player.main && IsNear(Player.main.transform.position, pingPosition);
+    }
+
+    private bool IsAnyPartnerAt(Vector3 pingPosition)
+    {
+        return playerManager.GetAll().Any(partner => partner.Body && IsNear(partner.Body.transform.position, pingPosition));
+    }
+
+    private static bool IsNear(Vector3 playerPosition, Vector3 pingPosition)
+    {
+        return (playerPosition - pingPosition).sqrMagnitude <= PingRules.ARRIVAL_DISTANCE * PingRules.ARRIVAL_DISTANCE;
+    }
+
+#if DEBUG
+    /// <summary>
+    ///     Dev bridge (<c>call PlayerPingManager.Describe</c>): every player ping in this game and what its marker shows.
+    /// </summary>
+    public static List<Dictionary<string, object?>> Describe()
+    {
+        uGUI_Pings? pingsUi = FindObjectOfType<uGUI_Pings>();
+        List<Dictionary<string, object?>> result = [];
+        foreach (PlayerPing ping in FindObjectsOfType<PlayerPing>())
+        {
+            PingInstance pingInstance = ping.GetComponent<PingInstance>();
+            uGUI_Ping? marker = null;
+            if (pingsUi && pingInstance && pingInstance.Initialized)
+            {
+                pingsUi.pings.TryGetValue(pingInstance.Id, out marker);
+            }
+            Sprite? pingTypeIcon = pingInstance ? SpriteManager.Get(SpriteManager.Group.Pings, PingManager.sCachedPingTypeStrings.Get(pingInstance.pingType)) : null;
+            result.Add(new Dictionary<string, object?>
+            {
+                ["name"] = ping.gameObject.name,
+                ["pingId"] = ping.PingId.ToString(),
+                ["kind"] = ping.Kind.ToString(),
+                ["sender"] = ping.SenderName,
+                ["targetTechType"] = ping.TargetTechType.ToString(),
+                ["label"] = pingInstance ? pingInstance.GetLabel() : null,
+                ["pingType"] = pingInstance ? pingInstance.pingType.ToString() : null,
+                ["position"] = new[] { Math.Round(ping.transform.position.x, 1), Math.Round(ping.transform.position.y, 1), Math.Round(ping.transform.position.z, 1) },
+                ["age"] = Math.Round(Time.time - ping.SpawnTime, 1),
+                ["lifetime"] = ping.Lifetime,
+                ["expectedIcon"] = ping.Icon ? ping.Icon.name : null,
+                ["pingTypeIcon"] = pingTypeIcon ? pingTypeIcon.name : null,
+                ["markerIcon"] = marker && marker.icon && marker.icon.sprite ? marker.icon.sprite.name : null,
+                ["markerColor"] = marker ? ColorUtility.ToHtmlStringRGB(marker._iconColor) : null,
+                ["expectedColor"] = ColorUtility.ToHtmlStringRGB(ping.Color)
+            });
+        }
+        return result;
+    }
+#endif
 }

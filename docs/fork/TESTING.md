@@ -329,6 +329,9 @@ tools\run-suite.ps1 -Windowless
   - Animation events don't fire (seen 2026-11-02): a flare drawn and "thrown" with `hold none 0.3 RightHand` never
     left the hand, because the throw comes from `Flare.OnToolUseAnim`, an animation event. Call such methods through the
     bridge (`call <id> Flare.OnToolUseAnim player`).
+  - The cursor can't lock (seen 2026-11-02, F2), so during scripts' `Update` the game treats a menu as open and
+    `AvatarInputHandler.IsEnabled()` is false: input-driven code in `Update` (e.g. the ping key) refuses to run. Run that
+    `Update` from the bridge between frames instead (`F2-ContextPings.ps1` calls `PlayerPingManager.instance.Update`).
   - Sound is muted (`NitroxBootstrapper.MuteIfWindowless`, not saved in the game's options). The game keeps playing
     sound in the background otherwise, because Nitrox forces run-in-background.
   - Works as usual: terrain and its colliders, physics, creature AI, initial sync, spawning (including
