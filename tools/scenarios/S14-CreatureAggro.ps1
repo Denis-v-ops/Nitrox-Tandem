@@ -197,7 +197,7 @@ function Test-AggroCase {
     # PowerShell's comma binds tighter than + and *: every computed element needs its own parentheses.
     $spot = if ($Spot) { $Spot } else { @(($script:Center[0] + 70 * [math]::Cos($angle)), -6, ($script:Center[2] + 70 * [math]::Sin($angle))) }
     $script:NextSpot++
-    $row = [ordered]@{ case = $Name; creature = $TechType; simulator = $Simulator; victim = $Victim; owner = '?'; targeted = $false; maxAggression = 0.0; hits = 0; damage = 0.0; maxHit = 0.0; biteDamage = $null; how = ''; touchHits = 0; note = '' }
+    $row = [ordered]@{ case = $Name; creature = $TechType; simulator = $Simulator; victim = $Victim; owner = '?'; targeted = $false; maxAggression = 0.0; hits = 0; damage = 0.0; maxHit = 0.0; biteDamage = $null; how = ''; ownGameHits = 0; note = '' }
     Write-Host "  case $Name : $TechType simulated by $Simulator, victim $Victim, other player $(if ($Away -gt 0) { "$Away m away" } else { 'next to it' })"
 
     # A creature bites at most every few seconds and then pauses (AttackLastTarget.pauseInterval, 20 s for a Stalker),
@@ -293,7 +293,7 @@ function Test-AggroCase {
         # creature's own MeleeAttack.OnTouch with the victim's collider (its local player, or the victim's body), as the
         # mouth trigger would. Everything after the physics contact is the real game and Nitrox code.
         # The double-bite guard always gets the touch: it has to happen in both games at once.
-        if (($row.hits -eq 0 -or $VictimGameAggressive) -and -not $ReportOnly) {
+        if ($row.hits -eq 0 -and -not $ReportOnly) {
             $toucher = if ($TouchInVictimGame) { $Victim } elseif ($row.owner -eq $A -or $row.owner -eq $B) { $ownerNow } else { $Simulator }
             Write-Host "    no natural hit in $Window s: touching $Victim with the $TechType in ${toucher}'s game" -ForegroundColor DarkGray
             if ($Explosion -and -not (Test-Loaded $toucher $id)) {
@@ -301,33 +301,55 @@ function Test-AggroCase {
                 $id = New-Creature $toucher $TechType
                 $row.note += "exploded out of reach, detonated a new one; "
             }
-            # By now the creature may have wandered off: put the victim right next to it (the bite's raycast must not
-            # cross terrain), then give the victim's position time to reach the simulating game.
-            $creatureNow = Get-Position $toucher $id
-            Invoke-Bridge $Victim "teleport $(Format-Point @(($creatureNow[0] + 2), $creatureNow[1], $creatureNow[2]))" | Out-Null
-            Start-Sleep -Seconds 2
-            # A natural bite while the victim arrived is a natural hit, not the touch's.
-            if (Test-Hit $Victim $id 'natural' -Explosion:$Explosion) { $hitsBy[$Victim]++ }
-            if ($Explosion) {
-                Invoke-Bridge $toucher "call $id Crash.Detonate" | Out-Null
+            # By now the creature may have wandered off (or burrowed): bring them together, as the bite's raycast must
+            # not cross terrain. The simulating game moves its creature next to the victim (its local player, or the
+            # victim's body there); otherwise the victim moves next to the creature.
+            if ($Explosion -or $toucher -ne $ownerNow) {
+                $creatureNow = Get-Position $toucher $id
+                Invoke-Bridge $Victim "teleport $(Format-Point @(($creatureNow[0] + 2), $creatureNow[1], $creatureNow[2]))" | Out-Null
             }
             else {
-                $collider = if ($toucher -eq $Victim) { 'player' } else { $script:PlayerIds[$Victim] }
-                if ($VictimGameAggressive -and $toucher -ne $Victim) {
-                    # The victim's game, holding the creature aggressive, gets the same contact (the creature is next to the victim in both games).
-                    Invoke-Bridge $Victim "set $id MeleeAttack.timeLastBite -100" -AllowError | Out-Null
-                    Invoke-Bridge $Victim "set $id Creature.Aggression.Value 1" -AllowError | Out-Null
-                    Invoke-Bridge $Victim "call $id MeleeAttack.OnTouch player" | Out-Null
-                }
-                Invoke-Bridge $toucher "set $id MeleeAttack.timeLastBite -100" | Out-Null
-                Invoke-Bridge $toucher "set $id Creature.Aggression.Value 1" | Out-Null
-                Invoke-Bridge $toucher "call $id MeleeAttack.OnTouch $collider" | Out-Null
+                $victimThere = if ($toucher -eq $Victim) { [double[]](Invoke-BridgeJson $toucher 'state').position } else { Get-Position $toucher $script:PlayerIds[$Victim] }
+                Invoke-Bridge $toucher "set $id GameObject.transform.position $(($victimThere[0] + 1.5).ToString('0.00')),$($victimThere[1].ToString('0.00')),$($victimThere[2].ToString('0.00'))" | Out-Null
             }
-            $forcedDeadline = (Get-Date).AddSeconds(4)
-            while ((Get-Date) -lt $forcedDeadline) {
-                if (Test-Hit $Victim $id 'touch' -Explosion:$Explosion) { $hitsBy[$Victim]++; $row.touchHits++ }
+            Start-Sleep -Seconds 1.5
+            # A bite from that contact is a natural hit, and then no touch is needed.
+            if (Test-Hit $Victim $id 'natural' -Explosion:$Explosion) {
+                $hitsBy[$Victim]++
+            }
+            else {
+                if ($Explosion) {
+                    Invoke-Bridge $toucher "call $id Crash.Detonate" | Out-Null
+                }
+                else {
+                    $collider = if ($toucher -eq $Victim) { 'player' } else { $script:PlayerIds[$Victim] }
+                    Invoke-Bridge $toucher "set $id MeleeAttack.timeLastBite -100" | Out-Null
+                    Invoke-Bridge $toucher "set $id Creature.Aggression.Value 1" | Out-Null
+                    Invoke-Bridge $toucher "call $id MeleeAttack.OnTouch $collider" | Out-Null
+                }
+                $forcedDeadline = (Get-Date).AddSeconds(3)
+                while ((Get-Date) -lt $forcedDeadline) {
+                    if (Test-Hit $Victim $id 'touch' -Explosion:$Explosion) { $hitsBy[$Victim]++ }
+                    Start-Sleep -Milliseconds 300
+                }
+            }
+        }
+
+        if ($VictimGameAggressive -and -not $ReportOnly) {
+            # The contact in the victim's own game, which holds the creature aggressive: that game must not bite (the
+            # simulating game's bite already reached the victim). The simulator can't bite meanwhile (last bite "in the
+            # future"), so any damage now comes from the victim's game.
+            $simulatorNow = if ($row.owner -eq $A -or $row.owner -eq $B) { $ownerNow } else { $Simulator }
+            Invoke-Bridge $simulatorNow "set $id MeleeAttack.timeLastBite 100000" | Out-Null
+            Invoke-Bridge $Victim "set $id MeleeAttack.timeLastBite -100" | Out-Null
+            Invoke-Bridge $Victim "set $id Creature.Aggression.Value 1" | Out-Null
+            Invoke-Bridge $Victim "call $id MeleeAttack.OnTouch player" | Out-Null
+            $ownGameDeadline = (Get-Date).AddSeconds(2)
+            while ((Get-Date) -lt $ownGameDeadline) {
+                if (Test-Hit $Victim $id 'own game') { $row.ownGameHits++ }
                 Start-Sleep -Milliseconds 300
             }
+            Invoke-Bridge $simulatorNow "set $id MeleeAttack.timeLastBite 0" | Out-Null
         }
     }
     finally {
@@ -358,7 +380,7 @@ function Test-AggroCase {
         Assert-True (-not $row.note.Contains('two hits')) "$Name : no bite lands twice"
     }
     if ($VictimGameAggressive) {
-        Assert-Equal 1 $row.touchHits "$Name : one contact in both games hurts $Victim once"
+        Assert-Equal 0 $row.ownGameHits "$Name : $Victim's own game doesn't bite $Victim with a $TechType it doesn't simulate (that bite comes from the simulator)"
     }
 }
 
