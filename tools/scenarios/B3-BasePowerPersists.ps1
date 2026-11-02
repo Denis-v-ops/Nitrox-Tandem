@@ -8,13 +8,16 @@
     -NoLaunch. Both players stand in the room; power is required (no noenergy cheat, which freezes PowerSource values).
       1. The base's lock holder (the producer) drains the empty bioreactor's power source to about a third (bridge "set",
          like consumption would). The server stores that value and the partner's game takes it over.
-      2. The producer builds a nuclear reactor in the room and puts 2 rods in. Both games are told the first rod is nearly
-         used up (BaseNuclearReactor._toConsume) with an empty power source: the reactor swaps it for a depleted rod in
-         the producer's game only. Server and both games have 1 depleted rod and 1 rod, with the same ids.
+      2. A player builds a second room next to the base with a nuclear reactor in it (the fixture room's only module
+         spot holds the bioreactor); the other player puts 2 rods in. Both games are told the first rod is nearly used
+         up (BaseNuclearReactor._toConsume) with an empty power source: the reactor swaps it for a depleted rod in the
+         game holding the room's lock only. Server and both games have 1 depleted rod and 1 rod, with the same ids.
       3. Restart: the bioreactor keeps its stored charge (not refilled to the maximum) in both games, and the reactor still
          has 1 depleted rod and 1 rod everywhere.
     Without B3 the server never hears of the power (step 1 fails), each game swaps its own rod (step 2 fails) and every
-    power source is full again after the restart (step 3 fails).
+    power source is full again after the restart (step 3 fails). Checked 2026-11-02 on the unfixed build: 11 of 38
+    checks fail (no stored power, the partner's game 300 apart, 2 depleted rods everywhere, about 495 of 500 after the
+    restart). Windowless, about 4 min.
 #>
 param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 'b3-base-power')
 
@@ -55,29 +58,48 @@ function Initialize-B3Players {
     }
 }
 
-# Builds a nuclear reactor in the room, trying the free spots around the middle; returns its id
-function New-NuclearReactor {
+<#
+    Builds a new room next to the fixture base (the fixture room's one module spot holds the bioreactor) and a nuclear
+    reactor in it; returns @{ Base; Reactor; Stand }. A room takes one such module, on the face of its middle cell, but
+    Base.CanSetModule (game 83031) only accepts the aim point in the room's root cell (cell 0, a corner of the 3x3 grid,
+    outside the round walls): so the player stands 3.5 m off the middle, away from that corner, and looks at it (standing
+    in the middle, the player is in the reactor's way).
+#>
+function New-NuclearReactorRoom {
     param([string]$Player)
     Enable-BuildCheats $Player
-    $before = @(Invoke-BridgeJson $Player 'find BaseNuclearReactor' | ForEach-Object { $_.id })
-    foreach ($yaw in 0, 90, 180, 270, 45, 135, 225, 315) {
-        Enter-S7Base $Player
-        Invoke-Bridge $Player "look $yaw -50" | Out-Null
-        Invoke-Bridge $Player 'call Builder.End' | Out-Null
-        Invoke-Bridge $Player 'call Builder.BeginAsync BaseNuclearReactor' | Out-Null
-        $canPlace = Wait-Until { (Invoke-Bridge $Player 'get Builder.canPlace') -eq 'true' } -TimeoutSeconds 4 -IntervalSeconds 0.5
-        if (-not $canPlace) { continue }
-        Assert-Equal 'true' (Invoke-Bridge $Player 'call Builder.TryPlace') "$Player placed a nuclear reactor (looking $yaw)"
-        Invoke-Bridge $Player 'call Builder.End' | Out-Null
-        $reactor = Wait-Until {
-            Invoke-Bridge $Player 'call find:ConstructableBase Constructable.Construct' -AllowError | Out-Null
-            @(Invoke-BridgeJson $Player 'find BaseNuclearReactor') | Where-Object { $_.id -match '^[0-9a-f-]{36}$' -and $before -notcontains $_.id } | Select-Object -First 1
-        } -TimeoutSeconds 30 -IntervalSeconds 0.3
-        if ($reactor) { return $reactor.id }
-        throw "$Player's nuclear reactor wasn't built"
-    }
     Invoke-Bridge $Player 'call Builder.End' | Out-Null
-    throw "$Player found no spot for a nuclear reactor in the room"
+    Invoke-Bridge $Player 'teleport -118 -27 238' | Out-Null
+    Start-Sleep -Seconds 2
+    $baseId = New-ScenarioBase $Player 'BaseRoom'
+    $origin = [double[]](Invoke-BridgeJson $Player "get $baseId Transform.position")
+    $yaw = (Invoke-BridgeJson $Player "get $baseId Transform.eulerAngles")[1] * [math]::PI / 180
+    # Middle cell (1,0,1) of 5 m cells, rotated like the base (Unity: x' = x cos + z sin, z' = -x sin + z cos)
+    $middle = @(($origin[0] + 5 * [math]::Cos($yaw) + 5 * [math]::Sin($yaw)), $origin[1], ($origin[2] - 5 * [math]::Sin($yaw) + 5 * [math]::Cos($yaw)))
+    $toCorner = @(($origin[0] - $middle[0]), ($origin[2] - $middle[2]))
+    $length = [math]::Sqrt($toCorner[0] * $toCorner[0] + $toCorner[1] * $toCorner[1])
+    $stand = '{0} {1} {2}' -f ($middle[0] - 3.5 * $toCorner[0] / $length), ($middle[1] + 0.9), ($middle[2] - 3.5 * $toCorner[1] / $length)
+    $lookYaw = [math]::Atan2($toCorner[0], $toCorner[1]) * 180 / [math]::PI
+    $before = @(Invoke-BridgeJson $Player 'find BaseNuclearReactor' | ForEach-Object { $_.id })
+    Invoke-Bridge $Player "teleport $stand" | Out-Null
+    Invoke-Bridge $Player "call Player.main.SetCurrentSub $baseId true" | Out-Null
+    Invoke-Bridge $Player ('look {0} 0' -f $lookYaw) | Out-Null
+    # New-ScenarioBase's direct TryPlace leaves the builder's input handler on the stack, which blocks the next BeginAsync
+    Invoke-Bridge $Player 'call Builder.End' | Out-Null
+    Invoke-Bridge $Player 'call Builder.BeginAsync BaseNuclearReactor' | Out-Null
+    $canPlace = Wait-Until { (Invoke-Bridge $Player 'get Builder.canPlace') -eq 'true' } -TimeoutSeconds 15 -IntervalSeconds 0.5
+    if (-not $canPlace) {
+        Invoke-Bridge $Player 'call Builder.End' | Out-Null
+        throw "$Player can't place a nuclear reactor in room $baseId (standing at $stand, looking $lookYaw)"
+    }
+    Assert-Equal 'true' (Invoke-Bridge $Player 'call Builder.TryPlace') "$Player placed a nuclear reactor"
+    Invoke-Bridge $Player 'call Builder.End' | Out-Null
+    $reactor = Wait-Until {
+        Invoke-Bridge $Player 'call find:ConstructableBase Constructable.Construct' -AllowError | Out-Null
+        @(Invoke-BridgeJson $Player 'find BaseNuclearReactor') | Where-Object { $_.id -match '^[0-9a-f-]{36}$' -and $before -notcontains $_.id } | Select-Object -First 1
+    } -TimeoutSeconds 30 -IntervalSeconds 0.3
+    if (-not $reactor) { throw "$Player's nuclear reactor wasn't built" }
+    @{ Base = $baseId; Reactor = $reactor.id; Stand = $stand }
 }
 
 # Rods in the reactor as "DepletedReactorRod=1, ReactorRod=1" with their ids, from a game or the server
@@ -112,16 +134,21 @@ try {
     }
 
     Step 'A nuclear reactor rod is used up once' {
-        $script:nuclear = New-NuclearReactor $producer
-        Write-Host "  nuclear reactor $nuclear"
-        $seen = Wait-Until { Invoke-BridgeJson $partner "entity $nuclear" } -TimeoutSeconds 30
-        Assert-True ([bool]$seen) "$partner has the nuclear reactor with the same id"
-        Invoke-Bridge $producer 'console item ReactorRod 2' | Out-Null
-        $rods = @(Wait-Until { $r = @((Invoke-BridgeJson $producer 'state').inventory | Where-Object { $_.techType -eq 'ReactorRod' }); if ($r.Count -ge 2) { , $r } } -TimeoutSeconds 15)
-        Assert-Equal 2 $rods.Count "$producer has 2 rods"
+        $room = New-NuclearReactorRoom $producer
+        $script:nuclear = $room.Reactor
+        $owner = Get-BaseLockOwner $room.Base
+        Write-Host "  nuclear reactor $nuclear in room $($room.Base) (lock: $owner)"
+        Assert-True ($owner -in $A, $B) 'one of the players holds the new room''s lock'
+        $other = if ($owner -eq $A) { $B } else { $A }
+        $seen = Wait-Until { Invoke-BridgeJson $other "entity $nuclear" } -TimeoutSeconds 30
+        Assert-True ([bool]$seen) "$other has the nuclear reactor with the same id"
+        # The partner of the lock holder puts the rods in (any player can)
+        Invoke-Bridge $other 'console item ReactorRod 2' | Out-Null
+        $rods = @(Wait-Until { $r = @((Invoke-BridgeJson $other 'state').inventory | Where-Object { $_.techType -eq 'ReactorRod' }); if ($r.Count -ge 2) { , $r } } -TimeoutSeconds 15)
+        Assert-Equal 2 $rods.Count "$other has 2 rods"
         $slot = 1
         foreach ($rod in $rods) {
-            Assert-Equal 'true' (Invoke-Bridge $producer "call $nuclear BaseNuclearReactor.equipment.AddItem NuclearReactor$slot $($rod.id) false") "$producer put rod $($rod.id) in slot $slot"
+            Assert-Equal 'true' (Invoke-Bridge $other "call $nuclear BaseNuclearReactor.equipment.AddItem NuclearReactor$slot $($rod.id) false") "$other put rod $($rod.id) in slot $slot"
             $slot++
         }
         Assert-ReactorRods $nuclear 'ReactorRod=2' 'with 2 rods'
