@@ -8,11 +8,13 @@ public class PlayerStatsBroadcaster : MonoBehaviour
     private float time;
     private const float BROADCAST_INTERVAL = 3f;
     private LocalPlayer localPlayer;
+    private SignalInterference signalInterference;
     private Survival survival;
 
     public void Awake()
     {
         localPlayer = this.Resolve<LocalPlayer>();
+        signalInterference = this.Resolve<SignalInterference>();
         survival = Player.main.AliveOrNull()?.GetComponent<Survival>();
         if (!survival)
         {
@@ -36,8 +38,8 @@ public class PlayerStatsBroadcaster : MonoBehaviour
             float food = survival.food;
             float water = survival.water;
             float infectionAmount = Player.main.infectedMixin.GetInfectedAmount();
-            // The partner-signal interference (COOP_FEATURES_SPEC D2) isn't computed yet.
-            bool interfered = false;
+            // The partner-signal interference (COOP_FEATURES_SPEC D2), computed by D2 in SignalInterference.
+            bool interfered = signalInterference.IsLocalPlayerInterfered();
             localPlayer.BroadcastStats(oxygen, maxOxygen, health, food, water, infectionAmount, interfered);
         }
     }

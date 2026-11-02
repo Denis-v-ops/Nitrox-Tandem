@@ -6,7 +6,8 @@
 
 .DESCRIPTION
     -Acquire waits until the lock is free, then takes it. -Release frees it (only for its owner unless -Force).
-    -Status shows the holder. A lock older than -StaleMinutes is treated as abandoned and taken over.
+    -Status shows the holder. A lock older than -StaleMinutes is treated as abandoned and taken over, so a holder that
+    keeps the rig longer (toolsun-suite.ps1) calls -Refresh now and then to renew it.
     Hold it from before `dual-client.ps1` / a scenario script until after `dual-client.ps1 -Stop`.
 
 .EXAMPLE
@@ -20,6 +21,7 @@ param(
     [switch]$Acquire,
     [switch]$Release,
     [switch]$Status,
+    [switch]$Refresh,
     [string]$Owner = $env:USERNAME,
     [int]$StaleMinutes = 45,
     [int]$TimeoutMinutes = 180,
@@ -50,6 +52,14 @@ if ($Release) {
     exit 0
 }
 
+if ($Refresh) {
+    $lock = Read-Lock
+    if (-not $lock -or $lock.owner -ne $Owner) { throw "Lock isn't held by '$Owner'" }
+    Set-Content $lockFile -NoNewline -Value (@{ owner = $Owner; since = (Get-Date).ToString('o') } | ConvertTo-Json -Compress)
+    "Refreshed ($Owner)"
+    exit 0
+}
+
 if ($Acquire) {
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
     while ($true) {
@@ -73,4 +83,4 @@ if ($Acquire) {
     }
 }
 
-throw 'Pass -Acquire, -Release or -Status'
+throw 'Pass -Acquire, -Release, -Refresh or -Status'
