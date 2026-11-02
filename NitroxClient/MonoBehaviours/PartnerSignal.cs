@@ -133,8 +133,16 @@ public class PartnerSignal : MonoBehaviour
         {
             return true;
         }
-        // Attached by a coroutine (PlayerModelManager.AttachPing), so it may not exist yet
-        ping = remotePlayer.PlayerModel.GetComponentInChildren<PingInstance>(true);
+        // Attached by a coroutine (PlayerModelManager.AttachPing), so it may not exist yet. Only that one: a beacon the
+        // partner carries has its own PingInstance under the body too.
+        foreach (PingInstance candidate in remotePlayer.PlayerModel.GetComponentsInChildren<PingInstance>(true))
+        {
+            if (PartnerSignalRules.IsPartnerMarker(candidate.name, remotePlayer.PlayerName))
+            {
+                ping = candidate;
+                break;
+            }
+        }
         if (!ping)
         {
             return false;

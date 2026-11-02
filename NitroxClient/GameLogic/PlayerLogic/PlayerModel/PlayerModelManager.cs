@@ -71,7 +71,8 @@ public class PlayerModelManager
         yield return CreateSignalPrototype(result);
 
         GameObject signalBase = Object.Instantiate(result.value, player.PlayerModel.transform, false);
-        signalBase.name = $"signal_{player.PlayerName}";
+        // PartnerSignal finds the marker by this name
+        signalBase.name = PartnerSignalRules.MarkerObjectName(player.PlayerName);
         signalBase.SetActive(true);
 
         PingInstance ping = signalBase.GetComponent<PingInstance>();

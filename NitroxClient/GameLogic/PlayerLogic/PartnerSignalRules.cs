@@ -60,6 +60,17 @@ public static class PartnerSignalRules
     /// </summary>
     public static readonly List<IPartnerSignalRule> Rules = [new LastContactRule(), new FaintSignalRule()];
 
+    /// <summary>
+    ///     The name of the object <c>PlayerModelManager.AttachPing</c> creates for a player's marker.
+    /// </summary>
+    public static string MarkerObjectName(string playerName) => $"signal_{playerName}";
+
+    /// <summary>
+    ///     Whether a <see cref="PingInstance" /> under a partner's body is their marker, not the ping of something they
+    ///     carry (a beacon in their inventory sits under the body too, COOP_FEATURES_SPEC D2).
+    /// </summary>
+    public static bool IsPartnerMarker(string objectName, string playerName) => objectName == MarkerObjectName(playerName);
+
     public static PartnerSignalLook GetLook(in PartnerSignalContext context)
     {
         foreach (IPartnerSignalRule rule in Rules)

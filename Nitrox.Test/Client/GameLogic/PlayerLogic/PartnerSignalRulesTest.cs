@@ -146,6 +146,19 @@ public class PartnerSignalRulesTest
         LastContactRule.Age(-1).Should().Be((0, false));
     }
 
+    [TestMethod]
+    public void TheMarkerIsThePartnersSignal_NotACarriedBeacon()
+    {
+        string markerName = PartnerSignalRules.MarkerObjectName("Bob");
+        markerName.Should().Be("signal_Bob");
+        PartnerSignalRules.IsPartnerMarker(markerName, "Bob").Should().BeTrue();
+        // What else under a partner's body has a PingInstance: a beacon in their inventory
+        PartnerSignalRules.IsPartnerMarker("Beacon(Clone)", "Bob").Should().BeFalse();
+        PartnerSignalRules.IsPartnerMarker("Beacon", "Bob").Should().BeFalse();
+        PartnerSignalRules.IsPartnerMarker("signal_Alice", "Bob").Should().BeFalse();
+        PartnerSignalRules.IsPartnerMarker("signal_Bob(Clone)", "Bob").Should().BeFalse("AttachPing sets the exact name");
+    }
+
     private sealed class FixedRule(PartnerSignalLook fixedLook) : IPartnerSignalRule
     {
         public bool TryGetLook(in PartnerSignalContext context, out PartnerSignalLook look)
