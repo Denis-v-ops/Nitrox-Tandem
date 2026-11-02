@@ -1,6 +1,7 @@
 using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Packets.Processors.Core;
 using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.Partner;
 using NitroxClient.MonoBehaviours.Gui.HUD;
 
 namespace NitroxClient.Communication.Packets.Processors;
@@ -25,6 +26,10 @@ internal sealed class PlayerStatsProcessor(PlayerManager playerManager, SignalIn
                 vitals.SetWater(playerStats.Water);
             }
             remotePlayer.UpdateHealthAndInfection(playerStats.Health, playerStats.InfectionAmount);
+            if (remotePlayer.Body && remotePlayer.Body!.TryGetComponent(out PartnerHandTarget handTarget))
+            {
+                handTarget.SetOxygen(playerStats.Oxygen, playerStats.MaxOxygen);
+            }
         }
         return Task.CompletedTask;
     }

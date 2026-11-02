@@ -4,6 +4,7 @@ using Nitrox.Model.Core;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.DataStructures.GameLogic;
 using Nitrox.Model.DataStructures.Unity;
+using Nitrox.Model.GameLogic.PlayerAnimation;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities;
 using Nitrox.Model.Subnautica.MultiplayerSession;
@@ -116,6 +117,7 @@ internal sealed class JoiningManager(
                         throw new Exception($"Failed to get player object for session #{sessionId}");
                     }
                     BroadcastPlayerJoined(player);
+                    await ReplayOtherPlayersPoseAsync(player);
                 }
             }
             catch (Exception e)
@@ -272,6 +274,32 @@ internal sealed class JoiningManager(
     {
         PlayerJoinedMultiplayerSession playerJoinedPacket = new(player.PlayerContext, player.SubRootId, player.Entity);
         packetSender.SendPacketToOthersAsync(playerJoinedPacket, player.SessionId);
+    }
+
+    /// <summary>
+    ///     Sends the joined player what the others are doing with their bodies: every animation state and the held item
+    ///     (COOP_FEATURES_SPEC R2a). Sent after the initial sync, so the game has the partner's body and inventory and its
+    ///     usual processors apply them. The first-use flag is left out, so the first-use animation doesn't play again.
+    /// </summary>
+    private async Task ReplayOtherPlayersPoseAsync(Player player)
+    {
+        foreach (Player other in playerManager.GetConnectedPlayers())
+        {
+            if (other == player)
+            {
+                continue;
+            }
+
+            foreach (KeyValuePair<AnimChangeType, AnimChangeState> animation in other.Animations.ToArray())
+            {
+                await packetSender.SendPacketAsync(new AnimationChangeEvent(other.SessionId, new PlayerAnimation(animation.Key, animation.Value)), player.SessionId);
+            }
+
+            if (other.HeldItem is { } heldItem)
+            {
+                await packetSender.SendPacketAsync(new PlayerHeldItemChanged(other.SessionId, heldItem.ItemId, heldItem.Type, null), player.SessionId);
+            }
+        }
     }
 
     public Task OnEventAsync(ISessionCleaner.Args args)

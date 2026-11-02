@@ -3,6 +3,7 @@ using Nitrox.Model.Core;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.DataStructures.GameLogic;
 using Nitrox.Model.DataStructures.Unity;
+using Nitrox.Model.GameLogic.PlayerAnimation;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities;
 using Nitrox.Model.Subnautica.MultiplayerSession;
@@ -93,6 +94,18 @@ namespace Nitrox.Server.Subnautica.Models
         ///     Not saved.
         /// </summary>
         public bool Interfered { get; set; }
+
+        /// <summary>
+        ///     The latest state per animation type the player sent (COOP_FEATURES_SPEC R2a), replayed to players who join
+        ///     later. Not saved; cleared when the player joins.
+        /// </summary>
+        public ThreadSafeDictionary<AnimChangeType, AnimChangeState> Animations { get; } = [];
+
+        /// <summary>
+        ///     The item in the player's hands, as their latest draw (COOP_FEATURES_SPEC R2a); null when nothing is drawn.
+        ///     Replayed to players who join later. Not saved; cleared when the player joins.
+        /// </summary>
+        public PlayerHeldItemChanged? HeldItem { get; set; }
 
         public PlayerEntity Entity { get; set; }
 

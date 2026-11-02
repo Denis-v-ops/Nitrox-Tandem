@@ -42,6 +42,10 @@ public class NitroxSettingsManager
             MainMenuServerListPanel.Main.RefreshServerEntries();
         }));
 
+        AddSetting("Nitrox_Settings_Partner", new Setting("Nitrox_Settings_PartnerSignal", NitroxPrefs.PartnerSignal, mode => NitroxPrefs.PartnerSignal.Value = mode,
+                                                          ["Nitrox_Settings_PartnerSignal_Off", "Nitrox_Settings_PartnerSignal_Faint", "Nitrox_Settings_PartnerSignal_Always"]));
+        AddSetting("Nitrox_Settings_Partner", new Setting("Nitrox_Settings_NameTagRange", NitroxPrefs.NameTagRange, range => NitroxPrefs.NameTagRange.Value = (int)range, 0, 50, NitroxPrefs.NameTagRange.DefaultValue, 1, SliderLabelMode.Int, tooltip: "Nitrox_Settings_NameTagRange_Tooltip"));
+
         AddSetting("Nitrox_BuildingSettings", new Setting("Nitrox_SafeBuilding", NitroxPrefs.SafeBuilding, safe => NitroxPrefs.SafeBuilding.Value = safe));
         AddSetting("Nitrox_BuildingSettings", new Setting("Nitrox_SafeBuildingLog", NitroxPrefs.SafeBuildingLog, safeLog => NitroxPrefs.SafeBuildingLog.Value = safeLog));
         AddSetting("Nitrox_BuildingSettings", new Setting("Nitrox_ResyncBuildings", () =>
