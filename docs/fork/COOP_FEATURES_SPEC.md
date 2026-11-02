@@ -952,9 +952,16 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
 | **B6** | Cosmetic leftovers: repulsion and propulsion cannon beams, picture frames | Cosmetic | S | 4 |
 
 #### B1: Creature leftovers (XS + M + S)
-- **Stalker teeth (XS, confirmed):** `Stalker_CheckLoseTooth_Patch.cs:16-17` uses `&&` where it needs `||`. When the id
-  lookup succeeds, the ownership check never applies, so every game runs `CheckLoseTooth` and both may drop a tooth for
-  one bite. Fix the operator; teeth are needed early (Enameled Glass). L1 or L3: one bite, one tooth.
+- **Stalker teeth (XS, done 2026-11-02):** `Stalker_CheckLoseTooth_Patch.cs:16-17` used `&&` where it needed `||`. When
+  the id lookup succeeded, the ownership check never applied, so every game that ran `CheckLoseTooth` could drop (and
+  register with the server) its own tooth for one bite. Fixed the operator; teeth are needed early (Enameled Glass).
+  Which games call it, read in the game code: the shiny pickup (`game:CollectShiny.cs`, `OnShinyPickedUp`) only runs in
+  the simulating game, because the other game skips `Creature.ChooseBestAction` and so never picks a shiny target; a bite
+  (`game:MeleeAttack.cs` `OnTouch`, a trigger callback) can run in every game that has the stalker loaded, if that game's
+  copy is aggressive enough (its aggression isn't synced; not checked in game). Scenario
+  `tools/scenarios/B1-StalkerOneTooth.ps1` (windowless) calls `Stalker.CheckLoseTooth` 40 times with scrap metal in each
+  game: the non-simulating game gives the server no tooth, the simulating game's teeth reach both games. Negative
+  control: on the unfixed build the non-simulating game dropped 5 teeth (FAIL).
 - **Warpers (M):** each game spawns its own warpers and warp balls (`game:WarperSpawner.cs:31-34`, `game:WarpBall.cs:188`;
   no Nitrox hooks). Only the player who simulates a `WarperSpawner` spawns its warper and registers it with the server
   (`EntitySpawnedByClient`); the other game gets it as an entity. Needed before the Lost River.
@@ -1048,3 +1055,4 @@ prices, "keeping it scary").
 | 2026-11-02 | — | Spec created from design decisions + feasibility research (3 read-only investigations) | — |
 | 2026-11-02 | §2–§3, §8, T1, T2, F1, F2 | Fear and difficulty review: principles 2–4 and 6, analysis, price table, journey map, D1–D6, prices on T1/T2/F2, options table; second round of design decisions; README showcase rule (§13.1); basics sweep (§12.1) with R2 and the D4 update; gaps made items B1–B6 (§12); build-efficiency pass: wave 0 (A0 probe run, A1 shared plumbing, A2 #2859 trial merge), D5 split into D5a/D5b, shared partner hand-target (T2), D2 state on `PlayerStats`, shared branches per wave (§13) | Code and decompiled-game reads (cited inline) |
 | 2026-11-02 | D4, §12, §13.1 | D4 rebased on FIX_SPEC S14 (merged): what S14 fixed and tested, the creatures left, the probe extends S14's scenario. AGENTS.md Drillable note corrected; README "Planned co-op features" rewritten per §13.1 and S13/S14 added to its fix table | FIX_SPEC S13/S14 entries; `Drillable_ManagedUpdate_Patch.cs`, `PacketSuppressorPatch.cs` read |
+| 2026-11-02 | B1 (teeth) | `Stalker_CheckLoseTooth_Patch` guard: or instead of and, so only the stalker's simulating game decides on a tooth | Windowless: `B1-StalkerOneTooth.ps1` PASS (11 checks); negative control on the unfixed build FAIL (5 teeth from the non-simulating game). Full test suite green. Not checked in game: how often a natural bite reaches `CheckLoseTooth` in the non-simulating game |

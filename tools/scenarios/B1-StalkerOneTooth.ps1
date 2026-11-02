@@ -79,6 +79,7 @@ try {
         Start-Sleep -Seconds 3
         $new = @(Get-ServerTeeth | Where-Object { $teethBefore -notcontains $_ })
         Assert-Equal 0 $new.Count "$remote's bites gave the server no tooth"
+        $script:teethBefore = Get-ServerTeeth
     }
 
     Step "The simulating game checks $Bites bites: teeth, and both games have them" {
