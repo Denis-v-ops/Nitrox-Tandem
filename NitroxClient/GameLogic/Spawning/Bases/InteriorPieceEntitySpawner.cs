@@ -195,7 +195,9 @@ public class InteriorPieceEntitySpawner : EntitySpawner<InteriorPieceEntity>
             MapRoomCameras.ApplyDefault(mapRoomFunctionality);
         }
 
-        // forceRespawn: a resync keeps the room (it's base geometry), so the items may still be in its container
-        yield return entities.SpawnBatchAsync(mapRoomEntity.ChildEntities.OfType<InventoryItemEntity>().ToList<Entity>(), true);
+        // A resync keeps the room (it's base geometry, not a module), so its items may still be in the container: replace them
+        List<Entity> upgrades = mapRoomEntity.ChildEntities.OfType<InventoryItemEntity>().ToList<Entity>();
+        entities.CleanupExistingEntities(upgrades);
+        yield return entities.SpawnBatchAsync(upgrades, true);
     }
 }

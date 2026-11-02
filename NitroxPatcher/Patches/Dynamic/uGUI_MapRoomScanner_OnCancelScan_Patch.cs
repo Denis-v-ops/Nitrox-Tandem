@@ -9,11 +9,6 @@ public sealed partial class uGUI_MapRoomScanner_OnCancelScan_Patch : NitroxPatch
 
     public static void Postfix(uGUI_MapRoomScanner __instance)
     {
-        // Screen turning off (local), not the cancel button
-        if (uGUI_MapRoomScanner_OnDisable_Patch.Running)
-        {
-            return;
-        }
         uGUI_MapRoomScanner_OnStartScan_Patch.BroadcastScanTarget(__instance);
     }
 }
