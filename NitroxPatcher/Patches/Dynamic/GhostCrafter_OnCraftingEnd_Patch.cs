@@ -1,11 +1,14 @@
+using System.Collections;
 using System.Reflection;
 using NitroxClient.GameLogic;
 using Nitrox.Model.DataStructures;
+using UWE;
 
 namespace NitroxPatcher.Patches.Dynamic;
 
 /// <summary>
-/// Drops simulation on simulated crafters after crafting is complete
+/// Only the crafting player (exclusive lock) picks the item up at the end of crafting; it drops to a transient lock once the
+/// item is taken
 /// </summary>
 public sealed partial class GhostCrafter_OnCraftingEnd_Patch : NitroxPatch, IDynamicPatch
 {
@@ -18,14 +21,31 @@ public sealed partial class GhostCrafter_OnCraftingEnd_Patch : NitroxPatch, IDyn
         // the crafting player will intiate a lock request when pushing the craft button - OnCraftingStart().
 
         // See GhostCrafter_OnCraftingBegin_Patch.Postfix to know why we get NitroxId on CrafterLogic
-        if (__instance._logic.TryGetIdOrWarn(out NitroxId id) && Resolve<SimulationOwnership>().HasExclusiveLock(id))
+        return __instance._logic.TryGetIdOrWarn(out NitroxId id) && Resolve<SimulationOwnership>().HasExclusiveLock(id);
+    }
+
+    public static void Postfix(GhostCrafter __instance, bool __runOriginal)
+    {
+        if (__runOriginal && __instance._logic.TryGetNitroxId(out NitroxId id))
         {
-            // once an item is crafted, we no longer require an exclusive lock.
-            Resolve<SimulationOwnership>().RequestSimulationLock(id, SimulationLockType.TRANSIENT);
-
-            return true;
+            CoroutineHost.StartCoroutine(ReleaseLockAfterPickup(__instance._logic, id));
         }
+    }
 
-        return false;
+    /// <summary>
+    ///     Once the item is taken (or left in the crafter, out of range), crafting no longer needs the exclusive lock. Keeping
+    ///     it until then means a partner clicking the item meanwhile is refused (<see cref="GhostCrafter_OnHandClick_Patch" />,
+    ///     COOP_FEATURES_SPEC B2).
+    /// </summary>
+    public static IEnumerator ReleaseLockAfterPickup(CrafterLogic logic, NitroxId crafterId)
+    {
+        while (logic && logic.pickingUp)
+        {
+            yield return null;
+        }
+        if (Resolve<SimulationOwnership>().HasExclusiveLock(crafterId))
+        {
+            Resolve<SimulationOwnership>().RequestSimulationLock(crafterId, SimulationLockType.TRANSIENT);
+        }
     }
 }

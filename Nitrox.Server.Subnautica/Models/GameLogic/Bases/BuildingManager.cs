@@ -98,7 +98,7 @@ internal sealed class BuildingManager
         return true;
     }
 
-    public bool ModifyConstructedAmount(ModifyConstructedAmount modifyConstructedAmount)
+    public bool ModifyConstructedAmount(Player player, ModifyConstructedAmount modifyConstructedAmount)
     {
         if (!entityRegistry.TryGetEntityById(modifyConstructedAmount.GhostId, out Entity entity))
         {
@@ -128,6 +128,14 @@ internal sealed class BuildingManager
         }
         if (modifyConstructedAmount.ConstructedAmount == 0f)
         {
+            if (HasStoredItems(entity))
+            {
+                // The game refuses to deconstruct a storage module that isn't empty (Constructable.CanDeconstruct), so this
+                // player's copy of it looked empty: a desync. Keep the module and its items and give that player its copy back.
+                logger.ZLogWarning($"Refusing to remove {entity.TechType} {entity.Id} deconstructed by [{player.Name}]: it still holds items. Sending it back to that player.");
+                packetSender.SendPacketAsync(new SpawnEntities(entity, forceRespawn: true), player.SessionId);
+                return false;
+            }
             worldEntityManager.RemoveGlobalRootEntity(entity.Id);
             return true;
         }
@@ -392,6 +400,15 @@ internal sealed class BuildingManager
         }
 
         return true;
+    }
+
+    /// <summary>
+    ///     A module with items in its storage (<see cref="InventoryItemEntity" />, e.g. a locker or a planter) or in its
+    ///     equipment slots (<see cref="InstalledModuleEntity" />, e.g. a charger's batteries).
+    /// </summary>
+    private static bool HasStoredItems(Entity entity)
+    {
+        return entity is ModuleEntity && entity.ChildEntities.Any(child => child is InventoryItemEntity or InstalledModuleEntity);
     }
 
     private void NotifyPlayerDesync(Player player)

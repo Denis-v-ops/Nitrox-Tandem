@@ -13,12 +13,12 @@ public sealed partial class Stalker_CheckLoseTooth_Patch : NitroxPatch, IDynamic
     // Note that HardnessMixin is only used by Stalkers
     public static bool Prefix(Stalker __instance, GameObject target)
     {
-        if (!__instance.TryGetNitroxId(out NitroxId creatureId)
-            && !Resolve<SimulationOwnership>().HasAnyLockType(creatureId))
+        // Only the simulating game decides on a tooth. A bite (MeleeAttack.OnTouch, a trigger callback) can happen in every game
+        // that has the stalker loaded, and each tooth is registered with the server, so one bite could drop one tooth per game.
+        if (!__instance.TryGetNitroxId(out NitroxId creatureId) || !Resolve<SimulationOwnership>().HasAnyLockType(creatureId))
         {
             return false;
         }
-
 
         TechType techType = CraftData.GetTechType(target);
 

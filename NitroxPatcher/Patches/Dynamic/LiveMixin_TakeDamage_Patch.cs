@@ -14,7 +14,7 @@ public sealed partial class LiveMixin_TakeDamage_Patch : NitroxPatch, IDynamicPa
 {
     private static readonly MethodInfo TARGET_METHOD = Reflect.Method((LiveMixin t) => t.TakeDamage(default(float), default(Vector3), default(DamageType), default(GameObject)));
 
-    public static bool Prefix(out float __state, LiveMixin __instance, GameObject dealer)
+    public static bool Prefix(out float __state, LiveMixin __instance, float originalDamage, DamageType type, GameObject dealer)
     {
         // Persist the previous health value
         __state = __instance.health;
@@ -24,7 +24,33 @@ public sealed partial class LiveMixin_TakeDamage_Patch : NitroxPatch, IDynamicPa
             return true; // everyone should process this locally
         }
 
-        return Resolve<LiveMixinManager>().ShouldApplyNextHealthUpdate(__instance, dealer);
+        if (Resolve<LiveMixinManager>().ShouldApplyNextHealthUpdate(__instance, dealer))
+        {
+            return true;
+        }
+        RelayCreatureAttackOnVehicle(__instance, dealer, originalDamage, type);
+        return false;
+    }
+
+    /// <summary>
+    /// COOP_FEATURES_SPEC D4: a creature we simulate bit a vehicle whose lock another player holds (the pilot). Only that
+    /// player's game may change the vehicle's health, and its copy of the creature never bites (see MeleeAttack_CanDealDamageTo_Patch),
+    /// so the bite is sent there.
+    /// </summary>
+    private static void RelayCreatureAttackOnVehicle(LiveMixin vehicle, GameObject dealer, float damage, DamageType type)
+    {
+        if (!dealer || damage <= 0 || Resolve<LiveMixinManager>().IsRemoteHealthChanging)
+        {
+            return;
+        }
+        Creature creature = dealer.GetComponentInParent<Creature>();
+        if (!Resolve<AI>().AttacksPlayersFromSimulator(creature) || !creature.TryGetNitroxId(out NitroxId creatureId) ||
+            !Resolve<SimulationOwnership>().HasAnyLockType(creatureId) || !vehicle.TryGetNitroxId(out NitroxId vehicleId))
+        {
+            return;
+        }
+
+        Resolve<IPacketSender>().Send(new CreatureAttackedVehicle(creatureId, vehicleId, damage, (ushort)type));
     }
 
     public static void Postfix(float __state, LiveMixin __instance, float originalDamage, DamageType type, GameObject dealer, bool __runOriginal)

@@ -440,6 +440,8 @@ public class RemotePlayer : INitroxPlayer
         {
             Log.Warn("The main collider of the main Player couldn't be found or is not a CapsuleCollider. Collisions for the RemotePlayer won't be created");
         }
+
+        Partner.PartnerHandTarget.AddTo(this);
     }
 
     /// <summary>
