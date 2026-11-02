@@ -360,6 +360,9 @@ Three beats. Size L in total.
   - The trigger won't fire again while a player stays inside it, so the start must drive the animator directly.
   - Goal `Precursor_Prison_Aquarium_EmperorLog1` (H: that it's `onDialog1Goal`).
   - **Today:** the telepathy effect plays for the partner wherever they are, and nothing else is synced.
+  - **Since D5a:** the `Emperor_Telepathic_Contact1-3` lines and the Precursor logs on `LocationGoalData` count as
+    "your own firsts", so each player hears them from their own visit (principle 4). The gate for 3a must not rely on the
+    partner's game having played them.
 - **3b, hatching:**
   - `Incubator.OnHandClick` (`game:` 126), hooked into the existing patch before its lock request.
   - Only the player carrying the enzymes hatches; the partner confirms by clicking the incubator.
@@ -826,6 +829,36 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   directions, plus a bite on a vehicle. Keep S14's method: wait for a natural bite, force the contact only as a
   fallback.
 - **Done when:** every creature on the list either hurts both players or has a FIX_SPEC item.
+- **Done 2026-11-02** (branch `feat/1-d4-threat-parity`). Scenario `tools/scenarios/D4-ThreatParity.ps1` (S14's
+  helpers moved to `CreatureAggroHelpers.ps1`, shared by both), windowless. A→B = Alice's game simulates the creature,
+  Bob is the target; "natural" = the creature attacked by itself, "touch" = the forced contact.
+
+  | Creature / case | Hurts the partner? | Evidence | Outcome |
+  |---|---|---|---|
+  | Crabsnake A→B, B→A | Yes: bite 20, natural, both directions | In game | Partner gets no grab cinematic and not its extra 15 → FIX_SPEC S15e |
+  | Ampeel A→B, B→A | Yes: shock 15 (Electrical) in the partner's own game, both directions; bite 30 relayed (A→B, natural) | In game | Its shock skips aggression and passes no dealer, so each game shocks its own player: parity |
+  | River prowler A→B | Yes: bite 30, natural | In game | — |
+  | Crabsquid A→B | Bite yes: 40. **EMP no**: the partner's Seamoth stays powered (disabled only in the simulating game; control B→B: disabled) | In game | FIX_SPEC S15a |
+  | Lava lizard A→B | Bite yes: 30, natural (also when Bob started 15 m away with the lava shell on). Ranged lava rock: not provoked in the time box | Bite in game; ranged from code | Ranged → FIX_SPEC S15c |
+  | Warper A→B (Bob infected 0.5) | Bite yes: 23.5, natural. Warp ball: no (it warps only `Player.main`) | Bite in game; warp ball from code | Warp ball → FIX_SPEC S15c, spawning is B1 |
+  | Mesmer A→A (control), A→B | Bite yes: 30. **Hypnosis no**: control pulled and slowed (x0.78); no pull of Bob's body and no slowing of Bob observed (whether the body met the eye-contact check wasn't read); the code acts on `Player.main` only | In game + code | FIX_SPEC S15b |
+  | Bleeder A→A (control), A→B | **No**: control attached (5 per suck); the partner's body has no attach point, 0 damage. World bleeders aren't simulated at all (B1) | In game | FIX_SPEC S15d (+ B1 whitelist) |
+  | Stalker born in a containment, A→B | Spares Bob, also when touched (as intended) | In game | — |
+  | **Bite on a vehicle**: Bone shark vs Seamoth, B→B (control), A→B, B→A | **Was no** (0 damage both directions: the simulating game may not change a vehicle it doesn't hold, the pilot's game never bites). **Fixed**: 30 per bite in the pilot's game, the simulator's game shows the new health, no double bite, pilot's body not bitten | In game + headless | Fixed on this branch (below) |
+
+- **Fix (vehicles):** a creature's bite on a vehicle whose lock another player holds is sent from the simulating game as
+  `CreatureAttackedVehicle` (`LiveMixin_TakeDamage_Patch`); the server relays it only from the creature's simulator
+  and only to the vehicle's lock holder, whose game applies it and broadcasts the vehicle's health as usual. Games that
+  don't simulate the creature no longer bite vehicles with it (`MeleeAttack_CanDealDamageTo_Patch`), as S14 did for
+  players. Leviathans keep their path. No save change; one new packet (all three must run the same build).
+- **Verification:** headless L2 `CreatureAttackRoutingTest.VehicleAttack_ReachesOnlyTheVehiclesLockHolder` (fails with
+  the creature-lock check removed). In game: the vehicle cases fail without the fix (first run: 0 damage A→B and B→A,
+  forced contact included) and pass with it; each lock direction once. On the fixed build, `D4-ThreatParity.ps1`
+  passes in full (95 checks) and `S14-CreatureAggro.ps1` (its helpers moved) passes all 11 cases.
+- **Not run:** the Lava lizard's and Warper's ranged attacks (from code), Prawn suit and Cyclops bites (same code path
+  as the Seamoth; whether any non-leviathan bites a Cyclops, `canBiteCyclops`, wasn't read), the Ampeel's shock on a
+  partner's vehicle (no dealer, so not relayed; by reasoning the pilot's game shocks it locally, like the player
+  shock), a world (not console-spawned) Bleeder, network latency.
 
 ### D5: Your own firsts (D5a S + D5b S–M)
 - **Goal:** each player hears the PDA's biome and location lines when *they* get there, not when the partner does.
@@ -835,19 +868,55 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     (`StoryGoalExecutedClientProcessor`), which calls `PDALog.Add(key)` for PDA goals (`game:Story/StoryGoal.cs:31-49`).
   - `PDALog.Add` plays the voice line by default (`playSound = true`, `game:PDALog.cs:159-189`). So when A enters the
     Lost River, B's PDA describes it while B sits in the base.
-  - Logs found in the world arrive the same way (`PDALogEntryAddProcessor`) and play too.
-- **D5a, game side (S, wave 1):**
+  - Logs found in the world (`StoryHandTarget.OnHandClick` → `goal.Trigger()`) arrive the same way, as
+    `StoryGoalExecuted`, and play too. (`PDALogEntryAddProcessor` carries the pod radio and the `pdalog` command, not
+    found logs; see "Found logs" below.)
+- **D5a, game side (S, wave 1). Done (2026-11-02, branch `feat/1-d5a-own-firsts`), except found logs (below).**
   - **Experiential goals** are the keys in `BiomeGoalData` and `LocationGoalData` (read at runtime from the trackers'
     `goalData`). Everything else syncs as today.
+    - In game: 58 biome + 32 location goals, 69 distinct keys: 62 PDA, 13 Radio, 15 Story goals (counted with
+      duplicates). Only **PDA** goals change; the Radio and Story ones (`Infection_Progress*`, `FindPrecursor*`) sync as today.
+    - The PDA ones include more than places: `Emperor_Telepathic_Contact1-3` (location-triggered, 1200 s delay) and the
+      Precursor logs on `LocationGoalData` (`Precursor_LostRiverBase_Log*`, `Precursor_Prison_*`), so each player
+      hears those from their own visit too.
   - On the receiver, an experiential PDA goal completes **without** `PDALog.Add`: only
-    `StoryGoalManager.main.OnGoalComplete(key)`. Side effects that hang off goal completion (unlocks, signals) still run.
-  - When B later gets there, B's own tracker fires. `BiomeGoalTracker.TrackBiome` → `BiomeGoal.Trigger` doesn't check
-    completion, `PDALog.Add` finds no entry, and the line plays for B. (H: check that the trackers keep completed goals
-    in their lists after a load.)
-  - Logs found in the world (PDAs, data boxes) arrive for the partner with `playSound: false`. They wait in the PDA log;
-    there's no place to "get to".
-  - Option `PartnerDiscoveriesSilent` (default true); false restores today's behaviour.
+    `StoryGoalManager.main.OnGoalComplete(key)` (`ExperientialGoals`, `StoryGoalExecutedClientProcessor`). Side effects that
+    hang off goal completion (unlocks, signals) still run, under the same packet suppressors as before.
+    - `StoryGoal.Execute` (`game:Story/StoryGoal.cs:31-49`) is `OnGoalComplete` plus, for PDA goals, `PDALog.Add`
+      whatever `OnGoalComplete` returns. `PDALog.Add` (`game:PDALog.cs:159-203`) stays silent only if the entry exists.
+    - The silent path leaves this game's schedule alone. If both players were there, this player's tracker already
+      scheduled the goal and removed it from its list, so the scheduled `Execute` is their only chance to hear it.
+  - When B later gets there, B's own tracker fires. **Finding:** the game doesn't block it, but Nitrox did.
+    - The game: `BiomeGoal.Trigger`/`LocationGoal.Trigger` check only biome or position and stay time.
+      `OnGoalComplete` doesn't touch the trackers' lists; only the tracker removes a goal, after its own trigger.
+    - Nitrox: `StoryGoalScheduler_Schedule_Patch` refused to schedule completed goals, so B's trigger was swallowed (L3
+      failed there). Now a biome or location PDA line that isn't in this game's PDA log schedules anyway.
+    - A partner's *delayed* line came as a `Schedule` packet and played from B's own scheduler. `ScheduleProcessor`
+      now skips biome and location PDA lines (option on); the partner's `StoryGoalExecuted` completes it silently.
+      Code-read only, not in L3 (the Kelp Forest line has no delay).
+  - **(H) answered, from code:** the game keeps completed goals in the trackers after a load
+    (`BiomeGoalTracker.Start`/`LocationGoalTracker.Start` copy all of `goalData`; the list isn't saved). Nitrox
+    removes them on join (`StoryGoalInitialSyncProcessor.SetupTrackers`, `goals.RemoveAll(completedGoals.Contains)`).
+    **For D5b:** filtering the initial PDA log isn't enough. `SetupTrackers` must keep the experiential PDA goals the
+    joining player hasn't heard, and `SetScheduledGoals` must skip a partner's delayed ones, or B can't hear them after
+    a rejoin.
+  - **Found logs: not done, the premise was wrong.** `PDALogEntryAdd` doesn't carry found logs. It carries every
+    `PDALog.Add` outside `StoryGoal.Execute`, which is the pod radio (`StoryGoalManager.ExecutePendingRadioMessage`) and
+    the `pdalog` console command. Muting it would mute the partner's radio messages. PDAs found in the world
+    (`StoryHandTarget.OnHandClick` → `goal.Trigger()`) arrive as `StoryGoalExecuted` (PDA) like any story line, and the
+    receiver can't tell them apart (`PDALog.EntryType` has no radio/found kind). Options: a "found" flag sent with
+    `StoryGoalExecuted` (patch `StoryHandTarget.OnHandClick`), or leave it. Decision needed.
+  - Option `PartnerDiscoveriesSilent` (default true); false restores today's behaviour (L3 negative control). Before
+    the initial sync, `CoopSettings` holds false, so packets processed then behave as today.
   - Within one session this gives the whole effect.
+  - **Verified:** L1 `ExperientialGoalsTest` (classification, option off, other types, own trigger until heard).
+    L3 windowless `tools/scenarios/D5a-OwnFirsts.ps1` PASS (14 checks). Alice reaches the Kelp Forest and hears
+    `Goal_BiomeKelpForest` once. Bob's game completes the goal with no PDA entry, no started line and an empty
+    `pdaqueue`. Bob then reaches it, gets the entry and hears the line once; Alice doesn't hear it again.
+    Negative controls: `-OptionOff` fails 2 checks (Bob gets the entry and the line at once), and the build without
+    the schedule fix failed 2 (Bob's own trigger swallowed). Not run: windowed games, delayed lines, location goals.
+  - The `kelpforest` goto spot (75, -28, -95) is `safeShallows` on the biome map. (100, -30, 200) is `kelpForest`.
+    After a teleport out of the pod, `GetBiomeString` reads `Lifepod` for a few seconds.
 - **D5b, server side (S–M, wave 2):**
   - **Why it's needed:** on join, the initial sync restores the whole PDA log silently with `PDALog.Deserialize`
     (`PdaInitialSyncProcessor.cs`, `RestorePDALog`). A line the partner triggered in an earlier session is then already
@@ -1306,4 +1375,6 @@ prices, "keeping it scary").
 | 2026-11-02 | A0 | Probe run: bridge `hold`, `sounds`, `pdaqueue`, `animator`; findings in D1 (breathing and pain not heard, bubbles 2D), D2 (real biome strings), D6 (light state matches; thrown flare not synced, H), R2 (`using_pda`, `holding_tool` missing), T1 (death clips play once, no held pose), T4 (reach fine; a click with `currentSub` set not shown), B4 (fire parents have ids), B5 (no wild regrowth in vanilla: drop), F2 (icon reset, from code). P2 not probed | `tools/scenarios/A0-Probes.ps1` windowless (two runs), game code, batch cell files |
 | 2026-11-02 | B1 (teeth) | `Stalker_CheckLoseTooth_Patch` guard: or instead of and, so only the stalker's simulating game decides on a tooth | Windowless: `B1-StalkerOneTooth.ps1` PASS (11 checks); negative control on the unfixed build FAIL (5 teeth from the non-simulating game). Full test suite green. Not checked in game: how often a natural bite reaches `CheckLoseTooth` in the non-simulating game |
 | 2026-11-02 | B2 | Server keeps a module that still holds items and sends it back to the deconstructing game; exclusive lock for building a ghost or module (`ConstructionLocks`); fabricator pickup by hand under the crafter's exclusive lock, automatic pickup keeps it until the item is taken | Headless: `StorageModuleDeconstructionTest` (fails without the check). Windowless: `B2-BuildAndCraftNoDupe.ps1` PASS (25 checks); negative control on the unfixed client FAIL (4 of 2 titanium paid, 2 knives). Full test suite green. Not checked in game: the respawned module after a refused removal; planters (H) |
+| 2026-11-02 | D5a | Done: a partner's biome and location PDA lines complete silently (`OnGoalComplete` only); this player's own tracker still schedules them (Nitrox's "completed goals don't schedule" rule excepted) and a partner's delayed one isn't scheduled here. (H) answered: the game keeps them, Nitrox's `SetupTrackers` drops them on join (a D5b hook). Found logs not done: `PDALogEntryAdd` is the pod radio, found PDAs come as `StoryGoalExecuted`; decision needed. README row | L1 `ExperientialGoalsTest`; L3 windowless `D5a-OwnFirsts.ps1` PASS; negative controls: option off (2 checks fail), without the schedule fix (2 fail). Delayed lines and location goals code-read only |
+| 2026-11-02 | D4 | Done: probe of every creature S14 didn't run plus vehicle bites (`tools/scenarios/D4-ThreatParity.ps1`, S14's helpers shared in `CreatureAggroHelpers.ps1`). Bites of Crabsnake, Ampeel, River prowler, Crabsquid, Lava lizard, Warper and Mesmer reach the partner; the Ampeel's shock hurts each player in their own game; a containment-born Stalker spares the partner. Fixed: a vehicle took no bites from creatures its pilot's game didn't simulate (new `CreatureAttackedVehicle`, relayed to the vehicle's lock holder). Not fixed, now FIX_SPEC S15: Crabsquid EMP, Mesmer hypnosis, lava rock and warp ball, Bleeder, Crabsnake grab. README fix table row | L3 windowless: first run 84 of 86 checks (the two vehicle cases failed: negative control); fixed build: full D4 PASS 95 checks, S14 PASS (all 11 cases, the two Alice-victim ones rerun after D4 left Alice in the Seamoth, now fixed in the scenario). L2 `VehicleAttack_ReachesOnlyTheVehiclesLockHolder` (fails without the creature-lock check); `dotnet test` 331 pass, 13 skipped. Ranged attacks, Prawn suit, Cyclops, world bleeders, latency: not run |
 | 2026-11-02 | T2 | Done: buddy breathing (1 unit per 0.5 s from the donor's tank, half reaches the target via the server, 15 s reserve, offered below 30 % air or when down); the partner hand-target with pluggable actions for T1/T3; the server's partner-interaction check (online, not downed unless allowed, 4 m); en/de strings; README co-op table row | Headless: L1 `PartnerInteractionsTest`, L2 `BuddyBreathingTest` (fails without the processor). Windowless: `T2-BuddyBreathing.ps1` PASS (21 checks, incl. 2.24/s vs 0.91/s drain at 226 m); negative control without the processor FAIL. Full test suite green. Not checked windowed |

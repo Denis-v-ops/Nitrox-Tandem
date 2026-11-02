@@ -14,7 +14,8 @@ namespace NitroxPatcher.Patches.Dynamic;
 /// Prefix (FIX_SPEC S14): for creatures whose bites on players the simulating game decides (<see cref="AI.AttacksPlayersFromSimulator" />),
 /// - the simulating game may bite other players' bodies, as it bites its own player (vanilla only accepts a target with a
 ///   <see cref="Player" /> component, which a body hasn't). The bite reaches the bitten player through LiveMixin_TakeDamage_Patch;
-/// - the other games don't bite their own player: that would hurt the player a second time.
+/// - the other games don't bite their own player: that would hurt the player a second time. Nor a vehicle (Seamoth, Prawn
+///   suit, Cyclops): the simulating game sends those bites to the vehicle's lock holder (COOP_FEATURES_SPEC D4).
 /// Transpiler: for some reason, when a creature attacks a Cyclops, its main rigidbody is sometimes not properly detected by the raycasts.
 /// Thus we change the target check (when it's a Cyclops) to also check if the collider is part of the target cyclops.
 /// </summary>
@@ -40,6 +41,13 @@ public sealed partial class MeleeAttack_CanDealDamageTo_Patch : NitroxPatch, IDy
             return false;
         }
         if (!simulated && Player.main && target == Player.main.gameObject)
+        {
+            __result = false;
+            return false;
+        }
+        // COOP_FEATURES_SPEC D4: the same for vehicles: the simulating game sends its bites to the vehicle's lock holder
+        // (LiveMixin_TakeDamage_Patch), so a bite here would land twice
+        if (!simulated && target.TryGetComponent(out LiveMixin targetLiveMixin) && Resolve<LiveMixinManager>().IsWhitelistedUpdateType(targetLiveMixin))
         {
             __result = false;
             return false;

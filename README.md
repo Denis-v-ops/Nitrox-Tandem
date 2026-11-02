@@ -45,6 +45,7 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
 | **Cyclops** | The partner sees the Cyclops drive smoothly: no falling behind after a stutter, no snap back when the other player takes the helm, no moving while leaving the helm. A passenger who rejoins is back inside, even if the sub drove on | [#2379](https://github.com/SubnauticaNitrox/Nitrox/issues/2379) | In game + headless, negative control for the rejoin |
 | **Creatures** | Aggressive creatures attack both players, not only the one whose game "simulates" them; crash fish explode for both | [#2781](https://github.com/SubnauticaNitrox/Nitrox/issues/2781) | In game + headless + negative control |
 | **Creatures** | A stalker that loses a tooth drops one tooth, not one in each player's game | new | In game + negative control |
+| **Creatures** | Creatures bite your Seamoth or Prawn suit even when your partner's game "simulates" them; before, a vehicle was safe from half the creatures around it | — | In game (Seamoth) + headless + negative control |
 
 ### Co-op features
 
@@ -55,6 +56,7 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 |---|---|---|---|---|
 | **Sleeping together** | Lying down tells everyone who is still up: "1/2 players sleeping. Waiting for *name*…". The night passes once everyone is in bed | Use a bed | Nobody sleeps until everyone is in bed (as before) | None, always on |
 | **Hear your partner eat and drink** | The eating and drinking sounds play for your partner, from where you are | Eat or drink as usual | Only within about 10 m, and only when you're both in the same base or vehicle, or both outside | None, always on |
+| **Your own firsts** | The PDA describes a new place when *you* get there, not when your partner does from across the map | Go there yourself | For now only within one session: after a rejoin, a place your partner reached earlier is already in your log and stays silent | `PartnerDiscoveriesSilent` (true) |
 | **Buddy breathing** | Give a partner who is running out of air some of yours, from your tank | Swim up to your partner while they're below 30 % air, look at them and hold the interact key | Slow and lossy: your partner gets half of what you give, so it slows drowning but doesn't refill. You need a tank and keep a reserve of about 15 s of your own air | `BuddyBreathingEfficiency` 0.5 (share of the air the partner gets) |
 
 ### For players
@@ -82,8 +84,7 @@ What's planned:
   items over, Cyclops crew roles, and hitching a ride on the Seamoth.
 - **Finding each other:** your partner as a faint signal with name and distance, plus "danger / look / come here" pings.
 - **Keeping it scary:** hear your partner get hurt or run out of air nearby; a distress call when they go down that
-  pulses through even in the deep; see their flashlight and flares in the dark; each of you hears the PDA describe a
-  new place when *you* get there.
+  pulses through even in the deep; see their flashlight and flares in the dark.
 - **Cozy base life:** seeing each other sit, sleep and use things, and a cuddlefish that plays with both of you.
 
 ### For developers
