@@ -642,6 +642,94 @@ near-surface spots (Alice at (-146, -3, 56) and (40, -4, -48), Bob at (132, -5, 
 **Not verified in game:** the cure cinematic itself. The game-side cure for both players at once is planned in
 COOP_FEATURES_SPEC G3 (with the solo lock, the cure won't happen while one player is offline anyway).
 
+## S14: Aggressive creatures ignore players
+
+**Report** (the players, upstream #2781): "AI fish that should be aggressive ignore players."
+
+**Confirmed symptoms** (L3 `S14-CreatureAggro.ps1`, game 83031, Safe Shallows). A→B means Alice's game simulates the
+creature and Bob is next to it, Alice 30–50 m away and invisible to creatures. Damage is what the victim's own game
+applied.
+
+| Case | Before (coop `f0ddf7bf`) | After |
+|---|---|---|
+| Stalker A→A (vanilla control) | bitten, 20 | bitten, 20 |
+| Stalker A→B, B→A | chases the victim (target = victim, aggression 1), **0 damage**, also when the contact is forced | bitten, 20 |
+| Stalker, both players next to it | chases Bob's body, bites **Alice** (2×) who is in the way, Bob 0 | Bob bitten, 20 |
+| Biter / Sandshark / Bone shark A→B | targeted, **0 damage** (forced contact too) | bitten, 7 / 30 / 30 |
+| Crash fish A→B | static Bob 3 m away **not targeted**; explosion next to him: **0 damage** | targeted, explosion 24–45 |
+| Reaper A→B (aggression-synced leviathan) | bitten by his own game (80, and once killed) | unchanged: 80 |
+| Bob's game holds the Stalker aggressive too | Bob's own game bites him | his own game doesn't; the simulator's bite arrives once |
+| "Far": Alice spawns it next to Bob, leaves 400 m | lock moves to Bob, his game runs the AI, bitten | same |
+
+**Root causes:**
+- *Confirmed (IL + game):* only the simulating game runs a creature's AI (`Creature_ChooseBestAction_Patch`, and
+  `AggressiveWhenSeeTarget_ScanForAggressionTarget_Patch` scans only with the lock). There, the other player's body is a
+  valid target (it has an `EcoTarget` of type `Shark`, the player's own type *[asset, read in game]*) and gets chased,
+  but `MeleeAttack.CanDealDamageTo` only bites a player that has a `Player` component, which a body hasn't. A body is
+  invincible anyway.
+- *Confirmed:* the other game never bites its own player: its copy of the creature has no aggression, because target
+  and aggression are synced only for `AI.syncedCreatureWhitelist` (Reaper, Sea dragon, Sea treader, Ghost). For those,
+  the bitten player's own game bites (this is why leviathans did hurt the partner).
+- *Confirmed:* a crash fish explodes only in its simulator's game; `DamageSystem.RadiusDamage` passes no dealer and can't
+  hurt a body. Its 4 m `AggressiveWhenSeePlayer` scan only looks at `Player.main`, and its long-range scan needs a
+  target moving faster than 0.2 m/s *[asset]*, so a partner floating still next to it was never targeted.
+- *Not a cause:* simulation following cells. When the simulator leaves, the lock moves to the player who still sees the
+  cell and that game attacks normally.
+- *Hypothesis for "passive on both sides":* with two players together, each creature is simulated by whoever loaded its
+  cell first, so each player is safe from roughly half the creatures around them, and a creature chasing the partner's
+  body often ends up idle.
+
+**Fix** (branch `fix/s14-creature-aggro`), for creatures outside `syncedCreatureWhitelist` (`AI.AttacksPlayersFromSimulator`):
+- `MeleeAttack_CanDealDamageTo_Patch` (new Prefix): the simulating game bites other players' bodies under the same
+  rules as its own player (`canBitePlayer`, `RemotePlayer.CanBeAttacked`, vanilla's line-of-sight raycast). Games that
+  don't simulate the creature don't bite their own player with it.
+- `LiveMixin_TakeDamage_Patch`: damage that a simulated creature deals to a body is sent as the new
+  `CreatureAttackedPlayer` (creature id, target session, raw damage, damage type). The hurt player's game applies it to
+  the real player (`CreatureAttackedPlayerProcessor`), so its own reductions apply, and skips it inside a base or sub,
+  or if it already saw the creature die.
+- Server `CreatureAttackedPlayerProcessor`: relays it only to the target, and only from the creature's lock holder.
+- `Crash_Detonate_Patch`: the exploding crash fish sends the same falloff damage to players in its radius.
+- `AggressiveWhenSeePlayer_GetAggressionTarget_Patch` / `_OnMeleeAttack_Patch`: the nearest valid player, local or
+  remote, is preferred, and biting a body starts the same "leave players alone" interval.
+- Leviathans keep their path. No save change. The protocol gains one packet, so all three must run the same build (as
+  always).
+
+**Verification:**
+- L2 `CreatureAttackRoutingTest` (2 tests): the bite reaches only the bitten player, a non-simulator's bite and a bite
+  on oneself are dropped, and a bite sent after the lock moved is dropped. Both fail with the lock check removed.
+- L3 `S14-CreatureAggro.ps1`: **PASS, 65 checks** (one run, fixed build). Each case first waits up to 30 s for a natural
+  bite. Wild AI is fickle (small fish, shinies, a teleported player getting no new trigger contact), so if none comes,
+  the simulating game moves its creature next to the victim and runs the creature's own `MeleeAttack.OnTouch`
+  (`Crash.Detonate`), as the mouth trigger would. Damage from anything but the case's creature (starvation, wild fauna)
+  isn't counted. In the passing run, 9 of 11 hits were natural.
+- The "Before" column comes from three pre-fix runs: two earlier, natural-only versions of the scenario (40 s windows)
+  and the negative control below. A Reaper probe showed Bob's own game biting him.
+- **Negative control** (client patches reverted, 6 cases): the vanilla control passes; A→B, B→A, Biter and Crash fish
+  get no damage even with the forced contact; and Bob's own game bites him in the double-bite case. 7 checks fail.
+
+**Not verified:** Crabsnake, Ampeel, Warper, Mesmer, Lava lizard, River prowler, Crabsquid and Bleeder in game; network
+latency; a player dying from a relayed bite; vehicles (their path is unchanged).
+
+**Risks (fear factor and balance):**
+- The partner is now exactly as exposed as the simulating player, which is vanilla danger for both players, not double.
+  - Each creature still has one AI, bites once per contact, and keeps its bite interval and its pause after an attack
+    (`AttackLastTarget.pauseInterval`).
+  - It picks the nearest target, as in single player.
+  - Damage numbers are solo numbers (Stalker 20, Biter 7, Sandshark and Bone shark 30, Reaper 80), reduced by the
+    victim's own suit and difficulty.
+- The bite is decided where the creature is simulated, using the victim's body position there (a few hundred ms old).
+  A partner may be bitten while their view shows the creature about a metre away, or be hit by a bite they outran on
+  their screen.
+- Lost for the partner: feeding a held fish to an attacking Stalker (they get bitten instead), and the Crabsnake's
+  grab cinematic and its extra cinematic damage (they get the plain bite).
+- A creature that nobody simulates (e.g. the Bleeder, missing from `SimulationWhitelist.MovementWhitelist`, so it has
+  no AI at all) can no longer bite a player whose own game made it aggressive by hurting it.
+
+**Follow-ups (not done):**
+- Bleeder: add it to `MovementWhitelist`, and check `AttachAndSuck`, which probably targets only `Player.main`.
+- `SeaDragonAttackTargetProcessor` sets `timeLastBite = Time.time` right before replaying `OnTouch`, so `CanBite`
+  rejects the replayed non-lethal bite. *Hypothesis*, not tested.
+
 ---
 
 ## After the top 10 (Tier 1, in rough order)
@@ -728,3 +816,4 @@ See ISSUE_TRIAGE.md for the full verify list.
 | 2026-11-02 | S9 | No code change. L3 `S9-FreshWorldSpawnsInPod.ps1` (new save `s9-fresh`); `ScenarioHelpers` gained `Get-LogMarks`/`Get-LogTextSince` (only the log text written during the run). | **PASS, 1 run, 19 checks:** both players have `currentEscapePod` and `Player.escapePod` true, 2.1 m from the pod, right after joining and 10 s later; the server has 1 pod; no `OptionalEmptyException` or "Game object required from id" in the run's part of `game[Alice/Bob]`, `Player-Alice/Bob.log` and the server log. |
 | 2026-11-02 | S11 | Not a game bug. Cause: culture-formatted numbers (`-53,74`) in scenario scripts, accepted by the dev bridge as thousands-grouped, teleported players out of the world and the game reset them to random surface spots. Bridge now parses with `NumberStyles.Float`; `ScenarioHelpers.ps1` sets invariant culture. New L2 `PlayerPositionPersistenceTest`, L3 `S11-QuitKeepsPosition.ps1`. | L2 pass. L3 PASS (6 checks, 1 run after the fix); before the fix, the same run stored Alice ~570 m away and a sampling run showed the out-of-world teleport and reset. |
 | 2026-11-02 | S12 | `InfectionStory.Reconcile` applies the game's infection rules for completed `Infection_Progress1-5` goals in `JoiningManager.SendInitialSyncAsync`. | L1 `InfectionStoryTest` (6), L2 `OfflineInfectionTest` pass; negative control (fix removed) fails with infection 1.0. Not run in game. |
+| 2026-11-02 | S14 | Branch `fix/s14-creature-aggro`. New packet `CreatureAttackedPlayer` + server/client processors. For creatures outside `AI.syncedCreatureWhitelist`, the simulating game bites other players' bodies (`MeleeAttack_CanDealDamageTo_Patch` Prefix) and sends the damage (`LiveMixin_TakeDamage_Patch`); other games don't bite their own player with a creature they don't simulate; crash fish explosions are relayed too (`Crash_Detonate_Patch`); `AggressiveWhenSeePlayer` prefers the nearest player, local or remote. Leviathans unchanged. Read in decompiled 83031: `AggressiveWhenSeeTarget`, `AggressiveWhenSeePlayer`, `AttackLastTarget`, `MeleeAttack` (+ Reaper/Crabsnake/Shocker/Warper/SeaDragon subclasses), `LastTarget`, `Creature`, `EcoTarget`/`EcoRegionManager`, `Crash`, `ProtectCrashHome`, `DamageSystem`, `LiveMixin.TakeDamage`, `OnTouch`, `Player.CanBeAttacked`, `BehaviourLOD` (movement only, not AI). Asset values read in game: each creature's aggression scans, bite values (see S14). | `dotnet build Nitrox.slnx -m:1` (no new warnings), `dotnet test` 314 pass, 13 skipped (+2 L2 `CreatureAttackRoutingTest`, both fail without the lock check). **L3 `S14-CreatureAggro.ps1`: PASS, 65 checks** (11 cases, 9 natural bites, 2 forced contacts). **In-game negative control** (client patches reverted): 7 of 35 checks fail; the partner gets no damage even from a forced contact, and the victim's own game bites in the double-bite case. Not run: Crabsnake, Ampeel, Warper, Mesmer, Lava lizard, River prowler, Crabsquid, latency. |
