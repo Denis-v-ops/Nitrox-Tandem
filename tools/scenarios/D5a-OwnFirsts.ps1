@@ -23,9 +23,10 @@ param([switch]$NoLaunch, [switch]$Keep, [switch]$OptionOff)
 $A = 'Alice'
 $B = 'Bob'
 $SaveName = 'd5a-own-firsts'
-# GotoConsoleCommand location of the Kelp Forest (as in A0-Probes.ps1); checked with Player.GetBiomeString below.
-$kelpForestA = '75 -28 -95'
-$kelpForestB = '78 -28 -92'
+# Open water that the biome map calls kelpForest (LargeWorld.main.GetBiome, read through the bridge); the
+# GotoConsoleCommand "kelpforest" spot (75 -28 -95) maps to safeShallows. Checked with Player.GetBiomeString below.
+$kelpForestA = '100 -30 200'
+$kelpForestB = '103 -30 203'
 
 function Test-PdaEntry {
     param([string]$Player, [string]$Key)
@@ -78,7 +79,7 @@ try {
 
     Step 'Alice reaches the Kelp Forest; Bob stays at the start' {
         Invoke-Bridge $A "teleport $kelpForestA" | Out-Null
-        $biome = Wait-Until { $b = Invoke-Bridge $A 'call player Player.GetBiomeString'; if ($b -match 'kelpForest') { $b } } -TimeoutSeconds 20
+        $biome = Wait-Until { $b = Invoke-Bridge $A 'call player Player.GetBiomeString'; if ($b -match 'kelpForest') { $b } } -TimeoutSeconds 60 # the pod's "Lifepod" override lingers a moment
         Assert-True ([bool]$biome) "$A is in the Kelp Forest biome (biome: $(Invoke-Bridge $A 'call player Player.GetBiomeString'))"
         $timeout = [int]([double]$goal.minStayDuration + [double]$goal.delay + 30)
         $heard = Wait-Until { Test-PdaEntry $A $key } -TimeoutSeconds $timeout
@@ -97,6 +98,10 @@ try {
 
     Step 'Bob reaches the Kelp Forest himself' {
         Invoke-Bridge $B "teleport $kelpForestB" | Out-Null
+        $biome = Wait-Until { $b = Invoke-Bridge $B 'call player Player.GetBiomeString'; if ($b -match 'kelpForest') { $b } } -TimeoutSeconds 60
+        Assert-True ([bool]$biome) "$B is in the Kelp Forest biome (biome: $(Invoke-Bridge $B 'call player Player.GetBiomeString'))"
+        $tracked = @(Invoke-BridgeJson $B 'get StoryGoalManager.main.biomeGoalTracker.goals' | Where-Object { $_.key -eq $key }).Count
+        Write-Host "  $B's biome tracker still has the goal: $tracked"
         $timeout = [int]([double]$goal.minStayDuration + [double]$goal.delay + 30)
         $heard = Wait-Until { Test-PdaEntry $B $key } -TimeoutSeconds $timeout
         Assert-True ([bool]$heard) "$B's own tracker added the PDA entry"

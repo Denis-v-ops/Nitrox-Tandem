@@ -43,6 +43,18 @@ public class ExperientialGoalsTest
     }
 
     [TestMethod]
+    public void OwnTriggerPlaysUntilHeard()
+    {
+        // The partner completed it silently: this player's tracker may still schedule it.
+        ExperientialGoals.OwnTriggerPlays("Goal_BiomeKelpForest", true, true, keys, inPdaLog: false).Should().BeTrue();
+        // Already heard (in the PDA log): Nitrox's "completed goals don't schedule" rule applies as today.
+        ExperientialGoals.OwnTriggerPlays("Goal_BiomeKelpForest", true, true, keys, inPdaLog: true).Should().BeFalse();
+        ExperientialGoals.OwnTriggerPlays("Goal_BiomeKelpForest", true, false, keys, inPdaLog: false).Should().BeFalse();
+        ExperientialGoals.OwnTriggerPlays("Goal_BiomeKelpForest", false, true, keys, inPdaLog: false).Should().BeFalse();
+        ExperientialGoals.OwnTriggerPlays("Story_AuroraWarning1", true, true, keys, inPdaLog: false).Should().BeFalse();
+    }
+
+    [TestMethod]
     public void OtherGoalsSyncAsToday()
     {
         // A story PDA line (not from the biome or location data), and experiential keys of other types.

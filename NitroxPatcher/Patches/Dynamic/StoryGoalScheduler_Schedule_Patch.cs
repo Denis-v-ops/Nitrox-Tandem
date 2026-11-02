@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Reflection;
 using NitroxClient.Communication.Abstract;
+using NitroxClient.GameLogic;
 using NitroxClient.MonoBehaviours;
 using Nitrox.Model.Subnautica.Packets;
 using Story;
@@ -11,12 +12,13 @@ public sealed partial class StoryGoalScheduler_Schedule_Patch : NitroxPatch, IDy
 {
     private static readonly MethodInfo TARGET_METHOD = Reflect.Method((StoryGoalScheduler t) => t.Schedule(default));
 
-    // __state is true if the entry was already scheduled before, in which case we cancel the scheduling
+    // __state is true if the entry was already scheduled before, in which case we cancel the scheduling.
+    // D5a: a biome or location line the partner completed silently still schedules from this player's own tracker.
     public static bool Prefix(StoryGoal goal, out bool __state)
     {
         __state = StoryGoalScheduler.main.schedule.Any(scheduledGoal => scheduledGoal.goalKey == goal.key) ||
                   (goal.goalType == Story.GoalType.Radio && StoryGoalManager.main.pendingRadioMessages.Contains(goal.key)) ||
-                  StoryGoalManager.main.completedGoals.Contains(goal.key);
+                  (StoryGoalManager.main.completedGoals.Contains(goal.key) && !ExperientialGoals.OwnTriggerPlays(goal, Resolve<LocalPlayer>()));
 
         if (__state)
         {

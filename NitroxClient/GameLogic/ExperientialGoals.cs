@@ -70,10 +70,36 @@ public static class ExperientialGoals
     }
 
     /// <summary>
+    ///     True for a biome or location PDA line while the option is on: each player hears it from their own trigger only.
+    /// </summary>
+    public static bool IsOwnFirst(string key, bool isPdaGoal, bool partnerDiscoveriesSilent, ISet<string> experientialKeys)
+    {
+        return partnerDiscoveriesSilent && isPdaGoal && experientialKeys.Contains(key);
+    }
+
+    /// <summary>
     ///     True if a goal the partner executed should complete here without its PDA log entry and voice line.
     /// </summary>
     public static bool CompletesSilently(string key, StoryGoalExecuted.EventType type, bool partnerDiscoveriesSilent, ISet<string> experientialKeys)
     {
-        return partnerDiscoveriesSilent && type == StoryGoalExecuted.EventType.PDA && experientialKeys.Contains(key);
+        return IsOwnFirst(key, type == StoryGoalExecuted.EventType.PDA, partnerDiscoveriesSilent, experientialKeys);
+    }
+
+    /// <summary>
+    ///     True if this player's own tracker may schedule a goal although it's already complete: the partner completed it
+    ///     silently and this player hasn't heard it (no PDA log entry). Nitrox otherwise refuses to schedule completed
+    ///     goals (<c>StoryGoalScheduler_Schedule_Patch</c>).
+    /// </summary>
+    public static bool OwnTriggerPlays(string key, bool isPdaGoal, bool partnerDiscoveriesSilent, ISet<string> experientialKeys, bool inPdaLog)
+    {
+        return !inPdaLog && IsOwnFirst(key, isPdaGoal, partnerDiscoveriesSilent, experientialKeys);
+    }
+
+    /// <summary>
+    ///     <see cref="OwnTriggerPlays(string, bool, bool, ISet{string}, bool)" /> for this game.
+    /// </summary>
+    public static bool OwnTriggerPlays(StoryGoal goal, LocalPlayer localPlayer)
+    {
+        return OwnTriggerPlays(goal.key, goal.goalType == Story.GoalType.PDA, localPlayer.CoopSettings is { PartnerDiscoveriesSilent: true }, Keys, PDALog.Contains(goal.key));
     }
 }
