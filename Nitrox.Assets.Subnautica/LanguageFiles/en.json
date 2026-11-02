@@ -94,6 +94,7 @@
     "Nitrox_SilenceChat": "Mute chat",
     "Nitrox_SilencedChatNotif": "Chat is now muted",
     "Nitrox_SleepingPlayers": "{SLEEPING}/{TOTAL} players sleeping.",
+    "Nitrox_SleepingPlayersWaitingFor": "{SLEEPING}/{TOTAL} players sleeping. Waiting for {PLAYERS}…",
     "Nitrox_StartServer": "Start your server first to join your self-hosted world",
     "Nitrox_SyncingWorld": "Syncing multiplayer world…",
     "Nitrox_TeleportTo": "Teleport to {PLAYER}",
