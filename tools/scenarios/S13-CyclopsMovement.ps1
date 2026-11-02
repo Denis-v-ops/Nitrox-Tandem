@@ -500,6 +500,9 @@ try {
             Assert-True ([bool]$left) "$B left the game"
             Assert-True (Enter-Helm $A) "$A is piloting"
             $start = [double[]](Invoke-BridgeJson $A "get $cyclopsId Transform.position")
+            # The sub ends up heading west towards the rising ground: turn on the spot (about 100 deg), then drive away
+            Invoke-Bridge $A 'input move 1 0 0' | Out-Null
+            Start-Sleep -Seconds 15
             Invoke-Bridge $A 'input move 0 0 1' | Out-Null
             Start-Sleep -Seconds 12
             Invoke-Bridge $A 'input off' | Out-Null
