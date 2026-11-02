@@ -10,6 +10,8 @@ internal sealed class AnimationChangeEventProcessor : IAuthPacketProcessor<Anima
     public async Task Process(AuthProcessorContext context, AnimationChangeEvent packet)
     {
         context.Sender.PlayerContext.Animation = packet.Animation;
+        // One state per type, so a later change of another type doesn't hide this one from late joiners (COOP_FEATURES_SPEC R2a)
+        context.Sender.Animations[packet.Animation.Type] = packet.Animation.State;
         await context.SendToOthersAsync(packet);
     }
 }
