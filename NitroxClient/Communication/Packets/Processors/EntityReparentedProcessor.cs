@@ -83,8 +83,7 @@ internal sealed class EntityReparentedProcessor(Entities entities) : IClientPack
 
         Pickupable pickupable = entity.RequireComponent<Pickupable>();
 
-        ItemsContainer container = opContainer.Value;
-        container.UnsafeAdd(new InventoryItem(pickupable));
+        ItemContainers.AddFromRemote(opContainer.Value, pickupable, newParent);
     }
 
     private void PerformDefaultReparenting(GameObject entity, GameObject newParent)
