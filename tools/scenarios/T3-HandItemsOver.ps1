@@ -17,8 +17,9 @@
        titanium back from Bob's side into her inventory: refused (nothing can be taken), it stays with Bob.
     5. Restart (save, stop, start, both rejoin): Bob still has both, the battery is still in the flashlight, no desync.
 
-    Negative control (2026-11-02): without GiveItemAction and ItemGiveRequestProcessor (the unfixed coop), the hold
-    opens nothing and the items stay with Alice: step 2 and 3 fail.
+    Negative control (2026-11-02): without GiveItemAction and ItemGiveRequestProcessor (the unfixed coop), 21 of 37
+    checks fail: the hold opens nothing, and the moves onto Bob's container copy only happen in Alice's game (the
+    flashlight and even the equipped tank end up in her copy of Bob's inventory, nothing is sent, Bob gets nothing).
 
     Starts a fresh world and two games (windowless with $env:NITROX_WINDOWLESS = 1), unless -NoLaunch. Debug build.
 #>
@@ -35,6 +36,12 @@ function Get-ServerParent {
     param([string]$Id)
     $record = (Get-BridgeEntities 'server').Entities[$Id]
     if ($record) { $record.ParentId }
+}
+
+# The name of the player whose inventory copy holds the item in this game (the copy hangs under the partner's body).
+function Get-CopyOwner {
+    param([string]$Player, [string]$Id)
+    "$(Invoke-Bridge $Player "get $Id Pickupable.inventoryItem.container.tr.parent.name")".Trim('"')
 }
 
 function Get-ServerChildren {
@@ -60,8 +67,7 @@ function Assert-WithBob {
     Assert-True (-not (Get-InventoryItem $A -Id $Id)) "Alice's game no longer has the $TechType in her inventory"
     Assert-Equal $bobId (Get-ServerParent $Id) "the server has the $TechType under Bob"
     $inCopy = Invoke-Bridge $A "call Inventory.main.IsUsingStorage $bobId"
-    $copyHasIt = Invoke-Bridge $A "get $Id Pickupable.inventoryItem.container.tr.parent.name"
-    Assert-Equal $B $copyHasIt "Alice's game has the $TechType in its copy of Bob's inventory (screen open: $inCopy)"
+    Assert-Equal $B (Get-CopyOwner $A $Id) "Alice's game has the $TechType in its copy of Bob's inventory (screen open: $inCopy)"
 }
 
 function Restart-World {
@@ -69,6 +75,8 @@ function Restart-World {
     Start-Sleep -Seconds 3
     & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -Stop
     if ($LASTEXITCODE -ne 0) { throw 'The games, server or launcher are still running after dual-client.ps1 -Stop' }
+    # Windows gives the stopped games' memory back with a delay; dual-client.ps1 refuses to start before it's free.
+    Wait-Until { (Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB -ge 11 } -TimeoutSeconds 120 -IntervalSeconds 5 | Out-Null
     Start-ScenarioGames -Players $A, $B -SaveName $SaveName -KeepSave
 }
 
@@ -90,7 +98,7 @@ try {
         Assert-True ([bool]$tank) "Alice wears a tank ($($tank.id))"
         Assert-Equal $aliceId (Wait-Until { Get-ServerParent $tank.id } -TimeoutSeconds 10) 'the server has the tank under Alice'
         # Bob's game spawned Alice's items into its copy of her inventory
-        $copied = Wait-Until { (Invoke-Bridge $B "get $($titanium.id) Pickupable.inventoryItem.container.tr.parent.name") -eq $A } -TimeoutSeconds 10
+        $copied = Wait-Until { (Get-CopyOwner $B $titanium.id) -eq $A } -TimeoutSeconds 10
         Assert-True ([bool]$copied) "Bob's game has Alice's titanium in its copy of her inventory"
     }
 
@@ -111,7 +119,7 @@ try {
         Assert-WithBob $flashlight.id 'flashlight'
         $bobsFlashlight = Get-InventoryItem $B -Id $flashlight.id
         Assert-Equal $batteryId $bobsFlashlight.battery.id "the flashlight keeps its battery on Bob's game"
-        $children = Get-ServerChildren $flashlight.id
+        $children = @(Get-ServerChildren $flashlight.id)
         Assert-True ($children.Count -eq 1 -and $children[0] -eq $batteryId) "the server has the same single battery under the flashlight ($($children -join ', '))"
         Assert-NoDiff -Ids $titanium.id, $flashlight.id, $batteryId 'no desync for the given items'
     }
