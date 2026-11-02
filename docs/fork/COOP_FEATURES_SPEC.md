@@ -1389,17 +1389,61 @@ sets ever reaches them.
     rejoin starts empty. Negative controls: without the replay call both tests fail; with the reveal kept, the first
     fails. **Not verified in game:** the rejoin itself (B rejoins, A's body stands and holds the tool). The packets are
     the ones the game already applies live.
-- **R2b: Arm states (M).** Sync `using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump` and
-  `diving` (`game:ArmsController.cs:255-261,454-577`) as new `AnimChangeType` values, sent on change from a watcher like
-  `UnderwaterStateTracker`. The partner then visibly scans, builds, welds, cuts, opens the PDA, swims at the surface
-  (#2281) and jumps. No new packet; `PacketsSerializableTest` covers it.
-  - (H) Also call `ArmsController.Reconfigure(tool)` on the partner's body when a tool is drawn or put away, for aim and
-    the two-handed grip.
+- **R2b: Arm states (M)** — done 2026-11-02 (branch `feat/2-r2b-arm-states`). Sync `using_tool`, `using_tool_alt`,
+  `using_builder`, `using_pda`, `on_surface`, `jump` and `diving` (`game:ArmsController.cs:255-261,454-577`) as new
+  `AnimChangeType` values, sent on change from a watcher like `UnderwaterStateTracker`. The partner then visibly scans,
+  builds, welds, cuts, opens the PDA, swims at the surface (#2281) and jumps. No new packet; `PacketsSerializableTest`
+  covers it.
+  - Also call `ArmsController.Reconfigure(tool)` on the partner's body when a tool is drawn or put away, for aim and
+    the two-handed grip (done; the aim checked windowless, the grip not, see below).
   - **A0 probe (2026-11-02, windowless, `animator` on both games):** with the PDA open, A's own animator has
     `using_pda` true, B's copy false. With the scanner or builder drawn, A has `holding_tool` true, B false;
     `holding_scanner`/`holding_builder` and `using_tool_first` do reach B (held-item packet). `using_tool` stayed false
     on A's *own* animator in the samples taken while A scanned a fish (the scan completed), so check the sender side of
     `using_tool` windowed before relying on it (H). Add `holding_tool` to R2b's list.
+  - **What was built:**
+    - Nine new `AnimChangeType` values: the seven above plus `holding_tool` and `diving_land` (written next to `diving`
+      by the same `UpdateDiving`). `ArmStates` maps each to its animator parameter.
+    - **Sender:** `ArmStateTracker` reads the local player's own arms animator in `LateUpdate`, i.e. whatever the game
+      wrote there (`ArmsController.Update`, `ConditionRules`, the PDA), instead of recomputing the game's conditions.
+      `ArmStateWatch` (pure) sends every state once after loading, then on change. An "off" is sent only after the value
+      has been off for 0.15 s: a click tool sets `using_tool` for one frame (`GUIHand.usedToolThisFrame` is set on the
+      button's down frame only, `game:GUIHand.cs:185,299`), so an on and an off would often reach the partner in the
+      same frame and their animator would never see the on, and a flickering value would cost a packet per frame.
+    - **Receiver:** `RemotePlayer.SetArmState(parameter, value)` is the **single entry point** for arm writes on the
+      partner's body: the synced states and the held-item processor's `holding_<tool>` and `using_tool_first`. The
+      `if (!InCinematic)` of #2859 and T1's downed-pose lock go there. A change of `holding_tool` or a `holding_<tool>`
+      calls `ArmsController.Reconfigure` with the tool plugged into the hand (none while `holding_tool` is off, which
+      the sender's game already turns off while the PDA is open).
+    - **Server:** keeps the latest state per type for late joiners (R2a's map), except the infection reveal and the fall
+      states `jump`, `diving` and `diving_land` (`AnimChangeTypeExtensions.IsReplayedToLateJoiners`). The join
+      payload's pose (`PlayerContext.Animation`) is now the underwater state only; before, it was whichever type came
+      last.
+  - **Findings (from code unless said):**
+    - `jump` is not a trigger: `ArmsController.Update` sets it every frame to `Player.GetPlayFallingAnimation()`, true
+      while the player has been falling out of water for 0.45 s (`game:Player.cs:1642-1653,1660-1667`). Synced as a plain state.
+    - `using_builder` has no writer in the game: `ArmsController.SetUsingBuilder` has no caller. Building shows as
+      `using_tool` (`BuilderTool.GetUsedToolThisFrame` returns `isConstructing`). Synced anyway; it stays off.
+    - `Reconfigure` is safe on the partner's body once `ArmsController.Start` has run (checked: the method touches the
+      body's own IK, aimers and bleeder target, which `ArmsController_Update_Patch` already uses every frame). Its
+      no-tool branch reads the *local* player's PDA (`Start` takes the local player), like the existing world-target
+      reconfigure in that patch. The patch's world-target path calls `Reconfigure(null)`, which would drop a tool's IK
+      if a vehicle or chair change came while a tool was out (tools are put away there; not handled).
+    - Windowless (seen): opening the PDA puts the held tool away (`PDA.Open` → `Inventory.ReturnHeld`), so
+      `holding_tool` and `holding_<tool>` go off on both sides. The scanner and builder have no hand IK targets; what
+      `Reconfigure` changes for them is the right arm's aim (`rightAim.shouldAim`), which now matches on both sides.
+      `using_tool` can't be produced on the sender windowless (`GUIHand.GetUsingTool` needs
+      `AvatarInputHandler.IsEnabled()`, false without a locked cursor).
+  - **Verified:** L1 `ArmStatesTest` (initial send, on-change, the off delay with a one-frame click and a flicker, the
+    replay predicate). L2 `PartnerArmStatesReplayTest`: a late joiner gets the PDA, surface and holding states and not
+    the fall; fails on the old processor. **L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks)**: PDA, scanner and
+    builder drawn (with the arm aim), surface, a 40 m fall into the sea (`jump` and `diving` seen on B's copy), and a
+    rejoin of B with the PDA open at the surface. Tool use (`using_tool`, `using_tool_alt`, `using_builder`) was driven
+    on A's own animator with her `ArmsController` off, since the game never sets it windowless. Negative control: on
+    unfixed `coop`, 12 of 33 checks fail (no rejoin). **Not verified:** a real tool click or weld through input, how the
+    poses look (bones don't move windowless), a fall onto land (`diving_land`), the two-handed grip of a tool that has
+    hand IK targets, and a late joiner arriving while the partner has a tool out (the replay sends `holding_tool` before
+    the held item; `SetArmState` recomputes the arms on either, from code). Needs a windowed run.
 - **R2c: Tool effects (M–L).** Each tool plays its beam or sparks only for the local user (`game:BuilderTool.cs:362`,
   `Welder.cs:61`, `LaserCutter.cs:100`, `ScannerTool.cs:146`, the Seaglide propeller `Seaglide.cs:110-117`). Play them on
   the partner's body when R2b's `using_tool` turns on. Scanner, builder and welder first; the laser cutter beam also
@@ -1662,3 +1706,4 @@ prices, "keeping it scary").
 | 2026-11-02 | G0 | Done: story gates (`StoryGateService`/`StoryGateState`/`StoryGateRules`, packets `StoryGateReady`/`Status`/`Start`, `StoryGateKind` with room for G1–G3), roster from `StoryGatePlayers` or every saved player, locked while a roster player is offline, readies cleared on timeout, area exit and disconnect, option off starts at once, admin `storygate status`/`release <kind>`; game-side `StoryGates` hold-and-resume API for G1–G3; Sunbeam radio lock (`RadioSunbeam4` stays queued while held); en/de texts; README co-op rows | L1 `StoryGateStateTest`, `StoryGatesTest`; L2 `StoryGateTest` (6 tests, all fail without `StoryGateReadyProcessor`); windowless `G4-DriveCoreTogether.ps1` radio part (lock across a quit and rejoin) PASS, fails without the radio hook. Full suite green |
 | 2026-11-02 | G4 | Done: the heal that would seal the Aurora's last leak (`LiveMixin.AddHealth`) waits until every roster player is in the drive core room (box from the leaks' measured positions plus 6 m), then seals for both; remote health syncs never held. Goal key `AuroraRadiationFixed` (read in game) | Windowless `G4-DriveCoreTogether.ps1` PASS (24 checks); negative control with the coop hooks: 9 checks fail. L2 drive core presence test. Real welder button and the on-screen message not driven; room walls not measured (H) |
 | 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
+| 2026-11-02 | R2b | Done: nine arm states as `AnimChangeType` values (`using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump`, `diving`, `diving_land`, `holding_tool`), sent from the local arms animator on change (off after 0.15 s); every arm write on the partner's body through `RemotePlayer.SetArmState` (single entry point for #2859 and T1), which also calls `ArmsController.Reconfigure` on a tool change; server replays them to late joiners except the fall states; join payload pose is the underwater state only. Findings: `jump` is a per-frame state, not a trigger; `using_builder` has no writer in the game; opening the PDA puts the tool away. README row | L1 `ArmStatesTest`; L2 `PartnerArmStatesReplayTest` (fails on the old processor); L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks, incl. a rejoin; tool use driven on the sender's animator); unfixed `coop` FAIL (12 checks). Not verified: real tool input, the look of the poses, a fall onto land (windowed) |
