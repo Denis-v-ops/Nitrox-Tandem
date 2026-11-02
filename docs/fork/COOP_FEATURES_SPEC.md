@@ -745,8 +745,8 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
 - **Open:** screenshots of the faint marker and the tag (windowed only, not run). Whether the 150 m fade feels right is
   a play question. Line of sight ignores base walls and vehicles.
 
-### F2: Context pings
-- **Today:**
+### F2: Context pings — done 2026-11-02 (branch `feat/1-f2-context-pings`)
+- **Before F2:**
   - `PlayerPingCreated` carries session, text, position and id. The label is built in English on the sender side
     (`PlayerPingManager.cs:114`).
   - Limits: 250 m, 3 pings per player, 0.5 s cooldown, 10 s lifetime.
@@ -767,10 +767,55 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   `pingType`, and it runs for every ping when the component is enabled (`OnEnable` re-adds all); `OnIconChange` does
   the same. The game itself never toggles `uGUI_Pings`. Danger (Signal) and Come here (Beacon) are ping types, so they
   survive. Look (an item's sprite) needs a Postfix on `OnAdd` and `OnIconChange` that re-applies the sprite by ping id.
+- **Built:**
+  - `PlayerPingCreated` carries `Kind` (`PingKind`: ComeHere, Look, Danger) and `TargetTechType` instead of a text.
+    Each game builds the label from `Nitrox_Ping_Danger/Look/ComeHere` (en, de) and the target's own name in its
+    language. The sender's own copy is built the same way.
+  - Kind selection (`PingTarget` reads the hit, `PingRules` decides, pure): a live `Creature` in the hit's parents is
+    **Danger** when it has an `AggressiveWhenSeeTarget` aimed at the player's own `EcoTarget` type (read from
+    `Player.main`, not assumed) or an `AggressiveWhenSeePlayer`, or an `AggressiveToPilotingVehicle`, or is a `Crash`.
+    Otherwise a `Pickupable` (its tech type), `BreakableResource` (the outcrop's) or `Drillable`
+    (`GetDominantResourceType`) is **Look**. Anything else is **Come here**, including peaceful creatures and dead
+    ones.
+  - Colours: Danger red, Look white (the item's sprite keeps its colours), Come here the sender's player colour.
+  - Lifetimes 15/10/30 s. A "come here" ping ends when the partner is within 4 m: on the receiver its own player, on the
+    sender any partner's body.
+  - "Ping: come here" binding, default **H** (free in the game and in Nitrox), appended to `KeyBindingManager` so the
+    existing button ids keep their place. The ping binding's own label key (`Nitrox_Settings_Keybind_Ping`) was missing
+    and is added.
+  - `uGUI_Pings_OnAdd_Patch` / `uGUI_Pings_OnIconChange_Patch` re-apply a player ping's icon **and colour**. The colour
+    was reset too: `OnAdd` sets it from `colorIndex` (the game's default 49BEFF), so before F2 even the player colour
+    of a ping was lost on a re-add. Applied only to objects with a `PlayerPing`, so F1's partner marker is untouched.
+  - **Price:** `SignalInterference` (client service) keeps each partner's `PlayerStats.Interfered` and is the **D2
+    hook**: `IsLocalPlayerInterfered()` returns false until D2 computes the rule there. `PlayerStatsBroadcaster` sends
+    that value. Both sides are off when `PartnerSignalInterference` is off. The receiver measures to the sender's body
+    (to the ping's position if the body isn't there).
+  - The ping ray goes through the viewport centre (the crosshair) instead of `Input.mousePosition`.
+  - Limits unchanged: 250 m, 3 per player, 0.5 s cooldown.
+- **Findings:**
+  - Read in game (windowless, `PingTarget.Describe`): Danger for Stalker, Sandshark, Biter, Blighter, Crash fish, Bone
+    shark, Ampeel, Crabsnake, Mesmer, Warper, Lava lizard, Crabsquid, River prowler, Cave crawler, Bleeder, Reaper;
+    Look for Peeper, Bladderfish, Boomerang; Come here for Gasopod, Jellyray, Rabbit ray, Sea treader, Reefback. Dead,
+    every one of them stops being Danger.
+  - Windowless games: a batch-mode cursor can't lock, so `MainGameController.Update` shows it every frame and during
+    the scripts' `Update` `AvatarInputHandler.IsEnabled()` is false: `PlayerPingManager` refuses the ping as if a menu
+    were open. The scenario calls `PlayerPingManager.instance.Update` from the bridge, between frames, where the cursor
+    is hidden again. Other scenarios that depend on `AvatarInputHandler.IsEnabled()` in an `Update` will hit the same
+    thing (worth a line in TESTING.md's batch-mode list).
 - **Tests:**
-  - L2: the kind reaches B, the sender gets nothing back.
-  - L3: B's marker icon and label, read through the bridge.
-- **Size:** S.
+  - L1 `PingRulesTest`: kind, aggression, lifetimes, the interference distance rule.
+  - L2 `ContextPingTest`: kind and target reach B; nothing back to A (fails when the server sends to all).
+  - L3 windowless `tools/scenarios/F2-ContextPings.ps1` (146 checks): Danger, Look and Come here on both games (kind,
+    label, ping type, the sprite and colour the `uGUI_Pings` marker shows), the markers after `uGUI_Pings.OnDisable`
+    + `OnEnable`, lifetimes on B, the "come here" key on a creature, arrival on both games, the four interference
+    cases (`SignalInterference.ForceLocalInterfered`, Debug), and the creature table above.
+  - Negative controls: without the two `uGUI_Pings` patches 12 checks fail (the Look marker shows the Signal sprite,
+    every marker the default colour, also after the re-add); on unfixed `coop` the first step fails.
+- **Not verified:** two different game languages at once (both test games run in English; the labels are compared
+  with the game's own strings); the `OnIconChange` path (code-read only, the game changes no ping type of ours);
+  interference from the real D2 rule (only forced); windowed rendering of the markers; drillables and breakables
+  in game (code-read; only Pickupable was pinged); a ping on a creature in another player's vehicle or base.
+- **Later:** a hold-radial menu needs key-release wiring.
 
 ---
 
@@ -1520,3 +1565,4 @@ prices, "keeping it scary").
 | 2026-11-02 | D1 | Done (pain, breathing): `PlayerPainSound` from a Postfix on `PlayerDamageSounds.OnTakeDamage`, played on the partner's body within 30 m; the breathing loop on the body follows their underwater state and tank; paths read from the local emitters. Breathing is a 2D event | L1, L2 `PainSoundRelayTest`; windowless `D1-HearPartner` PASS; negative control: A0 probe. Not listened to |
 | 2026-11-02 | D6 | Flare fixed: thrown out of the partner's loaded cells it stayed unlit in the thrower's inventory in the partner's game (no spawn sent); the server now sends those players `EntityDestroyed` for their stale copy. Metadata was fine | L2 `DroppedOutOfSightTest`; windowless `D6-ThrownFlare` PASS, fails the 120 m check without the fix. Lights drawn at 60–120 m: open (windowed) |
 | 2026-11-02 | T4 | Done: the helm screen is interactable for the crew; engine and horn only for the pilot (engine still applies the partner's change); silent running paid only by the game with the lock; decoy patch type and relay fixed; bridge `hold` Down reaches `LeftHandButton`. Finding: the CanvasGroup never blocked the helm buttons (a standing player could already start the engine); silent running drained erratically in two games. README row | L2 `CyclopsCrewTest`; L3 windowless `T4-CyclopsCrew.ps1` PASS (56 checks); negative control on the unfixed patches FAIL (4 checks; silent running drain measured by hand). Not windowed, no real mouse click |
+| 2026-11-02 | F2 | Done: `PingKind` + target tech type in `PlayerPingCreated`, labels built by each game (en/de); Danger/Look/Come here from the crosshair hit (creature aggression read from its components and the player's eco target type); "Ping: come here" on H; `uGUI_Pings` OnAdd/OnIconChange patches keep the icon and colour (the colour was lost on a re-add before too); price via `SignalInterference` (partners' `Interfered`, the local D2 hook returns false until D2). README row | L1 `PingRulesTest`; L2 `ContextPingTest` (fails with send-to-all); L3 windowless `F2-ContextPings.ps1` PASS (146 checks, creature table of 24 types); negative controls: without the patches FAIL (12 checks), unfixed `coop` FAIL. Not verified: two languages at once, real D2 interference, windowed markers, drillables/breakables in game |
