@@ -33,6 +33,15 @@ internal static class PingTarget
         return kind;
     }
 
+#if DEBUG
+    /// <summary>Dev bridge (<c>call PingTarget.Describe &lt;id&gt;</c>): what a ping at this object would be, e.g. "Danger Stalker".</summary>
+    public static string Describe(GameObject target)
+    {
+        PingKind kind = Classify(target, out TechType techType);
+        return $"{kind} {techType}";
+    }
+#endif
+
     public static bool IsAggressive(Creature creature)
     {
         bool isAlive = !creature.liveMixin || creature.liveMixin.IsAlive();

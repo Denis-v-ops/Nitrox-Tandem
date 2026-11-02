@@ -26,10 +26,9 @@ public sealed class SignalInterference
 
 #if DEBUG
     /// <summary>
-    ///     Dev bridge and scenarios only: forces the local player's state (null: the real rule). Still off when the server
-    ///     option is off.
+    ///     Dev bridge and scenarios only: puts the local player in interference. Still off when the server option is off.
     /// </summary>
-    public static bool? ForceLocal;
+    public static bool ForceLocalInterfered;
 #endif
 
     private bool Enabled => localPlayer.CoopSettings.PartnerSignalInterference;
@@ -47,9 +46,9 @@ public sealed class SignalInterference
             return false;
         }
 #if DEBUG
-        if (ForceLocal.HasValue)
+        if (ForceLocalInterfered)
         {
-            return ForceLocal.Value;
+            return true;
         }
 #endif
         return false;
