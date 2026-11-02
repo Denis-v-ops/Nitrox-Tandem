@@ -15,6 +15,12 @@ public class RadiationMetadataProcessor : EntityMetadataProcessor<RadiationMetad
             Log.Error($"[{nameof(RadiationMetadataProcessor)}] Couldn't find LiveMixin on {gameObject}");
             return;
         }
+        // A leak only gains health: an older update must not make a repaired leak leak again (MULTINAUGHTICA_SPEC M2)
+        if (!RadiationMetadata.IsProgress(liveMixin.health, metadata.Health))
+        {
+            return;
+        }
+
         using (PacketSuppressor<EntityMetadataUpdate>.Suppress())
         {
             Resolve<LiveMixinManager>().SyncRemoteHealth(liveMixin, metadata.Health);

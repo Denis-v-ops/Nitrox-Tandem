@@ -105,7 +105,9 @@ public sealed class StoryGoalInitialSyncProcessor : InitialSyncProcessor
 
         foreach (OnGoalUnlock onGoalUnlock in onGoalUnlockTracker.unlockData.onGoalUnlocks)
         {
-            if (completedGoals.Contains(onGoalUnlock.goal))
+            // The game's own set (filled by SetupStoryGoalManager), which ignores case like OnGoalUnlockTracker does; the
+            // packet's list compares case-sensitively (MULTINAUGHTICA_SPEC M2)
+            if (storyGoalManager.completedGoals.Contains(onGoalUnlock.goal))
             {
                 // Code adapted from OnGoalUnlock.Trigger
                 foreach (UnlockSignalData unlockSignalData in onGoalUnlock.signals)

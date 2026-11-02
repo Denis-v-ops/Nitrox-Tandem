@@ -229,7 +229,9 @@ for the next `ProtoInclude` tag.
    - A Prefix makes the same call's Sunbeam branch take the cancel path, as in vanilla.
    - It covers remote goals, local schedules, `PlaySunbeamEvent` and the `goal` console command, and it's safe to run
      twice.
-2. Optional: if the partner's terminal is open at that moment, close it (`SetOpen(false)`).
+2. Optional: if the partner's terminal is open at that moment, close it (`SetOpen(false)`). **Built in
+   [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02), with the server dropping
+   `RadioSunbeam4` from its radio queue; not run in game yet.
 3. Gun animation: *hypothesis only*. `PrecursorGunAim.LateUpdate` exits early when `target` is null, and `target` is
    only set in `PrecursorGunTarget.Start` if `PrecursorGunStoryEvents.main.gunAim` exists then. Load order, or Nitrox
    re-calling `PrecursorGunStoryEvents.Start()` from `StoryGoalInitialSyncProcessor`, may break it. Instrument `target`,
@@ -869,6 +871,8 @@ world bleeders are simulated.
 **Finding, not fixed:** a new player's `PlayerEntity` gets the escape pod as parent id but an unparented transform
 (local = world). After a restart it's linked under the pod, so its derived position is wrong.
 `PlayerPositionPersistenceTest` caught that when the rejoin fix wasn't limited to vehicles. Nothing reads it today.
+**Fixed in [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02, L2
+`NewPlayerEntity_KeepsItsWorldPositionAcrossRestart`).
 
 **Not verified:**
 - Two defensive lines added to `HandOverMotion` after run 5, not run in game:

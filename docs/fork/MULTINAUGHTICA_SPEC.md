@@ -174,6 +174,105 @@ Game-rig scenarios run once at the end, after all nine are implemented ("Testing
 - **Lifepod beacons:** compare unlock keys ignoring case, as the game does (`SetupTrackers` uses `List.Contains`).
   Whether any key differs in case is asset data. Not their 30 s beacon watchdog.
 
+**Findings (2026-11-02):** implemented on `fix/m2-story-progress`, not verified in game (scenario
+`tools/scenarios/M2-StoryProgress.ps1` written, not run). No new metadata or `ProtoInclude` tag; no save format change.
+- **Sea Emperor babies: held.** Our `DefaultWorldEntitySpawner.SetupObject` parents a baby of the server to the cell
+  root (`LargeWorldEntity.Register` → `game:CellManager.RegisterCellEntity`) in the frame it's made; `Start` runs a
+  frame later, so the old "has a parent" test skipped every one. The hatching game's own baby is disabled for the egg
+  cinematic (`game:SeaEmperorBabyCinematicController.SetCinematicMode`), which on its end enables it, moves it to the
+  cell root and calls `SwimToMother` before `Start` runs: it already has a swim target, which with "under an egg" now
+  decides (`SeaEmperorBabyRules`; their `HatchedHereBaby` marker not taken). The `Start` patch waits up to 60 s for the
+  Emperor and wraps the attach point id. `game:SeaEmperorBaby.Teleport` destroys the baby (from
+  `SeaEmperorTeleporterTrigger`), unreported; vanilla never saves babies (`OnProtoDeserializeObjectTree` destroys them),
+  Nitrox keeps them as entities. `SeaEmperorBaby_Teleport_Patch` sends `EntityDestroyed`. Incubator: held, the hatch
+  sends (powered, hatched) after (powered, not hatched), so `SetPowered` (sound, goal) ran twice, and a second `Hatched`
+  would restart every egg (`game:Incubator.OnHatched` → `StartHatch`): both now only once. Their 30 s animation-baby
+  cleanup not taken. **Risk:** a save whose babies were never removed: on the next load they swim to the mother and the
+  interaction plays once more, then they teleport and are removed. **Unverified:** that a copy the partner doesn't
+  simulate really swims to the mother (their notes say the Emperor reacted on the second screen). **Open risk, bigger
+  (pre-existing, not fixed):** every cell load makes a new incubator object (`hatched` false), and the spawner applies
+  its metadata, so `OnHatched` runs on every load. That is harmless only if the metadata comes before `Incubator.Start`
+  makes the eggs (`Entities.SpawnBatchAsync` applies it right after the spawn coroutine; whether a frame passes is
+  unverified). If `Start` ran first, every egg hatches again: temporary babies for most games, but five new real babies
+  from a game holding the platform's lock (`IncubatorEgg_HatchNow_Patch`), which with the new `Start` patch swim to the
+  mother and replay the interaction. Rig check: hatch, unload and reload the incubator's cell, count the server's
+  `SeaEmperorBaby` entities. The fix then: on a spawn set `hatched` and the eggs' `SetHatched` (the game's load path),
+  `OnHatched` only for a live update.
+- **Radiation for a joiner: held.** `RecalculateRadiationRadius` took the latest fix time of any leak as "all fixed";
+  `game:LeakingRadiation.NotifyLeaksFixed` triggers `leaksFixedGoal` only while `!radiationFixed`, and `Update` grows
+  the radius while any leak leaks. `RadiationRadiusModel.Compute` taken. **The `IsProgress` guard** protects against a
+  stale lower report: leaks are created at 0 (`WorldService.InitNewWorld`) and only welded, so a report that doesn't
+  raise the health is older (two welders: the 95 after the 100). The server stored it, which set `FixRealTime` back to
+  -1 (persisted: the leak leaked again after a restart), and relayed it, and the partner's `SyncRemoteHealth` called
+  `TakeDamage` (the leak leaked again at once). Taken on both sides. Not taken: their clock-based recompute,
+  `SpawnedByServer`, the spawner's `ApplyMetadata`.
+- **Respawn in the pod: held.** `game:Player.MovePlayerToRespawnPoint` calls `EscapePod.RespawnPlayer` (our Postfix
+  sends the pod), `SetCurrentSub(null)`, `currentEscapePod = pod`, then our Postfix sends "no sub root", which cleared
+  the parent and `SubRootId`. `PlayerParentRules` in both processors; also "no escape pod" (the game drops the pod by
+  distance, `game:Player.cs:1014`) no longer takes a player out of a base after a warp. **FIX_SPEC S13 finding:
+  taken**, it's clearly right: `NitroxTransform`'s world-pose setters convert into the parent's space and a restart
+  links the saved local pose under the parent; a new player's `Position` is the default (0, 0, 0), so the transform is
+  parented without keeping the world pose (the pod's origin until the first movement), a re-created one keeps it.
+- **Story goals while loading: partly.** Held: the server broadcasts to every connected session from the connection on
+  (`LiteNetLibServerService.contextBySessionId`, filled in `ConnectionRequest`), and `Multiplayer` processes packets from
+  the main menu on (`JoinServerBackend.StartMultiplayerClientAsync`): a goal in the menu threw
+  (`StoryGoalScheduler.main` null), one during the scene load ran on a half-loaded game. Didn't hold: "lost": the server
+  stores a goal before relaying it and builds the joiner's initial sync only once the scene has loaded
+  (`Multiplayer.LoadAsync` → `StartSession` → `JoinSession`), so it came back with the sync. Left: a goal between the
+  snapshot and the sync steps was applied before them (`PDALog.Deserialize` replaces the log, `SetupTrackers` re-adds
+  tracker goals), and an `AuroraAndTimeUpdate` was overwritten by the older snapshot. Built `InitialSyncDeferral` (one
+  per session scope): both processors hold their packets until the initial sync is applied, then run them in order. Not
+  their per-packet coroutine and session counter. Side effect: D5a's option now applies to those goals too (before,
+  `CoopSettings` still held the defaults).
+- **Precursor key doors and teleporters: held (code), contradicting COOP §12.1.** `game:PrecursorGlobalKeyActivator`
+  completes `doorActivationKey` with `StoryGoalManager.OnGoalComplete` (never sent) and opens on `OnEnable` from
+  `IsGoalComplete`. A door that is loaded when the key goes in syncs as `PrecursorDoorwayMetadata`; one nobody had loaded
+  never opened for the partner, nor for anyone after a restart. Which doors hang on a global activator is asset data.
+  The other direct `OnGoalComplete` callers: `IntroLifepodDirector` (`Trigger_PDAIntroBegin/End`, left out: each player
+  has their own intro), `StoryGoalManager.ExecutePendingRadioMessage` ("OnPlay" + key), two Sunbeam console commands
+  (Nitrox sends those to the server), and in Nitrox `PlaySunbeamEventProcessor` and `RadioPlayPendingMessageProcessor`
+  (now suppressed: every game runs them itself) and D5a's silent path (suppressed already).
+  `StoryGoalManager_OnGoalComplete_Patch` sends the rest as Story goals; `StoryGoal_Execute_Depth_Patch` (separate, so
+  `StoryGoal_Execute_Patch` stays as it is) keeps `Execute`'s goals out. Side effect: the partner now gets the played
+  radio message's "OnPlay" goal, which also covers the case of their "played goal" fallback (their code not taken).
+  **Teleporters:** `game:TeleporterManager.activeTeleporters` is single-player save data; `PrecursorTeleporter.Start`
+  opens from `GetTeleporterActive`. The `Nitrox_TeleporterActive:<id>` goal (`TeleporterGoalKey`, `TeleporterPairs`)
+  is reported from `TeleporterManager.ActivateTeleporter`, switches the pair on in the partner's game, and goes into the
+  game's set before a teleporter's `Start` (`PrecursorTeleporter_Start_Patch`; not a `GetTeleporterActive` Postfix: it's
+  small enough for Mono to inline). `OnActivateTeleporter` runs on every loaded teleporter for every activation; the old
+  Postfix broadcast each one's `isOpen` (mostly false), which the partner applied as `ToggleDoor(false)`, fading an open
+  portal out. Now only a teleporter that just opened reports, and the processor only opens. No goal key in the game's
+  code starts with "Nitrox"; asset keys can't be listed offline (scenario step 1 checks the keys in a fresh world).
+- **Gun-disable leftovers: held.** `game:StoryGoalCustomEventHandler.NotifyGoalComplete` drops `RadioSunbeam4` on
+  `Goal_Disable_Gun` (both literals in the game code); the server's queue kept it and every join brought it back:
+  `StoryManager.RemoveRadioMessagesCancelledBy`. G0's radio lock holds the click without taking the message, so it
+  doesn't conflict: once the gun is disabled the message is gone, as in vanilla (`Radio_PlayRadioMessage_Patch.cs`
+  untouched). The partner's open terminal: `PrecursorDisableGunTerminal.OnHandClick` doesn't check `gunDisabled`, so an
+  open one took a click and replayed the cinematic; it closes now (Postfix on our `NotifyGoalComplete` patch).
+- **One fragment scanned by both: held.** `game:PDAScanner.fragments` is a `Dictionary<string, float>`; our
+  `StoryManager.ScanCompleted` used `Add`, which throws on a key the game already has. Indexer now.
+- **Rocket: held.** A report is the sender's whole rocket (`RocketMetadataExtractor`) and was stored over the last.
+  `RocketMetadata.Merge` on the server (the report is relayed as it is: the games only add stages and checks).
+  `Rockets.RocketLaunch` used `RequireObjectFrom`, which threw for a game far from the rocket too, not only a loading
+  one. Also taken: the processor applies the stage before the elevator (a joiner's rocket starts at stage 0, and
+  `UpdateElevator` skips below the gantry, so the joiner's elevator was never set).
+- **Lifepod beacons: held as stated, code only.** Our `StoryGoalInitialSyncProcessor.SetupTrackers` checked the
+  packet's `List<string>` (ordinal); `game:StoryGoalManager.completedGoals` and `OnGoalUnlockTracker.goalUnlocks` ignore
+  case. It now asks the game's set. Whether any key differs in case: asset data, not checked; no test.
+- **Tests** (each failed with its production change reverted): L2 `StoryProgressTest`: `LifepodRespawnPackets_LeaveThePlayerInThePod`,
+  `NoEscapePod_KeepsASubRoot_AndClearsThePod` (processors), `NewPlayerEntity_KeepsItsWorldPositionAcrossRestart`
+  (`JoiningManager`), `StaleRadiationLeakHealth_IsDropped`, `RocketReports_AreMerged` (`EntityMetadataUpdateProcessor`),
+  `GunDisabled_DropsTheSunbeamRadioMessage` (`StoryGoalExecutedProcessor`); `DirectlyCompletedGoals_ComeBackAfterRestart`
+  is a guard (the server needed nothing new). Unit: `RadiationRadiusModelTest` (the partial-fix case fails with the old
+  `Max()` rule), `RocketMetadataTest`, and for the new helpers of game-only lines `SeaEmperorBabyRulesTest`,
+  `DirectGoalCompletionsTest`, `TeleporterGoalKeyTest`, `InitialSyncDeferralTest`. Game-only, scenario only: the baby
+  `Start` and `Teleport` patches, the incubator guard, the `OnGoalComplete` patch, teleporters, the terminal, the double
+  scan, the deferral. Not tested at all: the beacon key comparison, the rocket launch lookup and stage order.
+- Files that in-progress or merged-later branches also change: `StoryGoalExecutedClientProcessor.cs` (constructor and
+  three lines at the top), `StoryGoalExecutedProcessor.cs` (one line), `JoiningManager.cs` (`SetupNewPlayerEntity` only),
+  `StoryGoalInitialSyncProcessor.cs` (the beacon line only), `ClientAutoFacRegistrar.cs` (one line),
+  `EntityMetadataUpdateProcessor.cs` (M1 may touch it).
+
 ## M3: Joining and save safety (S)
 
 - **A backup at every server start.** Zip of the save's top-level files before the world is read, in
@@ -552,3 +651,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | M1 | Implemented, not verified in game: a Cyclops at 0 HP isn't sent as destroyed until it explodes, a watchdog ends a countdown whose player left, the beacon comes from the game whose countdown fired; battery charge sent after the change and when empty; the partner takes the old power cell out before installing the new one; a building resync respawns a base or module the game lost; a deconstructed loose constructable leaves its cell and lock; vehicle lights drain on the lock holder only, the thermal reactor skips while another player pilots; un-started build bots skip the launch setter; undocking announced at `OnUndockingStart`, the lock given back after a refused click | Unit (each fails with its line reverted): `CyclopsDestructionRulesTest` (old `\|\| health <= 0`), `BatteryChargeRulesTest` (old floor-only rule), `BuildingResyncPairingTest` (pairing with null), `BuildingManagerDeconstructTest` (old `RemoveEntity`, no revoke), `ConstructorBuildBot_launch_set_PatchTest` (prefix always true). L2 `CyclopsDyingPersistsTest`: a server-contract guard, passes without the fix. Not tested headless: power-cell swap, lights, thermal reactor, undocking, watchdog, beacon (scenario only, or not covered). Scenario written, not run |
 | 2026-11-02 | M8 | Implemented, not verified in game: crafting stations of a base or Cyclops also use its lockers (menu counts, tooltip, claims at the server, one retry, the same items go back if the craft can't start); `CraftFromLockers` (true) via `CoopSettings`; a game's `CraftingClaimResponse` isn't relayed. No ProtoInclude tags | Unit: `CraftingClaimArbiterTest` (35, incl. the 50-round race; each fails with its line reverted: gate, player and item exclusions, return once), `LockerCraftingRulesTest` (32). L2: `LockerCraftingTest` (4: race over the protocol + restart, return once + restart, option off, no relay; each fails with its line reverted). Transpilers registered (delta 0). Scenario written, not run |
 | 2026-11-02 | M4 | Implemented, not verified in game: the Reaper's grab and release are replayed in every game that sees it (20 s fallback; the pilot's game applies the grip); the Crabsquid's EMP is replayed at each game's copy and skips other players' bodies; the victim's game takes a Bleeder's exclusive lock and world bleeders are simulated (whitelist, duplicates removed); crash fish are no longer deleted when their area unloads, the holder waits for the home's saved state and makes no second fish, and the loader keeps a fish's world position; creature actions are sent on change plus every 5 s, null included; a crash fish blast hurts the partner's vehicle. Their `CrashHomeStates` save normalisation left out | L2 `CreatureAttackGapsTest` (3, each fails with its fix reverted: loader, whitelist line, server processors). Unit `CreatureActionBroadcastRulesTest`, `BleederClaimRulesTest`, `CrashHomeRulesTest` (pure helpers). Scenario written, not run |
+| 2026-11-02 | M2 | Implemented, not verified in game: babies of the server swim to the mother and teleported ones are destroyed on the server, incubator metadata applied once; radiation radius for a joiner from all leaks, stale leak health dropped (both sides); the pod respawn keeps the player in the pod, a new player's entity transform is parented (S13 finding); story and Aurora packets wait for the initial sync; goals completed outside `StoryGoal.Execute` (door keys) are sent, teleporter pairs persist as `Nitrox_TeleporterActive:<id>` goals, only a teleporter that opened reports; the server drops `RadioSunbeam4` on `Goal_Disable_Gun`, the partner's open gun terminal closes; double fragment scan; rocket reports merged, a launch for an unloaded rocket ignored, stage before elevator; beacon keys compared ignoring case. Hypothesis "goals lost while loading" only partly held (see Findings) | L2 (headless): `StoryProgressTest` (6 fail with their fix reverted, 1 guard). Unit: `RadiationRadiusModelTest` (fails with the old `Max()` rule), `RocketMetadataTest`, `SeaEmperorBabyRulesTest`, `DirectGoalCompletionsTest`, `TeleporterGoalKeyTest`, `InitialSyncDeferralTest`. Scenario `M2-StoryProgress.ps1` written, not run |

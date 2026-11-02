@@ -1,5 +1,8 @@
+using System.Collections;
 using System.Linq;
 using System.Reflection;
+using NitroxClient.GameLogic;
+using UnityEngine;
 
 namespace NitroxPatcher.Patches.Dynamic;
 
@@ -7,12 +10,13 @@ namespace NitroxPatcher.Patches.Dynamic;
 /// When a Sea Emperor baby is spawned on a remote client (via server broadcast),
 /// it needs to swim to mother. The simulating player handles this via the egg animation
 /// callback, but remote players receive the baby as a standalone entity.
-/// 
-/// This patch ensures the baby swims to mother if:
-/// 1. SeaEmperor.main exists (we're in the prison aquarium)
-/// 2. The baby has no parent (not attached to an egg - means it's a remote spawn)
-/// 3. The baby doesn't already have a swim target (not already swimming)
-/// 4. The baby is not a temporary animation baby
+///
+/// This patch ensures the baby swims to mother if (<see cref="SeaEmperorBabyRules.DecideStart" />):
+/// 1. The baby is not a temporary animation baby and doesn't sit under an incubator egg. The test used to be "the baby
+///    has no parent", which never holds for a baby of the server: the entity spawner registers it with its cell first,
+///    which parents it to the cell root before Start runs (MULTINAUGHTICA_SPEC M2).
+/// 2. The baby doesn't already have a swim target (not already swimming)
+/// 3. SeaEmperor.main exists (we're in the prison aquarium); when it isn't loaded yet the baby waits for it
 /// </summary>
 public sealed partial class SeaEmperorBaby_Start_Patch : NitroxPatch, IDynamicPatch
 {
@@ -20,35 +24,48 @@ public sealed partial class SeaEmperorBaby_Start_Patch : NitroxPatch, IDynamicPa
 
     public static void Postfix(SeaEmperorBaby __instance)
     {
-        // Only trigger swim to mother for remotely spawned babies
-        if (!SeaEmperor.main)
+        SeaEmperorBabyRules.BabyOrigin origin = SeaEmperorBabyRules.Classify(__instance.name.Contains(IncubatorEggAnimation_OnHatchAnimationEnd_Patch.TEMPORARY_BABY_MARKER),
+                                                                             __instance.GetComponentInParent<IncubatorEgg>());
+        switch (SeaEmperorBabyRules.DecideStart(origin, SeaEmperor.main, HasSwimTarget(__instance)))
         {
-            return;
+            case SeaEmperorBabyRules.StartAction.SWIM_TO_MOTHER:
+                SwimToMother(__instance);
+                break;
+            case SeaEmperorBabyRules.StartAction.WAIT_FOR_EMPEROR:
+                __instance.StartCoroutine(WaitForEmperorThenSwim(__instance));
+                break;
+        }
+    }
+
+    private static bool HasSwimTarget(SeaEmperorBaby baby)
+    {
+        return baby.swimToTarget && baby.swimToTarget.target;
+    }
+
+    private static void SwimToMother(SeaEmperorBaby baby)
+    {
+        SeaEmperor emperor = SeaEmperor.main;
+        int attachPoints = emperor.babyAttachPoints?.Length ?? 0;
+        baby.SetId(SeaEmperorBabyRules.NextBabyId(emperor.GetBabies().Count(), attachPoints));
+        baby.SwimToMother();
+    }
+
+    private static IEnumerator WaitForEmperorThenSwim(SeaEmperorBaby baby)
+    {
+        float waited = 0f;
+        while (!SeaEmperor.main)
+        {
+            if (SeaEmperorBabyRules.EmperorWaitOver(waited))
+            {
+                yield break;
+            }
+            yield return new WaitForSeconds(1f);
+            waited += 1f;
         }
 
-        // Skip temporary babies created for animation
-        if (__instance.name.Contains(IncubatorEggAnimation_OnHatchAnimationEnd_Patch.TEMPORARY_BABY_MARKER))
+        if (baby && SeaEmperorBabyRules.DecideStart(SeaEmperorBabyRules.BabyOrigin.SPAWNED_BY_SERVER, true, HasSwimTarget(baby)) == SeaEmperorBabyRules.StartAction.SWIM_TO_MOTHER)
         {
-            return;
+            SwimToMother(baby);
         }
-
-        // If the baby has a parent, it was spawned by the local hatching sequence
-        // The animation system will handle calling SwimToMother() via OnHatchAnimationEnd()
-        if (__instance.transform.parent != null)
-        {
-            return;
-        }
-
-        // Check if this baby already has a swim target (already being handled)
-        if (__instance.swimToTarget != null && __instance.swimToTarget.target != null)
-        {
-            return;
-        }
-
-        // This is a remotely spawned baby - make it swim to mother
-        // Assign a baby ID based on how many babies are already registered
-        int babyId = SeaEmperor.main.GetBabies().Count();
-        __instance.SetId(babyId);
-        __instance.SwimToMother();
     }
 }

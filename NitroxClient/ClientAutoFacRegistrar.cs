@@ -112,6 +112,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<Fires>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<FireExtinguishers>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<BaseFlooding>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<GameLogic.InitialSync.InitialSyncDeferral>().InstancePerLifetimeScope();
             containerBuilder.Register(_ => FMODWhitelist.Load(GameInfo.Subnautica)).InstancePerLifetimeScope();
             containerBuilder.RegisterType<FMODSystem>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<NitroxSettingsManager>().InstancePerLifetimeScope();
