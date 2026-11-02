@@ -39,8 +39,8 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
 | **Creatures** | A creature killed by the player who isn't "simulating" it now dies for both players, too | [#2510](https://github.com/SubnauticaNitrox/Nitrox/issues/2510), [#1701](https://github.com/SubnauticaNitrox/Nitrox/issues/1701) (PRs [#2902](https://github.com/SubnauticaNitrox/Nitrox/pull/2902), [#2867](https://github.com/SubnauticaNitrox/Nitrox/pull/2867) with a fix) | In game |
 | **Player** | No more "swimming" inside the Cyclops or dry alien rooms in two confirmed cases: Cyclops colliders, and warping to a partner | [#2712](https://github.com/SubnauticaNitrox/Nitrox/issues/2712) | In game + negative control |
 | **Start** | New players reliably spawn inside the escape pod | [#2898](https://github.com/SubnauticaNitrox/Nitrox/issues/2898) (PR [#2899](https://github.com/SubnauticaNitrox/Nitrox/pull/2899)) | In game |
-
-**In progress:** Cyclops movement glitches, and aggressive creatures ignoring one of the players.
+| **Cyclops** | The partner sees the Cyclops drive smoothly: no falling behind after a stutter, no snap back when the other player takes the helm, no moving while leaving the helm. A passenger who rejoins is back inside, even if the sub drove on | [#2379](https://github.com/SubnauticaNitrox/Nitrox/issues/2379) | In game + headless, negative control for the rejoin |
+| **Creatures** | Aggressive creatures attack both players, not only the one whose game "simulates" them; crash fish explode for both | [#2781](https://github.com/SubnauticaNitrox/Nitrox/issues/2781) | In game + negative control |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -50,14 +50,26 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
   Tandem world.
 
 ### Planned co-op features
-Designed to keep Subnautica lonely, scary and beautiful, just shared. Specified in
-[docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md):
-- **Shared story moments:** the Aurora drive core, the gun, the Sea Emperor and the cure, and the rocket launch wait
-  until both players are there. Solo play is fine, but the big beats wait for your partner.
-- **Teamwork survival:** a rescue window instead of instant death, buddy breathing (sharing air), handing items over,
-  Cyclops crew roles, and hitching a ride on the Seamoth.
-- **Finding each other:** your partner as a faint beacon-style signal, plus "danger / look / come here" pings.
-- **Cozy base life:** seeing each other sit and sleep, and a cuddlefish that follows whoever played with it last.
+Not built yet; designed in [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md). The idea: Subnautica
+stays lonely, scary and hard, just shared.
+- **It stays scary.** The deep cuts the line: in caves and below 300 m your partner's signal drops to a last contact,
+  unless a beacon or scanner room you built relays it. You find each other by sound and light.
+- **Every help has a price.** A revive takes a few seconds of holding, and the rescue window gets shorter each time you
+  go down before resting. Sharing air costs the donor twice what the receiver gets. Creatures, resources and fragments
+  keep the game's own numbers.
+- **The big story beats wait for both of you.**
+- **Each rule gets a switch** in the server's `server.cfg`.
+
+What's planned:
+- **Story moments together:** the Aurora drive core, disabling the gun, the Sea Emperor and the cure, and the rocket
+  launch wait until both players are there. Playing alone in between is fine.
+- **Teamwork survival:** a rescue window instead of instant death (revive with a first aid kit, or by hand), buddy
+  breathing, handing items over, Cyclops crew roles, and hitching a ride on the Seamoth.
+- **Finding each other:** your partner as a faint signal with name and distance, plus "danger / look / come here" pings.
+- **Keeping it scary:** hear your partner get hurt or run out of air nearby; a distress call when they go down that
+  pulses through even in the deep; see their flashlight and flares in the dark; each of you hears the PDA describe a
+  new place when *you* get there.
+- **Cozy base life:** seeing each other sit, sleep and use things, and a cuddlefish that plays with both of you.
 
 ### For developers
 - An agent- and human-friendly guide to the codebase: [AGENTS.md](AGENTS.md).

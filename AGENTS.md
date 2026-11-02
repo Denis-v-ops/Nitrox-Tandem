@@ -285,8 +285,9 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
   `ALL_UPPER` constants, LF line endings.
 - `InternalsVisibleTo Nitrox.Test` is set on all Nitrox libraries, so tests can reach `internal` members.
 - Logs: `Log.Info/Warn/Error` (client, `Nitrox.Model/Logger/Log.cs`) and ZLogger `ILogger<T>` (server).
-- Known oddity: `NitroxPatcher/Patches/Dynamic/Drillable_ManagedUpdate_Patch.cs` isn't `partial` and inherits a custom
-  `Patch()`, so its `Transpiler` may never be applied at runtime. Unverified.
+- Patches that only suppress a packet derive from `PacketSuppressorPatch<T>` (`NitroxPatcher/Patches/PacketSuppressorPatch.cs`)
+  instead of following the generator convention: they aren't `partial` and override `Patch()`. `Drillable_ManagedUpdate_Patch`
+  applies its `Transpiler` in that override too, so it does run. Copy the convention above, not these classes.
 
 ## 7. Working agreements for agents
 

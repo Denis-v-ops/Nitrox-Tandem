@@ -130,7 +130,7 @@ of where the players are.
 | Beat | Solo, it feels like | Co-op today, and the risk | Items |
 |---|---|---|---|
 | **Lifepod 5, Safe Shallows** (start) | Waking in a burning pod; wonder; the first fabricator | Both start in the same pod (FIX_SPEC S9). Low risk | F1, F2, R1a |
-| **First dives:** Kelp Forest, Grassy Plateaus, Crash Zone | The first Stalker; a Reaper heard near the Aurora before it's seen | Marker and vitals always shown; the partner's PDA chatter reaches you; whether creatures can hurt both players is unverified | D1, D4, D5, F1 |
+| **First dives:** Kelp Forest, Grassy Plateaus, Crash Zone | The first Stalker; a Reaper heard near the Aurora before it's seen | Marker and vitals always shown; the partner's PDA chatter reaches you; creatures hurt both players since S14 (the rest: D4) | D1, D4, D5, F1 |
 | **Aurora explosion** (seeded timer, early) | Countdown, shockwave, radiation | A world event both get at once; it may happen solo (G0) | — |
 | **Radio calls, lifepods, the Degasi trail:** Floating Island, Jellyshroom Cave, Deep Grand Reef | Loneliness; the first dark cave | The partner's marker still shows in caves; logs are narrated remotely | D2, D5, D6 |
 | **Inside the Aurora:** radiation suit, laser cutter, fires, Prawn bay, Cuddlefish egg, drive core | Claustrophobia, radiation | The drive core beat needs no presence today | G4, P1 |
@@ -151,7 +151,7 @@ Sorted by wave. "Needed by" is when the players first meet it in the story.
 | **A0** | Probe run: answer the (H) marks in one rig session, plus the bridge additions | S | 0 | — | — |
 | **A1** | Shared plumbing: all options, saved player fields, `PlayerStats` flag | S | 0 | — | — |
 | **A2** | Trial merge of PR #2859 (no build): list conflicts with R2, T1, T5, D1 | XS | 0 | — | — |
-| **D4** | Threat parity: creatures hurt both players (fix on `fix/s14-creature-aggro`) | S probe + M fix | 1 | **Early** | A0 |
+| **D4** | Threat parity: the creatures FIX_SPEC S14 didn't test hurt both players too | S probe (+ fixes) | 1 | **Early** | A0 |
 | **B1** | Creature leftovers: Stalker teeth now; warpers and bleeders in wave 3 | XS (+ M + S) | 1 / 3 | Early / Lost River | — |
 | **B2** | Building and crafting without loss or dupes | S–M | 1 | Early (first base) | — |
 | **D5a** | Your own firsts, game side: the partner's biome and location lines stay silent for you | S | 1 | **Start** | — |
@@ -189,8 +189,8 @@ Sorted by wave. "Needed by" is when the players first meet it in the story.
 0. **Wave 0, groundwork (before any feature):** A0, A1, A2. They remove repeated work later: one rig session answers
    most (H) marks, one change breaks the serialization and save tests once instead of eight times, and the trial merge
    shows early where #2859 collides with our own `RemotePlayer` work.
-1. **Wave 1, quick wins:** D4 first (if creatures can't hurt both players, no fear lever matters; the fix is in progress
-   on `fix/s14-creature-aggro`, with no FIX_SPEC item yet), B1 teeth, B2, D5a (the first biome line comes minutes into a
+1. **Wave 1, quick wins:** D4 first (if creatures can't hurt both players, no fear lever matters; FIX_SPEC S14 fixed it
+   for the creatures it tested, D4 covers the rest), B1 teeth, B2, D5a (the first biome line comes minutes into a
    new game), R2a, F1, D1, D6, T2, F2, T4, R1a. F1, D1, D6 and R2a all touch `RemotePlayer`; build them on one branch
    (§13).
 2. **Wave 2, before the first story gate in play:** D5b, T3, G0 + G4, B4, D2, R2b. The drive core comes early in the
@@ -205,7 +205,7 @@ top of it. Until T1 lands, the death penalty is plain vanilla, which fits princi
 
 **A0: Probe run (S).** One dual-client session on the rig, one script (`tools/scenarios/A0-Probes.ps1`), answering the
 (H) marks that only the game can answer. Each probe writes its finding into the item it belongs to.
-- D4: the creature list, *before* the creature fix lands (it must show the gap).
+- D4: the creatures S14 didn't run, through the extended `S14-CreatureAggro.ps1` (see D4).
 - D6: the partner's flashlight, Seaglide and a flare at night at 20, 60 and 120 m (screenshots).
 - D1: does the partner's breathing loop play on their body?
 - D2: the real biome names at known spots (Jellyshroom Cave, Lost River, lava zones, Precursor facilities).
@@ -708,30 +708,28 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     `MarkDeathPointsWithBeacon` is on).
 - **Tests:** L3, as part of T1: B goes down at 400 m; A's marker turns red, counts down, and moves only every 5 s.
 
-### D4: Threat parity probe (S probe, then fixes)
+### D4: Threat parity for the rest of the creatures (S probe, then fixes)
 - **Question:** does a creature that A's game simulates actually hurt B? If not, one player is close to immune and no
   fear lever matters. It also decides whether "one baits, the other scans" works.
-- **Today:**
-  - The partner's body is a creature target: an `EcoTarget` of type Shark plus a player type, and `TechTag` Player
-    (`RemotePlayer.cs:404-415`).
-  - Target choice is synced for `AggressiveWhenSeeTarget` and for the attack actions `AttackLastTarget`,
-    `RangedAttackLastTarget` and `AttackCyclops` (`AI.cs:24-27`). Only four creatures are fully synced: Reaper, Sea
-    Dragon, Sea Treader and Ghost Leviathan (`AI.cs:33-36`).
-  - The partner's body has an invincible `LiveMixin` (`RemotePlayer.cs:516`), so the damage has to happen on B's own
-    game, from B's copy of the creature (H).
-  - **Likely answer from the basics sweep (§12.1, code read):** for every creature outside those four, a bite needs
-    aggression (`game:MeleeAttack.cs:89`). Aggression from *seeing* a target only rises on the simulating game: the
-    other game replays received actions instead of choosing its own (`Creature_ChooseBestAction_Patch.cs:17-28`). So an
-    unprovoked Stalker, Sand Shark, Biter, Bone Shark, Ampeel or Crabsquid probably never attacks the player who doesn't
-    simulate it. Hitting it, or piloting near it, still raises aggression on that player's own game.
+- **Today:** mostly answered by [FIX_SPEC S14](FIX_SPEC.md#s14-aggressive-creatures-ignore-players), merged into
+  `coop`:
+  - Before S14, a creature outside the four fully synced ones (Reaper, Sea Dragon, Sea Treader, Ghost Leviathan,
+    `AI.cs:33-36`) never attacked the player whose game didn't simulate it: aggression from seeing a target only rose on
+    the simulating game, and the partner's body has an invincible `LiveMixin` (`RemotePlayer.cs:516`). S14's scenario
+    confirmed this.
+  - Since S14, the simulating game bites the partner's body and sends the damage (`CreatureAttackedPlayer`); the other
+    game no longer bites its own player with a creature it doesn't simulate; crash fish explosions are relayed;
+    `AggressiveWhenSeePlayer` picks the nearest player, local or remote. Leviathans are unchanged.
+  - **Tested in game:** Stalker (both lock directions, both players next to it, both games holding it aggressive),
+    Biter, Sand Shark, Bone Shark, crash fish, and the Reaper (unchanged, it already bit). **Not run:**
+    Crabsnake, Ampeel, Warper, Mesmer, Lava Lizard, River Prowler, Crabsquid, attacks on vehicles, creatures born in
+    containment, latency.
   - **Warpers** are worse: each game spawns its own warpers and warp balls (`game:WarperSpawner.cs:31-34`, no Nitrox
     hooks), so each player meets different warpers in the Lost River. **Bleeders** are never simulated, so they do
-    nothing for either player (H).
-  - The fix is in progress on branch `fix/s14-creature-aggro` (another session; no FIX_SPEC item yet). D4's scenario is
-    its check.
-- **Probe** (one scenario script, `tools/scenarios/D4-ThreatParity.ps1`): A holds the simulation lock; spawn each
-  creature next to B through the bridge (`console spawn <creature>`), and read B's health and vehicle state for 30 s.
-  Then swap the roles. Run it before that fix (it must show the gap) and after (it must pass).
+    nothing for either player (H). Both are B1.
+- **Probe:** extend `tools/scenarios/S14-CreatureAggro.ps1` with one case per creature on the "not run" list, both lock
+  directions, plus a bite on a vehicle. Keep S14's method: wait for a natural bite, force the contact only as a
+  fallback.
 - **Done when:** every creature on the list either hurts both players or has a FIX_SPEC item.
 
 ### D5: Your own firsts (D5a S + D5b S–M)
@@ -925,7 +923,8 @@ Earlier findings:
 - **The partner's PDA speaks your discoveries** wherever they are (D5). Not a bug in the code's terms, but it breaks
   principle 4.
 - **Pain isn't audible for the partner:** `event:/player/damage` is off and the pain emitters aren't synced (D1).
-- **Whether creatures can hurt the player who doesn't simulate them is unverified** (D4).
+- **Creatures didn't hurt the player who doesn't simulate them.** Fixed by FIX_SPEC S14 for the creatures it tested;
+  the rest is D4.
 
 ### 12.1 Basics sweep (2026-11-02)
 
@@ -940,8 +939,8 @@ teleporters, terminals and blueprints; player stats and infection; escape pod an
 health and power; PDA, known tech and fragments; walking, swimming, equipment, held tools and vehicle poses on the
 partner's body.
 
-**Gaps**, each an item below except two that live elsewhere: unprovoked creature attacks (D4; the fix is in progress on
-`fix/s14-creature-aggro`) and the partner's body (R2).
+**Gaps**, each an item below except two that live elsewhere: unprovoked creature attacks (fixed by FIX_SPEC S14 for the
+creatures it tested; D4 covers the rest) and the partner's body (R2).
 
 | ID | Gap | Impact | Size | Wave |
 |---|---|---|---|---|
@@ -1002,9 +1001,9 @@ partner's body.
 - The repulsion cannon has no sync; the propulsion cannon moves objects (`PropulsionCannon_GrabObject_Patch.cs:44`) but
   shows no beam. Picture frames aren't synced (#2261; adopt PR #2840 after reading its review).
 
-**Doc correction:** AGENTS.md §6 says `Drillable_ManagedUpdate_Patch`'s transpiler may never run. It does: the class
-overrides `Patch()` and applies it (`Drillable_ManagedUpdate_Patch.cs:42-46`), and `PatchesTranspilerTest.cs:44`
-registers it. The note can go.
+**Doc correction (done 2026-11-02):** AGENTS.md §6 said `Drillable_ManagedUpdate_Patch`'s transpiler may never run. It
+does: the class overrides `Patch()` and applies it (`Drillable_ManagedUpdate_Patch.cs:42-46`), and
+`PatchesTranspilerTest.cs:44` registers it. AGENTS.md now says so.
 
 ## 13. Definition of done (per feature)
 
@@ -1039,8 +1038,8 @@ code. Every feature that lands, and every change to this spec that players would
   them), such as the faint partner marker or the distress call.
 - The README carries the highlights; `docs/fork/PLAYING.md` (once it exists) carries the full option reference.
 
-**Open now:** the README's "Planned co-op features" list predates the fear and difficulty review. It's missing the
-"keeping it scary" items (D1–D6) and the "every help has a price" idea.
+The README's "Planned co-op features" list was brought in line with this spec on 2026-11-02 (the design idea, the
+prices, "keeping it scary").
 
 ## Log
 
@@ -1048,3 +1047,4 @@ code. Every feature that lands, and every change to this spec that players would
 |---|---|---|---|
 | 2026-11-02 | — | Spec created from design decisions + feasibility research (3 read-only investigations) | — |
 | 2026-11-02 | §2–§3, §8, T1, T2, F1, F2 | Fear and difficulty review: principles 2–4 and 6, analysis, price table, journey map, D1–D6, prices on T1/T2/F2, options table; second round of design decisions; README showcase rule (§13.1); basics sweep (§12.1) with R2 and the D4 update; gaps made items B1–B6 (§12); build-efficiency pass: wave 0 (A0 probe run, A1 shared plumbing, A2 #2859 trial merge), D5 split into D5a/D5b, shared partner hand-target (T2), D2 state on `PlayerStats`, shared branches per wave (§13) | Code and decompiled-game reads (cited inline) |
+| 2026-11-02 | D4, §12, §13.1 | D4 rebased on FIX_SPEC S14 (merged): what S14 fixed and tested, the creatures left, the probe extends S14's scenario. AGENTS.md Drillable note corrected; README "Planned co-op features" rewritten per §13.1 and S13/S14 added to its fix table | FIX_SPEC S13/S14 entries; `Drillable_ManagedUpdate_Patch.cs`, `PacketSuppressorPatch.cs` read |
