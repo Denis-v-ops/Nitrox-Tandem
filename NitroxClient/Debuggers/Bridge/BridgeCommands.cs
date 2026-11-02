@@ -45,6 +45,12 @@ internal static class BridgeCommands
                                  record start <name> <target> [relativeTo] | record stop <name> | record list
                                                                 per-frame pose samples (wall clock, position, velocity, ...)
                                  input move <x> <y> <z> | input off   hold the movement input (strafe/turn, up/down, forward)
+                                 hold <target|none> <seconds> [button] [noaim] | hold status | hold off
+                                                                hold a game button (default LeftHand = interact) through the game's
+                                                                input, aiming at the target; status: targeted frames, reticle progress
+                                 sounds [seconds] [filter] | sounds clear   FMOD events started lately (path, position, owner)
+                                 pdaqueue                       PDA voice line playing now and the ones queued (PDASounds.queue)
+                                 animator <target> [all]        Animator parameters and playing clips (e.g. the partner's body)
                                Values: numbers, true/false, null, enum names, x,y,z vectors, NitroxIds or targets for objects.
                                """;
 
@@ -97,6 +103,14 @@ internal static class BridgeCommands
                 return BridgeRecorder.Command(args, host);
             case "input":
                 return BridgeInput.Command(args);
+            case "hold":
+                return BridgeHold.Command(args);
+            case "sounds":
+                return BridgeSounds.Command(args);
+            case "pdaqueue":
+                return BridgeSounds.PdaQueue();
+            case "animator":
+                return BridgeAnimator.Command(args);
             default:
                 throw new ArgumentException($"Unknown command '{command}'. Try help.");
         }
