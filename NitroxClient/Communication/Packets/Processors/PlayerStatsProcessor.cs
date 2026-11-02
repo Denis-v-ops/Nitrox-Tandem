@@ -5,12 +5,15 @@ using NitroxClient.MonoBehaviours.Gui.HUD;
 
 namespace NitroxClient.Communication.Packets.Processors;
 
-internal sealed class PlayerStatsProcessor(PlayerManager playerManager) : IClientPacketProcessor<PlayerStats>
+internal sealed class PlayerStatsProcessor(PlayerManager playerManager, SignalInterference signalInterference) : IClientPacketProcessor<PlayerStats>
 {
     private readonly PlayerManager playerManager = playerManager;
+    private readonly SignalInterference signalInterference = signalInterference;
 
     public Task Process(ClientProcessorContext context, PlayerStats playerStats)
     {
+        // Kept even before the partner's body exists, so the first ping already knows it.
+        signalInterference.SetPartnerInterfered(playerStats.SessionId, playerStats.Interfered);
         if (playerManager.TryFind(playerStats.SessionId, out RemotePlayer remotePlayer))
         {
             RemotePlayerVitals vitals = remotePlayer.vitals;
