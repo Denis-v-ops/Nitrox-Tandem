@@ -7,8 +7,12 @@ internal sealed class EscapePodChangedPacketProcessor(EntityRegistry entityRegis
 {
     public async Task Process(AuthProcessorContext context, EscapePodChanged packet)
     {
-        entityRegistry.ReparentEntity(context.Sender.GameObjectId, packet.EscapePodId.OrNull());
-        context.Sender.SubRootId = packet.EscapePodId;
+        // "No escape pod" (the game drops the pod by distance) must not take the player out of a sub root (PlayerParentRules)
+        if (!PlayerParentRules.KeepsSubRootParent(packet.EscapePodId, PlayerParentRules.GetParent(entityRegistry, context.Sender.GameObjectId)))
+        {
+            entityRegistry.ReparentEntity(context.Sender.GameObjectId, packet.EscapePodId.OrNull());
+            context.Sender.SubRootId = packet.EscapePodId;
+        }
         await context.SendToOthersAsync(packet);
     }
 }

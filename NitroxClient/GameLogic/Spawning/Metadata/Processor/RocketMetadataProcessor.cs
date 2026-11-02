@@ -34,8 +34,10 @@ public class RocketMetadataProcessor : EntityMetadataProcessor<RocketMetadata>
 
         using (PacketSuppressor<EntityMetadataUpdate>.Suppress())
         {
-            UpdateElevator(rocket, metadata);
+            // The stage first: the elevator only exists from the gantry on (UpdateElevator), and a joiner's rocket starts at
+            // stage 0, so its elevator was never set (MULTINAUGHTICA_SPEC M2)
             UpdateStage(rocket, metadata);
+            UpdateElevator(rocket, metadata);
             UpdatePreflightChecks(rocket, metadata);
         }
     }

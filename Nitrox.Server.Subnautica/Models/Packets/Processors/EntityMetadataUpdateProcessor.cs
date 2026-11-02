@@ -22,7 +22,10 @@ internal sealed class EntityMetadataUpdateProcessor(PlayerManager playerManager,
 
         if (TryProcessMetadata(context.Sender, entity, packet.NewValue))
         {
-            entity.Metadata = packet.NewValue;
+            // A rocket report is one player's whole view of the rocket: two players acting within one round trip each lack
+            // the other's action, so it's merged into what the server has (MULTINAUGHTICA_SPEC M2). The games only ever add
+            // stages and checks, so relaying the report as it is lets both converge.
+            entity.Metadata = packet.NewValue is RocketMetadata rocketMetadata ? RocketMetadata.Merge(entity.Metadata as RocketMetadata, rocketMetadata) : packet.NewValue;
             await SendUpdateToVisiblePlayersAsync(context, packet, entity);
         }
     }
@@ -48,6 +51,10 @@ internal sealed class EntityMetadataUpdateProcessor(PlayerManager playerManager,
             // temperature is a ratchet (see ThermalPlant.QueryTemperature's Mathf.Max), so drop stale updates instead of
             // relaying them: every client near a thermal plant reports the same rise, and only the first one is news
             ThermalPlantMetadata thermalPlantMetadata => entity.Metadata is not ThermalPlantMetadata currentMetadata || thermalPlantMetadata.Temperature > currentMetadata.Temperature,
+
+            // a radiation leak only gains health: a stale update (two players welding one leak) must not make it leak again
+            // and reset its fix time (MULTINAUGHTICA_SPEC M2)
+            RadiationMetadata radiationMetadata => entity.Metadata is not RadiationMetadata currentRadiation || RadiationMetadata.IsProgress(currentRadiation.Health, radiationMetadata.Health),
 
             // Allow metadata updates from any player by default
             _ => true

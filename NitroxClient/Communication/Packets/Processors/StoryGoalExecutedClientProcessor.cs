@@ -2,16 +2,23 @@ using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Abstract;
 using NitroxClient.Communication.Packets.Processors.Core;
 using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.InitialSync;
 using Story;
 
 namespace NitroxClient.Communication.Packets.Processors;
 
-internal sealed class StoryGoalExecutedClientProcessor(LocalPlayer localPlayer) : IClientPacketProcessor<StoryGoalExecuted>
+internal sealed class StoryGoalExecutedClientProcessor(LocalPlayer localPlayer, InitialSyncDeferral initialSyncDeferral) : IClientPacketProcessor<StoryGoalExecuted>
 {
     private readonly LocalPlayer localPlayer = localPlayer;
 
     public Task Process(ClientProcessorContext context, StoryGoalExecuted packet)
     {
+        // MULTINAUGHTICA_SPEC M2: a goal that comes while this game is in the menu, loading or syncing is applied after the sync
+        if (initialSyncDeferral.Defer(() => Process(context, packet)))
+        {
+            return Task.CompletedTask;
+        }
+
         // D5a: a biome or location line the partner triggered completes here without its PDA entry and voice line.
         // Before the initial sync, CoopSettings holds the defaults (false), so this falls back to today's behaviour.
         bool silent = ExperientialGoals.CompletesSilently(packet.Key, packet.Type, localPlayer.CoopSettings is { PartnerDiscoveriesSilent: true }, ExperientialGoals.Keys);

@@ -8,7 +8,12 @@ internal sealed class RadioPlayPendingMessageProcessor : IClientPacketProcessor<
 {
     public Task Process(ClientProcessorContext context, RadioPlayPendingMessage packet)
     {
-        StoryGoalManager.main.ExecutePendingRadioMessage();
+        // The "OnPlay" goal this completes is the partner's to report (StoryGoalManager_OnGoalComplete_Patch), and the server
+        // records it from this packet already (MULTINAUGHTICA_SPEC M2)
+        using (PacketSuppressor<StoryGoalExecuted>.Suppress())
+        {
+            StoryGoalManager.main.ExecutePendingRadioMessage();
+        }
         return Task.CompletedTask;
     }
 }

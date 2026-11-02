@@ -19,8 +19,12 @@ internal sealed class PlaySunbeamEventProcessor : IClientPacketProcessor<PlaySun
         {
             StoryGoalManager.main.completedGoals.Remove(PlaySunbeamEvent.SunbeamGoals[i]);
         }
-        // Same execution as for StoryGoalCustomEventHandler commands
-        StoryGoalManager.main.OnGoalComplete(packet.EventKey);
+        // Same execution as for StoryGoalCustomEventHandler commands. The server sent this to every game, so it isn't
+        // reported back (StoryGoalManager_OnGoalComplete_Patch, MULTINAUGHTICA_SPEC M2).
+        using (PacketSuppressor<StoryGoalExecuted>.Suppress())
+        {
+            StoryGoalManager.main.OnGoalComplete(packet.EventKey);
+        }
         return Task.CompletedTask;
     }
 }
