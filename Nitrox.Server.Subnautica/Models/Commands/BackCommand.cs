@@ -29,7 +29,7 @@ internal sealed class BackCommand(IPacketSender packetSender, PlayerManager play
             return Task.CompletedTask;
         }
 
-        player.Teleport(player.LastStoredPosition.Value, player.LastStoredSubRootID, packetSender);
+        player.Teleport(player.LastStoredPosition.Value, player.LastStoredSubRootID, player.LastStoredInPrecursor, packetSender);
         context.ReplyAsync($"Teleported back to {player.LastStoredPosition.Value}");
         return Task.CompletedTask;
     }

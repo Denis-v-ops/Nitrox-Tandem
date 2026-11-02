@@ -56,6 +56,7 @@ namespace Nitrox.Server.Subnautica.Models
         public SubnauticaGameMode GameMode { get; set; }
         public NitroxVector3? LastStoredPosition { get; set; }
         public Optional<NitroxId> LastStoredSubRootID { get; set; }
+        public bool LastStoredInPrecursor { get; set; }
         public ThreadSafeDictionary<string, float> PersonalCompletedGoalsWithTimestamp { get; }
         public ThreadSafeDictionary<string, PingInstancePreference> PingInstancePreferences { get; set; }
         public ThreadSafeList<int> PinnedRecipePreferences { get; set; }
@@ -166,13 +167,16 @@ namespace Nitrox.Server.Subnautica.Models
             return true;
         }
 
-        public void Teleport(NitroxVector3 destination, Optional<NitroxId> subRootID, IPacketSender packetSender)
+        /// <param name="inPrecursor">Whether the destination is a dry precursor room (see <see cref="InPrecursor" />).</param>
+        public void Teleport(NitroxVector3 destination, Optional<NitroxId> subRootID, bool inPrecursor, IPacketSender packetSender)
         {
-            PlayerTeleported playerTeleported = new(Name, Position, destination, subRootID);
+            PlayerTeleported playerTeleported = new(Name, Position, destination, subRootID, inPrecursor);
 
-            Position = playerTeleported.DestinationTo;
-            LastStoredPosition = playerTeleported.DestinationFrom;
-            LastStoredSubRootID = subRootID;
+            LastStoredPosition = Position;
+            LastStoredSubRootID = SubRootId;
+            LastStoredInPrecursor = InPrecursor;
+            Position = destination;
+            InPrecursor = inPrecursor;
             packetSender.SendPacketAsync(playerTeleported, SessionId);
         }
 

@@ -19,14 +19,14 @@ internal sealed class WarpCommand(IPacketSender packetSender) : ICommandHandler<
             return;
         }
 
-        playerContext.Player.Teleport(targetPlayer.Position, targetPlayer.SubRootId, packetSender);
+        playerContext.Player.Teleport(targetPlayer.Position, targetPlayer.SubRootId, targetPlayer.InPrecursor, packetSender);
         await context.ReplyAsync($"Teleported to {targetPlayer.Name}");
     }
 
     [Description("Teleports first player to the second player")]
     public async Task Execute(ICommandContext context, Player warpingPlayer, Player targetPlayer)
     {
-        warpingPlayer.Teleport(targetPlayer.Position, targetPlayer.SubRootId, packetSender);
+        warpingPlayer.Teleport(targetPlayer.Position, targetPlayer.SubRootId, targetPlayer.InPrecursor, packetSender);
         await context.ReplyAsync($"Teleported to {targetPlayer.Name}");
     }
 }
