@@ -1,6 +1,7 @@
 using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Packets.Processors.Core;
 using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.Helper;
 using NitroxClient.GameLogic.PlayerLogic;
 using NitroxClient.MonoBehaviours;
 using UnityEngine;
@@ -24,12 +25,15 @@ public sealed class EntityDestroyedProcessor(Entities entities) : IClientPacketP
 
         if (!NitroxEntity.TryGetObjectFrom(packet.Id, out GameObject gameObject))
         {
-            Log.Warn($"[{nameof(EntityDestroyedProcessor)}] Could not find entity with id: {packet.Id} to destroy.");
+            // The server sends destroys of entities in cells we don't have loaded too, so that scanner rooms forget them
+            ResourceTrackerHelper.Forget(packet.Id);
+            Log.Debug($"[{nameof(EntityDestroyedProcessor)}] Could not find entity with id: {packet.Id} to destroy.");
             return Task.CompletedTask;
         }
 
         using (PacketSuppressor<EntityDestroyed>.Suppress())
         {
+            ResourceTrackerHelper.Forget(gameObject);
             // This type of check could get out of control if there are many types with custom destroy logic. If we get a couple more, move to separate processors.
             if (gameObject.TryGetComponent(out Vehicle vehicle))
             {
