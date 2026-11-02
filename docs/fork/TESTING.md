@@ -323,8 +323,15 @@ tools\run-suite.ps1 -Windowless
     with a lit flashlight, crashed right around a bridge screenshot; its `Player-<name>.log` ends with
     `RenderNodeQueue Page Allocator out of memory. Maximum allowed memory: 256.0 MB`, then `Crash!!!`. Until that's
     understood, check lights through their state (`get <id> Light.enabled`) and take light screenshots windowed.
-  - Still different (read from the game code, not checked in game): animators and UI canvases that switch off when not
-    visible (`AnimatorLink`, `CanvasLink`, Animator culling) stay off, so animation-driven bones don't move. Screen
+  - An animator on `CullCompletely` doesn't run its state machine at all, not only its bones (seen 2026-11-02, S6).
+    `PlayerCinematicController.EndCinematicMode` puts every cinematic's animator on `CullCompletely`, so after the first
+    cinematic it froze where the cinematic left it: the Cyclops docking bay stayed in its launch state after an undock and
+    never reopened, and `VehicleDockingBay.OnTriggerEnter` docks only in the state `opened` (S6 docked 1 of 5 times).
+    `PlayerCinematicController_EndCinematicMode_Patch` (Debug, batch mode only) sets those animators to `AlwaysAnimate`
+    instead. Not covered: the partner's cinematics, which Nitrox plays with `RemotePlayerCinematicController` and which
+    also end on `CullCompletely` (so Bob's copy of the bay can freeze after Alice undocks, if Bob is the one who docks next).
+  - Still different (read from the game code, not checked in game): other animators and UI canvases that switch off when
+    not visible (`AnimatorLink`, `CanvasLink`, Animator culling) stay off, so animation-driven bones don't move. Screen
     effects (`OnPreRender`) never run.
   - Animation events don't fire (seen 2026-11-02): a flare drawn and "thrown" with `hold none 0.3 RightHand` never
     left the hand, because the throw comes from `Flare.OnToolUseAnim`, an animation event. Call such methods through the
