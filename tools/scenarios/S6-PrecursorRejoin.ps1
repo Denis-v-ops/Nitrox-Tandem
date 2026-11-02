@@ -82,10 +82,12 @@ try {
 
     Step 'Alice walks into the Primary Containment Facility' {
         Invoke-Bridge $A "teleport $moonPoolAboveWater" | Out-Null
-        Assert-True ([bool](Wait-Loaded $A $walkDoorTrigger)) 'the main door trigger is loaded'
         Assert-True ([bool](Wait-Loaded $A $moonPoolTrigger)) 'the moon pool trigger is loaded'
         Start-Sleep -Seconds 2
+        # SetPosition, not teleport: it keeps the moon pool's hold on her, like walking out of it would until the exit.
         Invoke-Bridge $A "call player Player.SetPosition $dryCorridor" | Out-Null
+        # The main door is about 200 m from the moon pool and only loads near it.
+        Assert-True ([bool](Wait-Loaded $A $walkDoorTrigger)) 'the main door trigger is loaded'
         # What walking would do: leave the moon pool volume, then pass the door's Walk volume.
         Invoke-Bridge $A "call $moonPoolTrigger PrecursorMoonPoolTrigger.OnTriggerExit player" | Out-Null
         Invoke-Bridge $A "call $walkDoorTrigger PrecursorDoorMotorModeSetter.OnTriggerEnter player" | Out-Null
@@ -148,6 +150,12 @@ try {
                 Assert-True ([bool]$inside) "$player is in the Cyclops"
                 Wait-Until { (Invoke-Bridge $player 'get player Player.cinematicModeActive') -eq 'false' } -TimeoutSeconds 20 | Out-Null
             }
+            # Drive-by fix: the pawns that carry the players' movement in the VirtualCyclops are on the Player layer now
+            # (they were on TransparentFX), and Alice's pawn still stands on the floor.
+            $playerLayer = Invoke-Bridge $A 'call UnityEngine.LayerMask.NameToLayer Player'
+            Assert-Equal $playerLayer (Invoke-Bridge $A 'get find:CyclopsPawnIdentifier GameObject.layer') "$A's Cyclops pawn is on the Player layer"
+            $grounded = Wait-Until { (Invoke-Bridge $A 'get player CyclopsMotor.grounded') -eq 'true' } -TimeoutSeconds 10
+            Assert-True ([bool]$grounded) "$A's Cyclops motor is grounded (the pawn stands on the virtual floor)"
             Assert-True ([bool](Wait-Loaded $A 'find:PrecursorMoonPoolTrigger')) "$A has the platform's moon pool trigger loaded"
             $script:forceWalkDoor = (Invoke-BridgeJson $A 'find PrecursorDoorMotorModeSetter 10') | Where-Object { $_.name -like 'DoorSetMotorModeCollider*' } | ForEach-Object {
                 $name = $_.name
