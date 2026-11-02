@@ -192,6 +192,29 @@ public class WorldEntityCellTrackingTest
         IsInCell(loadedItem.Id, positionB).Should().BeFalse();
     }
 
+    [TestMethod]
+    public void SetWorldEntities_SkipsRecordsInsideContainersOrGlobalRoots()
+    {
+        WorldEntity wreck = CreateWorldItem(positionA, new NitroxId());
+        WorldEntity wreckPart = CreateWorldItem(positionA, new NitroxId());
+        wreckPart.ParentId = wreck.Id;
+        InventoryEntity locker = AddContainer();
+        WorldEntity storedItem = CreateWorldItem(positionB, new NitroxId());
+        storedItem.ParentId = locker.Id;
+        GlobalRootEntity seabase = new(new NitroxTransform(positionB, NitroxQuaternion.Identity, NitroxVector3.One), 0, "base", false, new NitroxId(), NitroxTechType.None, null, null, []);
+        WorldEntity itemInBase = CreateWorldItem(positionB, new NitroxId());
+        itemInBase.ParentId = seabase.Id;
+        foreach (Entity entity in new Entity[] { wreck, wreckPart, storedItem, seabase, itemInBase })
+        {
+            entityRegistry.AddOrUpdate(entity);
+        }
+
+        worldEntityManager.SetWorldEntities([wreck, wreckPart, storedItem, itemInBase]);
+
+        worldEntityManager.GetEntities(CellOf(positionA)).Should().BeEquivalentTo([wreck, wreckPart], "batch hierarchies stay in their cell");
+        worldEntityManager.GetEntities(CellOf(positionB)).Should().BeEmpty("items in a container or a base travel with it");
+    }
+
     private EntitySpawnedByClientProcessor CreateEntitySpawnedByClientProcessor()
     {
         return new EntitySpawnedByClientProcessor(new PlayerManager(null, null, null, NullLogger<PlayerManager>.Instance), entityRegistry, worldEntityManager, null);

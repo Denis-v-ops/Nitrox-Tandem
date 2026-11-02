@@ -239,7 +239,8 @@ internal sealed class WorldEntityManager
     }
 
     /// <summary>
-    ///     Replaces all cell registrations, used when loading a save.
+    ///     Replaces all cell registrations, used when loading a save. Only entities that would be in a cell during a
+    ///     session are registered (see <see cref="BelongsInCell" />).
     /// </summary>
     public void SetWorldEntities(IEnumerable<WorldEntity> entities)
     {
@@ -249,9 +250,42 @@ internal sealed class WorldEntityManager
             cellsByEntityId = [];
             foreach (WorldEntity entity in entities)
             {
-                RegisterWorldEntity(entity);
+                if (BelongsInCell(entity))
+                {
+                    RegisterWorldEntity(entity);
+                }
             }
         }
+    }
+
+    /// <summary>
+    ///     Whether a world entity record stands in a cell: a top-level entity, or one inside a hierarchy of cell entities
+    ///     (what the batch spawner registers, e.g. the placeholders of a wreck). Not one whose parent, or any ancestor, is
+    ///     a container, an inventory or a global root (base, vehicle): those are sent along with their parent, and
+    ///     <c>EntityReparentedProcessor</c> drops their cell entry when they are moved there (S7 #2691, plan item 5).
+    /// </summary>
+    public bool BelongsInCell(WorldEntity entity)
+    {
+        if (entity is GlobalRootEntity)
+        {
+            return false;
+        }
+        Entity current = entity;
+        // Bounded in case of a broken (cyclic) parent chain
+        for (int depth = 0; current.ParentId != null && depth < 64; depth++)
+        {
+            if (!entityRegistry.TryGetEntityById(current.ParentId, out Entity parent))
+            {
+                // Orphaned record: it is placed by its own transform, as before
+                return true;
+            }
+            if (parent is not WorldEntity || parent is GlobalRootEntity)
+            {
+                return false;
+            }
+            current = parent;
+        }
+        return true;
     }
 
     /// <summary>
