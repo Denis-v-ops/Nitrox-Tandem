@@ -441,6 +441,9 @@ public class RemotePlayer : INitroxPlayer
     ///     <see cref="ArmStates" /> (tool use, PDA, surface swimming, falls, <c>holding_tool</c>) and the held tool's
     ///     <c>holding_&lt;tool&gt;</c> and <c>using_tool_first</c> flags. A lock that must hold the body's pose (a cinematic,
     ///     upstream PR #2859; the downed pose, T1) goes here, as one check, not at each caller.
+    ///     The downed pose needs none: it stops the body's animator (<see cref="DownedPose" />), and the writes must still
+    ///     land so the arms are right after a revive (a downed player's light stays drawn). #2859's cinematic lock can
+    ///     test <see cref="IsPoseLocked" /> here if it must drop them.
     ///     <para />
     ///     A change of <c>holding_tool</c> or of a <c>holding_&lt;tool&gt;</c> flag also points the arms and hands at the
     ///     drawn tool (<see cref="ArmsController.Reconfigure" />), as <c>ArmsController.Update</c> does for the local player.
