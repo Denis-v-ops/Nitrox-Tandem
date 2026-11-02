@@ -98,8 +98,8 @@ internal sealed class PlayerHeldItemChangedProcessor : IClientPacketProcessor<Pl
                 }
                 item.SetActive(true);
                 tool.SetHandIKTargetsEnabled(true);
-                SafeAnimator.SetBool(player.ArmsController.GetComponent<Animator>(), $"holding_{tool.animToolName}", true);
-                player.AnimationController["using_tool_first"] = packet.IsFirstTime != null;
+                player.SetArmState($"holding_{tool.animToolName}", true);
+                player.SetArmState("using_tool_first", packet.IsFirstTime != null);
 
                 if (item.TryGetComponent(out FPModel fpModelDraw)) //FPModel needs to be updated
                 {
@@ -125,8 +125,8 @@ internal sealed class PlayerHeldItemChangedProcessor : IClientPacketProcessor<Pl
                 {
                     componentsInChild.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
                 }
-                SafeAnimator.SetBool(player.ArmsController.GetComponent<Animator>(), $"holding_{tool.animToolName}", false);
-                player.AnimationController["using_tool_first"] = false;
+                player.SetArmState($"holding_{tool.animToolName}", false);
+                player.SetArmState("using_tool_first", false);
 
                 if (item.TryGetComponent(out FPModel fpModelHolster)) //FPModel needs to be updated
                 {

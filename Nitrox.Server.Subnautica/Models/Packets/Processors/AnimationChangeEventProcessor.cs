@@ -10,12 +10,17 @@ internal sealed class AnimationChangeEventProcessor : IAuthPacketProcessor<Anima
 {
     public async Task Process(AuthProcessorContext context, AnimationChangeEvent packet)
     {
-        // Only states are kept for players who join later, one per type (COOP_FEATURES_SPEC R2a). The infection reveal is a
-        // one-time animation (the game sets a trigger): kept, it would play again on the partner's body for every late joiner.
-        if (packet.Animation.Type != AnimChangeType.INFECTION_REVEAL)
+        // Only states are kept for players who join later, one per type (COOP_FEATURES_SPEC R2a, R2b). The infection reveal
+        // and the fall states are relayed live only (IsReplayedToLateJoiners). The join payload's pose stays the body pose
+        // (swimming or not); the arm states reach a late joiner through the replay after their initial sync.
+        AnimChangeType type = packet.Animation.Type;
+        if (type == AnimChangeType.UNDERWATER)
         {
             context.Sender.PlayerContext.Animation = packet.Animation;
-            context.Sender.Animations[packet.Animation.Type] = packet.Animation.State;
+        }
+        if (type.IsReplayedToLateJoiners())
+        {
+            context.Sender.Animations[type] = packet.Animation.State;
         }
         await context.SendToOthersAsync(packet);
     }
