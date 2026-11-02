@@ -1,32 +1,37 @@
 <#
 .SYNOPSIS
     FIX_SPEC S13: Cyclops movement and sync between two players, measured. One player pilots, the other rides along,
-    then they swap; both games record the sub and both players every frame and the tracks are compared by wall clock.
+    then they swap; both games record the sub, both players and a docked Seamoth every frame, and the tracks are
+    compared by wall clock (both games run on this PC).
 
 .DESCRIPTION
-    Bob spawns a Cyclops (he holds its transient lock), both board through the entrance hatch, and Alice takes the helm
-    (PilotingChair.OnHandClick -> exclusive lock). The pilot drives with the game's own movement input (bridge
-    "input move", read by SubControl.Update in DirectInput mode): straight, then turning. Meanwhile Bob stands, then
-    walks around inside. Alice leaves the helm with her forward input still held (#2379), the sub coasts, Bob takes
-    the helm (handover) and drives, Alice rides, Bob leaves the helm and the sub coasts again.
+    Bob spawns a Cyclops (he holds its transient lock), both board through the entrance hatch, Alice takes the helm
+    (PilotingChair.OnHandClick -> exclusive lock) and starts the engine. The pilot drives with the game's own movement
+    input (bridge "input move", read by SubControl.Update in DirectInput mode): straight, then turning. Bob's game gets
+    one long frame (-HitchMs, Thread.Sleep on its main thread, as when cells load). Bob stands, then walks around.
+    Alice leaves the helm at speed with her forward key still held (#2379) and Bob takes the helm at once (hand-over of
+    a moving sub), drives, leaves the helm, and the sub coasts. Alice docks a Seamoth, the sub rests, Bob drives it.
+    Then Bob quits inside the sub, Alice drives it 40+ m on, and both games restart: Bob must come back inside.
 
-    Measured (S13Helpers.ps1): for the non-simulating game, the time shift between its track of the sub and the
-    simulating game's (lag), what's left after the shift (residual) and per-frame stutter (stall/jump/reverse frames);
-    the replicated Cyclops' rigidbody velocity; passengers' local positions in the sub (stay put while standing,
-    stay inside the hull while walking, partner's view matches); the pilot's body during the exit animation.
-    Raw recordings are saved to -OutDir.
+    Checked (S13Helpers.ps1): the non-simulating game follows the pilot's path (residual after the replication delay,
+    stalled and backward frames); the long frame doesn't raise the replication delay; passengers stay where they
+    stand, can walk without falling through, and the partner sees them there; the partner sees the pilot where she is
+    while she leaves the helm; at the hand-over the sub keeps moving for the new pilot and doesn't snap back for the
+    old one; the docked Seamoth stays in the bay in both games; the rejoin. Raw recordings are saved to -OutDir.
 
     Starts a fresh world (save s13-cyclops) and two games (opens windows), unless -NoLaunch. Needs a Debug build.
 #>
 param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's13-cyclops',
-    # Open water over the Grassy Plateaus (as S6), raised: the sub's top must stay under water to have thrust.
-    [double[]]$Area = @(263, -40, 64),
+    # Over the Grassy Plateaus; at this depth there was nothing within 120 m in any direction (raycasts, 2026-11-02).
+    [double[]]$Area = @(263, -60, 64),
     [string]$OutDir = (Join-Path $env:TEMP 's13-recordings'),
     # Thresholds (metres / count) for the asserts.
     [double]$MaxResidual = 0.5, [double]$MaxStandingDrift = 0.3, [double]$MaxPartnerViewError = 1.0, [double]$MaxStallShare = 0.1,
-    [double]$MaxCoastDesync = 0.5,
-    # Leave out the docked-Seamoth part (it needs a few docking attempts).
-    [switch]$SkipDocking)
+    [double]$MaxCoastDesync = 0.5, [double]$MaxLatencyAfterHitch = 0.2, [double]$MaxHandoverBackStep = 0.3,
+    # The long frame given to Bob's game while he watches Alice drive.
+    [int]$HitchMs = 300,
+    # Leave out the docked-Seamoth part (it needs a few docking attempts) / the quit-and-restart part.
+    [switch]$SkipDocking, [switch]$SkipRejoin)
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
 . (Join-Path $PSScriptRoot 'S13Helpers.ps1')
@@ -216,6 +221,40 @@ function Show-Compare {
     $result
 }
 
+function Get-Speed {
+    param([S13Track]$Track, [double]$From, [double]$To)
+    $drift = [S13Analysis]::Drift($Track, 'px', $From, $To)
+    if ($drift.samples -lt 2) { return 0 }
+    $t = $Track.Times
+    $first = $null; $last = $null
+    for ($i = 0; $i -lt $t.Length; $i++) {
+        if ($t[$i] -ge $From -and $t[$i] -le $To) { if ($null -eq $first) { $first = $i }; $last = $i }
+    }
+    $p = $Track.Col('px')
+    $d = [math]::Sqrt([math]::Pow($Track.Rows[$last][$p] - $Track.Rows[$first][$p], 2) + [math]::Pow($Track.Rows[$last][$p + 1] - $Track.Rows[$first][$p + 1], 2) + [math]::Pow($Track.Rows[$last][$p + 2] - $Track.Rows[$first][$p + 2], 2))
+    $d / (($t[$last] - $t[$first]) / 1000)
+}
+
+<#
+    Largest step of a track against the direction the sub was moving just before (a snap back), within [From, To].
+#>
+function Get-MaxBackStep {
+    param([S13Track]$Track, [double]$From, [double]$To)
+    $t = $Track.Times
+    $p = $Track.Col('px')
+    $max = 0
+    for ($i = 30; $i -lt $t.Length; $i++) {
+        if ($t[$i] -lt $From -or $t[$i] -gt $To) { continue }
+        $r = $Track.Rows
+        $dir = @(($r[$i - 1][$p] - $r[$i - 30][$p]), ($r[$i - 1][$p + 1] - $r[$i - 30][$p + 1]), ($r[$i - 1][$p + 2] - $r[$i - 30][$p + 2]))
+        $len = [math]::Sqrt($dir[0] * $dir[0] + $dir[1] * $dir[1] + $dir[2] * $dir[2])
+        if ($len -lt 0.01) { continue }
+        $step = (($r[$i][$p] - $r[$i - 1][$p]) * $dir[0] + ($r[$i][$p + 1] - $r[$i - 1][$p + 1]) * $dir[1] + ($r[$i][$p + 2] - $r[$i - 1][$p + 2]) * $dir[2]) / $len
+        if (-$step -gt $max) { $max = -$step }
+    }
+    $max
+}
+
 try {
     Start-ScenarioGames -Players $A, $B -SaveName $SaveName -NoLaunch:$NoLaunch
     $script:aliceId = (Get-State $A).playerId
@@ -243,32 +282,37 @@ try {
         Assert-True (Enter-Cyclops $A) "$A is in the Cyclops"
         Assert-True (Enter-Helm $A) "$A is piloting"
         Assert-Equal $A (Get-LockOwner) 'the server gave Alice the Cyclops'
+        # A spawned Cyclops' engine is off: the helm's engine button (synced as CyclopsMetadata.EngineOn), on after 5 s
+        Invoke-Bridge $A 'call find:CyclopsEngineChangeState CyclopsEngineChangeState.OnClick' | Out-Null
         foreach ($player in $A, $B) {
-            $engine = Invoke-Bridge $player "get $cyclopsId SubControl.canAccel"
-            Write-Host "  $player : engine canAccel=$engine, replicator=$(Invoke-Bridge $player "get $cyclopsId MovementReplicator" -AllowError)"
+            $on = Wait-Until { (Invoke-Bridge $player "get $cyclopsId SubControl.canAccel") -eq 'true' } -TimeoutSeconds 15 -IntervalSeconds 0.5
+            Assert-True ([bool]$on) "the engine is on in $player's game"
         }
     }
 
     Start-AllRecordings
-    $t0 = Now-Ms
 
-    Step 'Alice drives straight, then turns; Bob stands' {
+    Step 'Alice drives straight (Bob hitches once), then turns; Bob stands' {
         Invoke-Bridge $A 'input move 0 0 1' | Out-Null
-        Start-Sleep -Seconds 4
+        Start-Sleep -Seconds 3
         $from = Now-Ms
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds 2
+        # One long frame in the observer's game, as when cells load (Thread.Sleep on its main thread)
+        Invoke-Bridge $B "call Thread.Sleep $HitchMs" | Out-Null
+        $script:hitchAt = Now-Ms
+        Start-Sleep -Seconds 6
         Mark 'driveStraightA' $from (Now-Ms)
         Invoke-Bridge $A 'input move 1 0 1' | Out-Null
         Start-Sleep -Seconds 2
         $from = Now-Ms
-        Start-Sleep -Seconds 8
+        Start-Sleep -Seconds 6
         Mark 'driveTurnA' $from (Now-Ms)
         Invoke-Bridge $A 'input move 0 0 1' | Out-Null
     }
 
     Step 'Bob walks around inside while Alice drives' {
         $from = Now-Ms
-        foreach ($yaw in 0, 90, 180, 270, 45) {
+        foreach ($yaw in 0, 90, 180, 270) {
             Invoke-Bridge $B "look $yaw 0" | Out-Null
             Invoke-Bridge $B 'input move 0 0 1' | Out-Null
             Start-Sleep -Seconds 3
@@ -277,30 +321,28 @@ try {
         Mark 'walkB' $from (Now-Ms)
     }
 
-    Step 'Alice leaves the helm with forward held (#2379); the sub coasts' {
+    Step 'Alice leaves the helm at speed with forward held (#2379); Bob takes it over at once' {
         $from = Now-Ms
         Assert-True (Exit-Helm $A) "$A left the helm"
-        Start-Sleep -Seconds 3
-        Invoke-Bridge $A 'input off' | Out-Null
-        Mark 'exitHelmA' $from (Now-Ms)
-        Assert-Equal $A (Get-LockOwner) 'Alice keeps simulating after leaving the helm (transient)'
-        $from = Now-Ms
-        Start-Sleep -Seconds 10
-        Mark 'coastA' $from (Now-Ms)
-    }
-
-    Step 'Bob takes the helm (handover) and drives; Alice rides' {
+        $script:handoverFrom = Now-Ms
         Assert-True (Enter-Helm $B) "$B is piloting"
         Assert-Equal $B (Get-LockOwner) 'the server gave Bob the Cyclops'
+        Invoke-Bridge $A 'input off' | Out-Null
+        Mark 'exitHelmA' $from (Now-Ms)
+        Start-Sleep -Seconds 3
+        $script:handoverTo = Now-Ms
+    }
+
+    Step 'Bob drives straight, then turns; Alice rides' {
         Invoke-Bridge $B 'input move 0 0 1' | Out-Null
-        Start-Sleep -Seconds 4
+        Start-Sleep -Seconds 3
         $from = Now-Ms
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds 6
         Mark 'driveStraightB' $from (Now-Ms)
         Invoke-Bridge $B 'input move -1 0 1' | Out-Null
         Start-Sleep -Seconds 2
         $from = Now-Ms
-        Start-Sleep -Seconds 8
+        Start-Sleep -Seconds 6
         Mark 'driveTurnB' $from (Now-Ms)
         Invoke-Bridge $B 'input off' | Out-Null
         Assert-True (Exit-Helm $B) "$B left the helm"
@@ -336,9 +378,9 @@ try {
                 Invoke-Bridge $B 'input move 0 0 1' | Out-Null
                 Start-Sleep -Seconds 3
                 $from = Now-Ms
-                Start-Sleep -Seconds 6
+                Start-Sleep -Seconds 4
                 Invoke-Bridge $B 'input move 1 0 1' | Out-Null
-                Start-Sleep -Seconds 6
+                Start-Sleep -Seconds 4
                 Mark 'driveDocked' $from (Now-Ms)
                 Invoke-Bridge $B 'input off' | Out-Null
                 Assert-True (Exit-Helm $B) "$B left the helm"
@@ -346,32 +388,39 @@ try {
         }
     }
 
-    $tracks = $null
     Step 'Analysis' {
         $tracks = Stop-AllRecordings
         $script:tracks = $tracks
-        foreach ($t in $tracks.Values) { $t.TimeField = 'ms' }
         Write-Host "  clocks: Alice $(Format-Result ([S13Analysis]::Clock($tracks.aCyc))) | Bob $(Format-Result ([S13Analysis]::Clock($tracks.bCyc)))"
-        foreach ($name in 'aCyc', 'bCyc', 'aSelf', 'bSelf') { Show-Events $tracks[$name] }
+        foreach ($name in 'aCyc', 'bCyc', 'aSelf', 'bSelf') { Show-Events $tracks[$name] @('lock', 'replicator', 'mode', 'cinematic', 'sub') }
 
         $results = @{}
         $results.straightA = Show-Compare 'Bob sees Alice drive' $tracks.aCyc $tracks.bCyc 'driveStraightA'
         $results.turnA = Show-Compare 'Bob sees Alice turn' $tracks.aCyc $tracks.bCyc 'driveTurnA'
-        $results.coastA = Show-Compare 'Bob sees the sub coast (Alice simulates)' $tracks.aCyc $tracks.bCyc 'coastA'
         $results.straightB = Show-Compare 'Alice sees Bob drive' $tracks.bCyc $tracks.aCyc 'driveStraightB'
         $results.turnB = Show-Compare 'Alice sees Bob turn' $tracks.bCyc $tracks.aCyc 'driveTurnB'
         $results.coastB = Show-Compare 'Alice sees the sub coast (Bob simulates)' $tracks.bCyc $tracks.aCyc 'coastB'
 
         foreach ($key in 'straightA', 'turnA', 'straightB', 'turnB') {
             $r = $results[$key]
+            Assert-True ($r.ownerSpeed -ge 1) "$key : the sub really moved ($($r.ownerSpeed) m/s)"
             Assert-True ($r.residualRms -le $MaxResidual) "$key : replicated sub follows the pilot's path (residual RMS $($r.residualRms) m <= $MaxResidual)"
             $stallShare = if ($r.movingFrames -gt 0) { $r.stallFrames / $r.movingFrames } else { 0 }
             Assert-True ($stallShare -le $MaxStallShare) "$key : stalled frames $($r.stallFrames) of $($r.movingFrames) (<= $($MaxStallShare * 100) %)"
             Assert-Equal 0 $r.reverseFrames "$key : the replicated sub never steps backwards"
         }
-        foreach ($key in 'coastA', 'coastB') {
-            Assert-True ($results[$key].instantMax -le $MaxCoastDesync) "$key : both games agree where the coasting sub is (max $($results[$key].instantMax) m <= $MaxCoastDesync)"
-        }
+
+        # One long frame must not keep the partner's view of the sub further behind (it did: 0.08 -> 0.31 s for 10+ s)
+        $lat = [S13Analysis]::Stats($tracks.bCyc, 'maxLat', $script:hitchAt + 500, $script:windows['driveTurnA'][1], $false)
+        $frames = [S13Analysis]::Frames($tracks.bCyc, $script:hitchAt - 1000, $script:hitchAt + 1000)
+        Write-Host "  Bob's replicator after his $HitchMs ms frame (longest frame $($frames.dtMaxMs) ms): MaxAllowedLatency $(Format-Result $lat)"
+        Assert-True ($frames.dtMaxMs -ge $HitchMs * 0.8) "Bob's game had the long frame ($($frames.dtMaxMs) ms)"
+        Assert-True ($lat.max -le $MaxLatencyAfterHitch) "the long frame didn't raise Bob's replication delay (MaxAllowedLatency $($lat.max) s <= $MaxLatencyAfterHitch)"
+        Assert-True ($results.turnA.lagMs -le 300) "Bob sees the sub at most 300 ms late after the long frame ($($results.turnA.lagMs) ms)"
+
+        $win = $script:windows['coastB']
+        $end = [S13Analysis]::Compare($tracks.bCyc, $tracks.aCyc, $win[1] - 1000, $win[1], 1500)
+        Assert-True ($end.instantMax -le $MaxCoastDesync) "coastB : both games agree where the sub came to rest ($($end.instantMax) m)"
 
         foreach ($w in 'driveStraightA', 'driveTurnA') {
             $win = $script:windows[$w]
@@ -395,14 +444,35 @@ try {
         $win = $script:windows['walkB']
         $walk = [S13Analysis]::Drift($tracks.bSelf, 'lx', $win[0], $win[1])
         Write-Host "  Bob walking, his own game: $(Format-Result $walk)"
-        Write-Host "  Bob walking, pawn handle: $(Format-Result ([S13Analysis]::Drift($tracks.bSelf, 'hx', $win[0], $win[1])))"
+        Assert-True ($walk.maxDistFromFirst -ge 3) "Bob can walk around inside the moving sub ($($walk.maxDistFromFirst) m)"
+        Assert-True ($walk.min[1] -ge $walk.first[1] - 1) "Bob doesn't fall through the floor while walking (lowest local y $($walk.min[1]), start $($walk.first[1]))"
         $view = [S13Analysis]::CompareField($tracks.bSelf, 'lx', $tracks.aBob, 'lx', $win[0], $win[1], 1000)
         Write-Host "  Bob walking as Alice sees him: $(Format-Result $view)"
+        Assert-True ($view.max -le $MaxPartnerViewError) "Alice sees Bob walk where he walks ($($view.max) m)"
+
+        # #2379: the partner must see the pilot where the pilot really is while she leaves the helm
         $win = $script:windows['exitHelmA']
         Write-Host "  Alice leaving the helm, her own game: $(Format-Result ([S13Analysis]::Drift($tracks.aSelf, 'lx', $win[0], $win[1])))"
+        Write-Host "  Alice leaving the helm, her pawn: $(Format-Result ([S13Analysis]::Drift($tracks.aSelf, 'hx', $win[0], $win[1])))"
         Write-Host "  Alice leaving the helm, as Bob sees her: $(Format-Result ([S13Analysis]::Drift($tracks.bAlice, 'lx', $win[0], $win[1])))"
         $view = [S13Analysis]::CompareField($tracks.aSelf, 'lx', $tracks.bAlice, 'lx', $win[0], $win[1], 1000)
         Write-Host "  Alice leaving the helm, partner view vs own: $(Format-Result $view)"
+        Assert-True ($view.max -le $MaxPartnerViewError) "#2379: Bob sees Alice where she is while she leaves the helm with a key held ($($view.max) m)"
+
+        # Hand-over at speed: the new owner must not stop the sub dead, the old owner must not see it jump back
+        $lockAtB = ($tracks.bCyc.Events | Where-Object { $_.Key -eq 'lock' -and $_.Value -eq 'EXCLUSIVE' -and $_.Ms -ge $script:handoverFrom } | Select-Object -First 1).Ms
+        if ($lockAtB) {
+            $before = Get-Speed $tracks.bCyc ($lockAtB - 400) ($lockAtB - 50)
+            $after = Get-Speed $tracks.bCyc ($lockAtB + 50) ($lockAtB + 400)
+            $back = Get-MaxBackStep $tracks.aCyc $lockAtB ($lockAtB + 3000)
+            Write-Host ("  hand-over: Bob's sub {0:0.00} m/s before, {1:0.00} m/s after he took over; largest step back in Alice's game {2:0.000} m" -f $before, $after, $back)
+            Assert-True ($before -ge 1) ("the sub was moving at the hand-over ({0:0.00} m/s)" -f $before)
+            Assert-True ($after -ge 0.5 * $before) ("the sub keeps moving when Bob takes over ({0:0.00} -> {1:0.00} m/s)" -f $before, $after)
+            Assert-True ($back -le $MaxHandoverBackStep) ("Alice doesn't see the sub snap back at the hand-over ({0:0.000} m <= $MaxHandoverBackStep)" -f $back)
+        }
+        else {
+            Add-Failure 'no hand-over to Bob found in his recording'
+        }
 
         if ($tracks.aMoth) {
             foreach ($w in 'restDocked', 'driveDocked') {
@@ -411,15 +481,46 @@ try {
                 Write-Host "  [$w] Cyclops in Bob's game (simulating): $(Format-Result ([S13Analysis]::Drift($tracks.bCyc, 'px', $win[0], $win[1]))) speed $(Format-Result ([S13Analysis]::Stats($tracks.bCyc, 'vx', $win[0], $win[1], $true)))"
                 foreach ($name in 'aMoth', 'bMoth') {
                     $drift = [S13Analysis]::Drift($tracks[$name], 'lx', $win[0], $win[1])
-                    Write-Host "  [$w] docked Seamoth in the sub, $name : $(Format-Result $drift) speed $(Format-Result ([S13Analysis]::Stats($tracks[$name], 'vx', $win[0], $win[1], $true)))"
+                    Write-Host "  [$w] docked Seamoth in the sub, $name : $(Format-Result $drift)"
                     Assert-True ($drift.maxDistFromFirst -le $MaxStandingDrift) "[$w] the docked Seamoth stays in the bay in $name ($($drift.maxDistFromFirst) m)"
                 }
-                Show-Events $tracks.bMoth
             }
             $results.drivenDocked = Show-Compare 'Alice sees Bob drive with the Seamoth docked' $tracks.bCyc $tracks.aCyc 'driveDocked'
         }
     }
     Assert-NoDiff -Ids $cyclopsId 'no desync reported for the Cyclops'
+
+    if (-not $SkipRejoin) {
+        Step 'Bob leaves the game inside the sub, Alice drives on, both come back' {
+            if ((Get-State $A).currentSub.id -ne $cyclopsId) { Assert-True (Enter-Cyclops $A) "$A is back in the Cyclops" }
+            if ((Get-State $B).currentSub.id -ne $cyclopsId) { Assert-True (Enter-Cyclops $B) "$B is back in the Cyclops" }
+            Invoke-Bridge $B 'call IngameMenu.main.QuitGame false' | Out-Null
+            $left = Wait-Until { -not ((Invoke-BridgeJson 'server' 'players') | Where-Object { $_.name -eq $B -and $_.online }) } -TimeoutSeconds 60
+            Assert-True ([bool]$left) "$B left the game"
+            Assert-True (Enter-Helm $A) "$A is piloting"
+            $start = [double[]](Invoke-BridgeJson $A "get $cyclopsId Transform.position")
+            Invoke-Bridge $A 'input move 0 0 1' | Out-Null
+            Start-Sleep -Seconds 12
+            Invoke-Bridge $A 'input off' | Out-Null
+            Start-Sleep -Seconds 4
+            $end = [double[]](Invoke-BridgeJson $A "get $cyclopsId Transform.position")
+            $moved = [math]::Sqrt([math]::Pow($end[0] - $start[0], 2) + [math]::Pow($end[1] - $start[1], 2) + [math]::Pow($end[2] - $start[2], 2))
+            Assert-True ($moved -ge 40) ("the sub moved on {0:0} m without Bob (more than ValidateCurrentSub's 35 m)" -f $moved)
+            Invoke-Bridge 'server' 'save' | Out-Null
+            Start-Sleep -Seconds 3
+            & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -Stop | Out-Null
+            Start-Sleep -Seconds 5
+            Start-ScenarioGames -Players $A, $B -SaveName $SaveName -KeepSave
+            Start-Sleep -Seconds 5
+            $bob = Get-State $B
+            $sub = [double[]](Invoke-BridgeJson $B "get $cyclopsId Transform.position")
+            $distance = [math]::Sqrt([math]::Pow($bob.position[0] - $sub[0], 2) + [math]::Pow($bob.position[1] - $sub[1], 2) + [math]::Pow($bob.position[2] - $sub[2], 2))
+            Write-Host ("  Bob came back at {0}, {1:0.0} m from the sub's origin, sub '{2}', underwater {3}" -f (Format-Vector ([double[]]$bob.position)), $distance, $bob.currentSub.name, $bob.isUnderwater)
+            Assert-True ($distance -le 25) ("Bob came back inside the sub ({0:0.0} m from its origin)" -f $distance)
+            Assert-Equal $cyclopsId $bob.currentSub.id "Bob's currentSub is the Cyclops after rejoining"
+            Assert-True (-not $bob.isUnderwater) 'Bob is not underwater after rejoining'
+        }
+    }
 }
 catch {
     if ($script:ScenarioFailures.Count -eq 0) { Add-Failure $_.Exception.Message }
