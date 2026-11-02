@@ -63,6 +63,7 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **Their flare burns for you too** | A flare your partner throws is lit in your game as well, also when it lands far from you | Throw a flare as usual | You see it when you get close enough for the game to load it, as with your own | None, always on |
 | **Your partner looks right after you join** | When you join or rejoin, your partner stands or swims as they really do and holds what they hold | Nothing to do | — | None, always on |
 | **Cyclops crew** | One of you steers, the other runs sonar, shield, silent running, decoys and the cameras. The pilot's game follows what the co-pilot switches on, and the sub pays for it once | Stand behind the pilot and use the helm screen | Needs both of you in the Cyclops, and the co-pilot does nothing else meanwhile. Engine, speed and horn stay with the pilot | None, always on |
+| **Context pings** | Point and ping, and the marker says why: at a creature that hunts you it's a red "Danger!" (15 s); at something to pick up, break or drill it shows that item's icon (10 s); anywhere else it's a "Come here" beacon that stays until your partner gets there (at most 30 s). Each game writes the text in its own language | **Middle mouse button**: ping what you look at. **H**: always "Come here". Both can be changed in the key bindings | Pings fade with the signal: when either of you is in a cave or the deep, a ping only shows within about 50 m of whoever sent it (this starts working with the planned "the deep cuts the line"). Up to 3 pings each, 250 m range | `PartnerSignalInterference` (true) |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -87,7 +88,6 @@ What's planned:
   launch wait until both players are there. Playing alone in between is fine.
 - **Teamwork survival:** a rescue window instead of instant death (revive with a first aid kit, or by hand), handing
   items over, and hitching a ride on the Seamoth.
-- **Finding each other:** "danger / look / come here" pings.
 - **Keeping it scary:** your partner's signal drops to a last contact in the deep; a distress call when they go down
   that pulses through even there.
 - **Cozy base life:** seeing each other sit, sleep and use things, and a cuddlefish that plays with both of you.
