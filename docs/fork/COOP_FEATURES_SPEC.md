@@ -117,8 +117,10 @@ R1b and T5 are the riskiest. Do them when everything else is stable.
 - **Time is not frozen** while solo. It drives day/night and every schedule, and shifting the Aurora and Sunbeam
   schedules is risky (`StoryManager.cs:119-124`). The Aurora explosion can happen solo; it's a world event, not a
   shared-moment beat.
-- **Optional G0+:** block playing the `RadioSunbeam4` radio message while solo, so the Sunbeam countdown (2400 s, started
-  by the radio, `game:StoryGoalCustomEventHandler.cs:63,122-126`) can't start without the partner. *Open decision.*
+- **Radio gate (decided):** block playing the `RadioSunbeam4` radio message while solo, so the Sunbeam countdown
+  (2400 s, started by the radio, `game:StoryGoalCustomEventHandler.cs:63,122-126`) can't start without the partner.
+  - Hook: the radio click goes through `Radio_PlayRadioMessage_Patch`. Answer "locked" with the absent partner's name.
+  - It's a lock only, with no "both confirm" step: the message plays normally once both are online.
 
 **Tests:**
 - **L1:** the gate state machine as a plain class: ready set, roster parsing, locked logic, timeouts.
@@ -194,7 +196,7 @@ Three beats. Size L in total.
   (`game:LeakingRadiation.cs:106-122`).
 - **Today:** leak health is metadata, and the partner runs their own `NotifyLeaksFixed` through `LiveMixinManager.cs:146-153`.
   The beat needs no presence.
-- **Proposed rule** (*open decision, confirm with the players*):
+- **Rule (decided 2026-11-02):**
   - Gate only the **final** weld. When one leak is left, the welder doesn't finish it until both players are in the drive
     core room. The server knows positions (`PlayerMovementProcessor.cs:22`).
   - Message: "Wait for <name> to finish the repair together".
@@ -258,10 +260,13 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - The downed pose from the `player_death` animator trigger (H: Nitrox's `AnimationController` may override it).
 - **Option `RescueWindowSeconds`:** 0 disables the feature. It's sent in `InitialPlayerSync`.
 
-**Open decisions:**
-- Downed inside a vehicle: eject first, or not?
-- Disconnecting while downed: rejoin downed or dead?
-- Lava/heat skipping the downed state is recommended.
+**Decided (2026-11-02):**
+- **Downed in a vehicle:** the pilot is ejected (`ToNormalMode`) next to the Seamoth or Prawn, so the partner can reach them.
+  The Cyclops needs no ejection; a powered Cyclops is breathable.
+- **Quitting while down:** you rejoin still down, with the remaining time.
+  - The server keeps `downedUntil` in the player's saved record, so it survives a server restart.
+  - It is cleared on revive or death, and the server's timer is paused while that player is offline.
+- **Lava/heat kills** skip the downed state.
 
 **Tests:**
 - **L2:**
@@ -363,7 +368,7 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
       with it (`game:Vehicle.cs:752`);
     - docking starting (`VehicleDockingBay.DockVehicle`, `:233`);
     - the pilot getting out.
-  - The Prawn suit could use the same mechanism, but it's less useful there.
+  - **Seamoth only (decided 2026-11-02).** No Prawn suit hitching.
 - **Risks:**
   - physics fighting;
   - terrain clipping;
@@ -504,14 +509,14 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
 
 ---
 
-## 9. Open decisions (ask the players before building)
+## 9. Decisions (made with the players, 2026-11-02)
 
-1. **G4 drive core rule:** is "the last weld waits for both in the room" right?
-2. **G0+ radio:** should the Sunbeam radio message be blocked while one of you is offline?
-3. **T1:**
-   - Downed in a vehicle: eject?
-   - Disconnecting while downed: rejoin downed, or count it as a death?
-4. **T5:** Prawn suit hitching too, or the Seamoth only?
+| Topic | Decision |
+|---|---|
+| G4 drive core | **The last weld waits.** Weld as you like; the final leak only seals once both players are in the drive core room. |
+| Sunbeam radio | **Waits for both.** While one player is offline, the `RadioSunbeam4` message can't be played, so the Sunbeam arc never starts alone (part of G0). |
+| T1 downed in a vehicle / quitting while down | **Eject + rejoin downed.** A downed pilot is pushed out of the Seamoth or Prawn. Quitting while down means rejoining still down, with the remaining time. |
+| T5 vehicles | **Seamoth only.** |
 
 ## 10. Bugs found during this research (tracked in FIX_SPEC)
 
