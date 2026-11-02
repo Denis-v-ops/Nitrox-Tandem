@@ -14,9 +14,10 @@
     Lines are checked with the bridge's "sounds" (SoundQueue.Play; biome lines carry the key as subtitles) and
     "pdaqueue".
 
-    -OptionOff starts the server with PartnerDiscoveriesSilent=False: the negative control for step 4, where Bob hears
-    the found log (and steps 1 and 2 fail as in D5a). On a build without D5b, step 2 fails (Bob gets the partner's
-    entry in his restored PDA log and his tracker loses the goal) and step 4 fails (Bob hears the found log).
+    -OptionOff starts the server with PartnerDiscoveriesSilent=False; expected (not run yet): Bob hears the found log
+    and steps 1 and 2 fail as in D5a. On the code before D5b (run 2026-11-02), 5 checks fail: step 2 (Bob gets the
+    partner's entry in his restored PDA log and his tracker loses the goal), step 3 (he never hears it) and step 4
+    (Bob hears the found log).
 
     Starts a fresh world and two games (opens windows unless $env:NITROX_WINDOWLESS=1), unless -NoLaunch. Needs a
     Debug build (dual-client.ps1 -NoBuild is used, so build first).
