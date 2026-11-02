@@ -136,7 +136,7 @@ of where the players are.
 | **Inside the Aurora:** radiation suit, laser cutter, fires, Prawn bay, Cuddlefish egg, drive core | Claustrophobia, radiation | The drive core beat needs no presence today | G4, P1 |
 | **Mountains:** the gun, the infection, the Sunbeam | Hope that rescue is coming, then the Sunbeam is shot down | The radio can be played solo today | G0 (radio lock) |
 | **Vehicles and bases:** Seamoth, Prawn suit, Cyclops | Mastery; the Cyclops as a moving home | The Seamoth has one seat; non-pilots can't use the helm screen | T4, T5, R1a, R1b |
-| **Lost River and the Disease Research Facility** | Peak dread: brine, skeletons, Ghost Leviathans | The marker shows the partner everywhere; each game spawns its own warpers (D4); this is what the D items are for | D2, D3, D4, D6, T1, T2 |
+| **Lost River and the Disease Research Facility** | Peak dread: brine, skeletons, Ghost Leviathans | The marker shows the partner everywhere; each game spawns its own warpers (B1); this is what the D items are for | D2, D3, D4, D6, T1, T2 |
 | **Lava zones:** Alien Thermal Plant, Sea Dragon, Primary Containment Facility | Hostile and deepest; Prawn suit country | As the Lost River; T5 doesn't reach (Seamoth depth) | D2, D3, D4, T1 |
 | **Sea Emperor, hatching, the cure** | Awe; a mother's plea; release | Telepathy plays for an absent partner; an online partner is cured remotely without the cinematic | G3 |
 | **Disabling the gun** | Freedom | The terminal opens only once | G1 |
