@@ -27,6 +27,9 @@ public class PrecursorTracker : MonoBehaviour
         enabled = true;
         lastInPrecursor = Player.main.precursorOutOfWater;
         lastDisplaySurfaceWater = Player.main.displaySurfaceWater;
+        // Send the starting values once: they may have changed while loading, and the server would keep a stale value for the next join.
+        localPlayer.InPrecursorChange(lastInPrecursor);
+        localPlayer.DisplaySurfaceWaterChange(lastDisplaySurfaceWater);
     }
 
     public void Update()

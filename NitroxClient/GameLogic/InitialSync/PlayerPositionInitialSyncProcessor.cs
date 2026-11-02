@@ -52,6 +52,9 @@ public sealed class PlayerPositionInitialSyncProcessor : InitialSyncProcessor
         if (!subRootId.HasValue)
         {
             yield return Terrain.SafeWaitForWorldLoad();
+            // Trigger volumes that fire while the world loads around the player may have changed it (FIX_SPEC S6, #2306).
+            // A precursor moon pool trigger holding the player recomputes it every frame anyway.
+            Player.main.precursorOutOfWater = packet.InPrecursor;
             Player.main.UpdateIsUnderwater();
 
             // Check if Player might fall through the map
