@@ -27,7 +27,7 @@ public sealed partial class LiveMixin_TakeDamage_Patch : NitroxPatch, IDynamicPa
         return Resolve<LiveMixinManager>().ShouldApplyNextHealthUpdate(__instance, dealer);
     }
 
-    public static void Postfix(float __state, LiveMixin __instance, float originalDamage, GameObject dealer, bool __runOriginal)
+    public static void Postfix(float __state, LiveMixin __instance, float originalDamage, DamageType type, GameObject dealer, bool __runOriginal)
     {
         if (!__runOriginal)
         {
@@ -40,8 +40,8 @@ public sealed partial class LiveMixin_TakeDamage_Patch : NitroxPatch, IDynamicPa
             return;
         }
 
-        // PvP damage is always 0 so we need to check for it before the regular case
-        if (HandlePvP(__instance, dealer, originalDamage))
+        // Damage to other players' bodies is always 0 (they're invincible) so we need to check for it before the regular case
+        if (HandlePvP(__instance, dealer, originalDamage) || HandleCreatureAttack(__instance, dealer, originalDamage, type))
         {
             return;
         }
@@ -83,6 +83,27 @@ public sealed partial class LiveMixin_TakeDamage_Patch : NitroxPatch, IDynamicPa
         }
 
         Resolve<IPacketSender>().Send(new PvPAttack(remotePlayerIdentifier.RemotePlayer.SessionId, damage, attackType));
+        return true;
+    }
+
+    /// <summary>
+    /// FIX_SPEC S14: a creature we simulate hurt another player's body (see MeleeAttack_CanDealDamageTo_Patch). The body
+    /// can't take damage, so the player's own game applies it.
+    /// </summary>
+    private static bool HandleCreatureAttack(LiveMixin liveMixin, GameObject dealer, float damage, DamageType type)
+    {
+        if (!dealer || damage <= 0 || !liveMixin.TryGetComponent(out RemotePlayerIdentifier remotePlayerIdentifier))
+        {
+            return false;
+        }
+        Creature creature = dealer.GetComponentInParent<Creature>();
+        if (!Resolve<AI>().AttacksPlayersFromSimulator(creature) || !creature.TryGetNitroxId(out NitroxId creatureId) ||
+            !Resolve<SimulationOwnership>().HasAnyLockType(creatureId))
+        {
+            return false;
+        }
+
+        Resolve<IPacketSender>().Send(new CreatureAttackedPlayer(creatureId, remotePlayerIdentifier.RemotePlayer.SessionId, damage, (ushort)type));
         return true;
     }
 

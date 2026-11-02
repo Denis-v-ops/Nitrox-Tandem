@@ -174,6 +174,18 @@ public sealed class AI
     }
 
     /// <summary>
+    ///     FIX_SPEC S14: true when the creature's bites on players are decided by the game that simulates it, which then
+    ///     sends them to the bitten player (<see cref="CreatureAttackedPlayer" />). Only that game knows the creature is
+    ///     aggressive: its aggression isn't synced. Creatures of <see cref="syncedCreatureWhitelist" /> get their
+    ///     aggression and target from <see cref="AggressiveWhenSeeTargetChanged" />, so the bitten player's own game bites
+    ///     them (and plays its death cinematics); they keep that path.
+    /// </summary>
+    public bool AttacksPlayersFromSimulator(Creature creature)
+    {
+        return creature && !IsCreatureWhitelisted(creature);
+    }
+
+    /// <summary>
     /// Remote AI updates can still arrive for a creature which already died for us (sent by its simulating player before it learned about the death)
     /// </summary>
     private static bool IsDead(Component creatureComponent)
