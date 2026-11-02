@@ -21,7 +21,14 @@ internal sealed class ServerSavingProcessor(ServerSaveIndicator indicator) : ICl
         if (packet.Phase != ServerSaving.SavePhase.STARTED)
         {
             indicator.SaveEnded(packet.Number, Time.unscaledTime);
-            Log.Debug($"[{nameof(ServerSaveIndicator)}] Server save {packet.Number} {packet.Phase}");
+            if (packet.Phase == ServerSaving.SavePhase.FAILED)
+            {
+                Log.Warn($"[{nameof(ServerSaveIndicator)}] Server save {packet.Number} FAILED, see the server log");
+            }
+            else
+            {
+                Log.Debug($"[{nameof(ServerSaveIndicator)}] Server save {packet.Number} {packet.Phase}");
+            }
             return Task.CompletedTask;
         }
 
