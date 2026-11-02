@@ -40,6 +40,6 @@ public class CyclopsDamagePointEntity : Entity
 
     public override string ToString()
     {
-        return $"[CyclopsFireEntity DamagePointIndex: {DamagePointIndex}]";
+        return $"[CyclopsDamagePointEntity DamagePointIndex: {DamagePointIndex}]";
     }
 }
