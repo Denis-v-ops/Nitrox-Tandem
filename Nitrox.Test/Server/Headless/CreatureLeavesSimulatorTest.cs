@@ -22,7 +22,7 @@ namespace Nitrox.Test.Server.Headless;
 public class CreatureLeavesSimulatorTest
 {
     // A Reaper is LargeWorldEntity.CellLevel.VeryFar (level 3, read in game: S16-LeviathanSync), 32 m cells.
-    private const int LEVEL = 3;
+    internal const int LEVEL = 3;
     private static readonly NitroxVector3 start = new(300, -80, 600);
     private static readonly NitroxVector3 nearby = new(310, -80, 600);
     private static readonly NitroxVector3 away = new(380, -80, 600);
@@ -125,7 +125,7 @@ public class CreatureLeavesSimulatorTest
         bob.ReceivedOf<SimulationOwnershipChange>().Should().NotContain(change => change.Entities.Any(e => e.Id == reaper.Id && e.SessionId == bob.SessionId));
     }
 
-    private static async Task SeeCellsAsync(FakePlayer player, params AbsoluteEntityCell[] cells)
+    internal static async Task SeeCellsAsync(FakePlayer player, params AbsoluteEntityCell[] cells)
     {
         player.Send(new CellVisibilityChanged(player.SessionId, [.. cells], []));
         foreach (AbsoluteEntityCell cell in cells)
@@ -138,26 +138,25 @@ public class CreatureLeavesSimulatorTest
     ///     Waits until the server has handled this player's earlier packets: it answers every cell visibility change, even
     ///     an empty one, and handles one player's packets in order.
     /// </summary>
-    private static async Task SyncAsync(FakePlayer player)
+    internal static async Task SyncAsync(FakePlayer player)
     {
         int before = player.ReceivedOf<SpawnEntities>().Count;
         player.Send(new CellVisibilityChanged(player.SessionId, [], []));
         await ServerHarness.WaitUntilAsync(() => player.ReceivedOf<SpawnEntities>().Count > before, $"{player.Name}'s earlier packets to be handled");
     }
 
-    private static EntityTransformUpdates Move(WorldEntity creature, NitroxVector3 position)
+    /// <summary>What a simulating game sends for a living creature (S16b).</summary>
+    private static CreatureMovements Move(WorldEntity creature, NitroxVector3 position)
     {
-        return new EntityTransformUpdates([
-            new EntityTransformUpdates.SplineTransformUpdate(creature.Id, position, NitroxQuaternion.Identity, position + new NitroxVector3(20, 0, 0), new NitroxVector3(1, 0, 0), 10)
-        ]);
+        return new CreatureMovements([new CreatureMovement(creature.Id, position, NitroxQuaternion.Identity, new NitroxVector3(10, 0, 0), NitroxVector3.Zero)], 0);
     }
 
-    private static SessionId? LockOwner(ServerHarness server, WorldEntity entity)
+    internal static SessionId? LockOwner(ServerHarness server, WorldEntity entity)
     {
         return server.Get<SimulationOwnershipData>().GetPlayerForLock(entity.Id)?.SessionId;
     }
 
-    private static NitroxVector3 Position(ServerHarness server, WorldEntity entity)
+    internal static NitroxVector3 Position(ServerHarness server, WorldEntity entity)
     {
         server.EntityRegistry.TryGetEntityById(entity.Id, out WorldEntity registered).Should().BeTrue();
         return registered.Transform.Position;
@@ -166,7 +165,7 @@ public class CreatureLeavesSimulatorTest
     /// <summary>
     ///     What a game sends for a creature it spawns (console "spawn"): the spawner gets the creature's lock.
     /// </summary>
-    private static async Task<WorldEntity> SpawnCreatureAsync(FakePlayer spawner, NitroxVector3 position)
+    internal static async Task<WorldEntity> SpawnCreatureAsync(FakePlayer spawner, NitroxVector3 position)
     {
         WorldEntity creature = new(new NitroxTransform(position, NitroxQuaternion.Identity, NitroxVector3.One), LEVEL, "creature-class-id", false, new NitroxId(),
                                    new NitroxTechType("ReaperLeviathan"), null, null, []);

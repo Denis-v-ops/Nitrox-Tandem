@@ -7,6 +7,7 @@ using static Nitrox.Model.Subnautica.Packets.EntityTransformUpdates;
 
 namespace NitroxClient.Communication.Packets.Processors;
 
+/// <remarks>Living creatures move with <see cref="CreatureMovements" /> instead (FIX_SPEC S16b).</remarks>
 internal sealed class EntityTransformUpdatesProcessor(SimulationOwnership simulationOwnership) : IClientPacketProcessor<EntityTransformUpdates>
 {
     private readonly SimulationOwnership simulationOwnership = simulationOwnership;
@@ -22,37 +23,8 @@ internal sealed class EntityTransformUpdatesProcessor(SimulationOwnership simula
                 continue;
             }
 
-            // Spline updates are only meant for living creatures, but the simulating player can still send some before learning
-            // that we killed it or that it turned into something else with the same id (e.g. a cooked fish)
-            if (update is SplineTransformUpdate && !CanFollowSpline(gameObject))
-            {
-                continue;
-            }
-
-            RemotelyControlled remotelyControlled = RemotelyControlled.Ensure(gameObject);
-
-            Vector3 position = update.Position.ToUnity();
-            Quaternion rotation = update.Rotation.ToUnity();
-
-            if (update is SplineTransformUpdate splineUpdate)
-            {
-                remotelyControlled.UpdateKnownSplineUser(position, rotation, splineUpdate.DestinationPosition.ToUnity(), splineUpdate.DestinationDirection.ToUnity(), splineUpdate.Velocity);
-            }
-            else
-            {
-                remotelyControlled.UpdateOrientation(position, rotation);
-            }
+            RemotelyControlled.Ensure(gameObject).UpdateOrientation(update.Position.ToUnity(), update.Rotation.ToUnity());
         }
         return Task.CompletedTask;
-    }
-
-    private static bool CanFollowSpline(GameObject gameObject)
-    {
-        if (!gameObject.GetComponent<SwimBehaviour>() && !gameObject.GetComponent<WalkBehaviour>())
-        {
-            return false;
-        }
-
-        return !gameObject.TryGetComponent(out CreatureDeath creatureDeath) || !creatureDeath.liveMixin || creatureDeath.liveMixin.IsAlive();
     }
 }
