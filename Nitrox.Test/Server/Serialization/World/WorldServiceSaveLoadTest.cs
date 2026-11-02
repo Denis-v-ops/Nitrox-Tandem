@@ -67,6 +67,40 @@ public class WorldServiceSaveLoadTest
     }
 
     [TestMethod]
+    public void CyclopsDamagePointsAndFiresSurviveSaveAndLoad()
+    {
+        // FIX_SPEC S1 (#2220, #2230): damage points and fires are entities under the Cyclops (PR #2881)
+        VehicleEntity cyclops = new(null, 0, new NitroxTransform(new NitroxVector3(5, -100, 5), NitroxQuaternion.Identity, NitroxVector3.One), GlobalRootEntity.GLOBAL_ROOT_LEVEL, "cyclops-class-id", false, new NitroxId(),
+                                    new NitroxTechType("Cyclops"), new CyclopsMetadata(false, true, false, false, 0, 1080.5f, false), null, []);
+        cyclops.ChildEntities.Add(new CyclopsDamagePointEntity(3, new NitroxId(), new CyclopsDamagePointMetadata(1f), cyclops.Id));
+        cyclops.ChildEntities.Add(new CyclopsDamagePointEntity(11, new NitroxId(), new CyclopsDamagePointMetadata(42.75f), cyclops.Id));
+        cyclops.ChildEntities.Add(new CyclopsFireEntity(CyclopsRooms.EngineRoom, 2, new NitroxId(), cyclops.Id));
+
+        EntityRegistry loaded = SaveLoadRoundTrip.AssertSurvivesSaveAndLoad(cyclops);
+
+        loaded.TryGetEntityById(cyclops.Id, out VehicleEntity loadedCyclops).Should().BeTrue();
+        loadedCyclops.ChildEntities.OfType<CyclopsDamagePointEntity>().Select(point => point.DamagePointIndex).Should().BeEquivalentTo(new[] { 3, 11 });
+        loadedCyclops.ChildEntities.OfType<CyclopsFireEntity>().Should().ContainSingle(fire => fire.Room == CyclopsRooms.EngineRoom && fire.NodeIndex == 2);
+    }
+
+    [TestMethod]
+    public void BaseFloodLevelsSurviveSaveAndLoad()
+    {
+        // FIX_SPEC S5b (#2808): the base entity carries its flood levels
+        BuildEntity flooded = CreateBase();
+        flooded.Metadata = new BaseFloodMetadata(new NitroxInt3(3, 1, 3), [0f, 0.25f, 1f, 0f, 0.5f, 0f, 0f, 0f, 0.125f]);
+        BuildEntity dry = CreateBase();
+        dry.Metadata = new BaseFloodMetadata(new NitroxInt3(3, 1, 3), []);
+
+        EntityRegistry loaded = SaveLoadRoundTrip.AssertSurvivesSaveAndLoad(flooded, dry);
+
+        loaded.TryGetEntityById(flooded.Id, out BuildEntity loadedBase).Should().BeTrue();
+        loadedBase.Metadata.Should().BeOfType<BaseFloodMetadata>().Which.CellWaterLevels.Should().Equal(0f, 0.25f, 1f, 0f, 0.5f, 0f, 0f, 0f, 0.125f);
+        loaded.TryGetEntityById(dry.Id, out BuildEntity loadedDry).Should().BeTrue();
+        ((BaseFloodMetadata)loadedDry.Metadata).IsDry.Should().BeTrue();
+    }
+
+    [TestMethod]
     public void DestroyedCyclopsIsNotSaved()
     {
         // WorldEntityManager.GetPersistentGlobalRootEntities skips Cyclops wrecks on purpose.

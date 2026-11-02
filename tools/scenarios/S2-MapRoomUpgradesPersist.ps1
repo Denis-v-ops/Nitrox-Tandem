@@ -14,7 +14,7 @@
 param([switch]$Keep)
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
-. (Join-Path $PSScriptRoot 'BaseHelpers.ps1')
+. (Join-Path $PSScriptRoot 'BaseEquipmentHelpers.ps1')
 $A = 'Alice'
 $B = 'Bob'
 $save = 's2-maproom'

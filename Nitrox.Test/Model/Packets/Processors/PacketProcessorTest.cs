@@ -83,6 +83,20 @@ namespace Nitrox.Model.Packets.Processors
             }
         }
 
+        [TestMethod]
+        public void ClientContainerResolvesAllPacketProcessors()
+        {
+            // A dependency cycle (e.g. a metadata processor needing Entities) only shows in game: the client can't connect.
+            if (!GameInstallationFinder.FindGameCached(GameInfo.Subnautica))
+            {
+                throw new DirectoryNotFoundException("Could not find Subnautica installation.");
+            }
+            NitroxServiceLocator.InitializeDependencyContainer(new ClientAutoFacRegistrar(), new TestAutoFacRegistrar());
+            NitroxServiceLocator.BeginNewLifetimeScope();
+
+            NitroxServiceLocator.LocateService<PacketProcessorsInvoker>().Should().NotBeNull();
+        }
+
         [TestCleanup]
         public void Cleanup()
         {

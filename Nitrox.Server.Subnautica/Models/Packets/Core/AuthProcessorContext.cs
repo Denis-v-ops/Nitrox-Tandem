@@ -19,6 +19,12 @@ internal record AuthProcessorContext : IPacketProcessContext<Player>
 
     public async Task SendAsync<T>(T packet, SessionId sessionId) where T : Packet => await packetSender.SendPacketAsync(packet, sessionId);
 
+    /// <summary>
+    ///     True if this context sends through <paramref name="sender" />. Pooled contexts are shared by every server in the
+    ///     process (tests host several), so they must not be reused for another one.
+    /// </summary>
+    public bool SendsThrough(IPacketSender sender) => ReferenceEquals(packetSender, sender);
+
     public async Task ReplyAsync<T>(T packet) where T : Packet => await packetSender.SendPacketAsync(packet, Sender.SessionId);
 
     public async Task SendToAllAsync<T>(T packet) where T : Packet => await packetSender.SendPacketToAllAsync(packet);

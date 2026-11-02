@@ -19,7 +19,7 @@
 param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's2-equipment')
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
-. (Join-Path $PSScriptRoot 'BaseHelpers.ps1')
+. (Join-Path $PSScriptRoot 'BaseEquipmentHelpers.ps1')
 $A = 'Alice'
 $B = 'Bob'
 

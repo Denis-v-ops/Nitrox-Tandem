@@ -149,6 +149,8 @@ internal sealed class BuildingResyncProcessor(Entities entities, EntityMetadataM
         yield return Yielders.WaitForEndOfFrame;
 
         yield return BuildEntitySpawner.SetupBase(buildEntity, @base, entities);
+        // SetupBase doesn't apply the base's own metadata (flood levels), unlike the regular spawn path
+        entityMetadataManager.ApplyMetadata(@base.gameObject, buildEntity.Metadata);
         yield return MoonpoolManager.RestoreMoonpools(buildEntity.ChildEntities.OfType<MoonpoolEntity>(), @base);
         yield return entities.SpawnBatchAsync(buildEntity.ChildEntities.OfType<PlayerEntity>().ToList<Entity>(), false, false);
 

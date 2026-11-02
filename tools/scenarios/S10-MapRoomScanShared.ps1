@@ -13,7 +13,7 @@
 param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's10-scan')
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
-. (Join-Path $PSScriptRoot 'BaseHelpers.ps1')
+. (Join-Path $PSScriptRoot 'BaseEquipmentHelpers.ps1')
 $A = 'Alice'
 $B = 'Bob'
 

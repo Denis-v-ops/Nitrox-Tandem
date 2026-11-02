@@ -15,7 +15,7 @@
 param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's10-pings')
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
-. (Join-Path $PSScriptRoot 'BaseHelpers.ps1')
+. (Join-Path $PSScriptRoot 'BaseEquipmentHelpers.ps1')
 $A = 'Alice'
 $B = 'Bob'
 # Far enough for Alice's cells around the scanner room to unload
