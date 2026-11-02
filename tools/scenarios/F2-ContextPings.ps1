@@ -57,7 +57,12 @@ function Send-Ping {
     # The 0.5 s cooldown between pings.
     Start-Sleep -Milliseconds 600
     Invoke-Bridge $Player "call PlayerPingManager.$Method" | Out-Null
-    $new = Wait-Until { Get-Pings $Player | Where-Object { $before -notcontains $_.pingId } | Select-Object -First 1 } -TimeoutSeconds 5 -IntervalSeconds 0.25
+    # Windowless only: a batch-mode cursor can't lock, so MainGameController.Update shows it every frame and during the
+    # scripts' Update AvatarInputHandler.IsEnabled() is false (the ping is refused as if a menu were open). Between
+    # frames, where the bridge runs, the cursor is hidden again: run the manager's Update (the real CanCreatePing and
+    # CreatePing) from there.
+    Invoke-Bridge $Player 'call PlayerPingManager.instance.Update' | Out-Null
+    $new =Wait-Until { Get-Pings $Player | Where-Object { $before -notcontains $_.pingId } | Select-Object -First 1 } -TimeoutSeconds 5 -IntervalSeconds 0.25
     if ($Target) { Invoke-Bridge $Player 'hold off' | Out-Null }
     if (-not $new) { throw "$Player's $Method made no ping" }
     $new
@@ -256,7 +261,9 @@ try {
                 Start-Sleep -Milliseconds 300
                 $dead = Invoke-Bridge $A "call PingTarget.Describe $($new.id)" -AllowError
                 [void]$rows.Add([pscustomobject]@{ creature = $techType; alive = $alive; dead = $dead })
-                Assert-Equal "$($expected[$techType]) $techType" $alive "a ping at a live $techType"
+                # A "come here" ping names no target.
+                $want = if ($expected[$techType] -eq 'ComeHere') { 'ComeHere None' } else { "$($expected[$techType]) $techType" }
+                Assert-Equal $want $alive "a ping at a live $techType"
                 Assert-True (-not "$dead".StartsWith('"Danger')) "a dead $techType is no danger ($dead)"
             }
             $rows | Format-Table -AutoSize | Out-String | Write-Host
