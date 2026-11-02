@@ -80,6 +80,9 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 - **Small comforts:**
   - The game's own "Saving game" notice shows on both screens while the server saves the world (the autosave or
     `/save`).
+  - Crafting stations in a base or Cyclops also use its lockers (see "Craft from your lockers" above).
+  - Pings aim past your own Seamoth, Prawn suit or, at the helm, the Cyclops, and reach things right in front of you
+    (see "Context pings" above).
 
 ### Planned co-op features
 Not built yet; designed in [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md). The idea: Subnautica
