@@ -45,13 +45,17 @@ internal static class PingAimRules
     }
 
     /// <param name="atHelm">The player steers the sub they're in (the Cyclops helm), so the sub itself is in the way, not a target.</param>
+    /// <param name="includePartners">
+    ///     False for the "come here" key: a "come here" ping at the partner would end at once (they are at it), so the ray
+    ///     goes through them as before M9.
+    /// </param>
     /// <returns>The index of the hit the ping lands on, -1 when there is none.</returns>
-    public static int SelectHit(IReadOnlyList<Hit> hits, bool atHelm)
+    public static int SelectHit(IReadOnlyList<Hit> hits, bool atHelm, bool includePartners = true)
     {
         int best = -1;
         for (int i = 0; i < hits.Count; i++)
         {
-            if (IsSkipped(hits[i], atHelm))
+            if (IsSkipped(hits[i], atHelm, includePartners))
             {
                 continue;
             }
@@ -63,7 +67,7 @@ internal static class PingAimRules
         return best;
     }
 
-    public static bool IsSkipped(Hit hit, bool atHelm)
+    public static bool IsSkipped(Hit hit, bool atHelm, bool includePartners = true)
     {
         // Also skips a distance that is no number.
         if (!(hit.Distance >= MIN_DISTANCE))
@@ -73,7 +77,7 @@ internal static class PingAimRules
         // The partner's body is a trigger, and may stand in the Cyclops the player steers.
         if (hit.IsPartner)
         {
-            return false;
+            return !includePartners;
         }
         if (hit.IsTrigger)
         {

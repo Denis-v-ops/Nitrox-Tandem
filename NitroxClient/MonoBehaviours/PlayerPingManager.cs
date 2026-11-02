@@ -86,7 +86,7 @@ internal sealed class PlayerPingManager : MonoBehaviour
 
     private void RequestPingInternal(bool comeHere)
     {
-        QueuePing(PingAim.FromCrosshair(MAX_PING_DISTANCE), comeHere);
+        QueuePing(PingAim.FromCrosshair(MAX_PING_DISTANCE, !comeHere), comeHere);
     }
 
 #if DEBUG

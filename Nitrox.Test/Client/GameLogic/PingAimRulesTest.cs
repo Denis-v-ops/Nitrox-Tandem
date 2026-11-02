@@ -71,6 +71,15 @@ public class PingAimRulesTest
     }
 
     [TestMethod]
+    public void TheComeHereKey_GoesThroughThePartner()
+    {
+        // "Come here" at the partner would end at once (they are at it): the key pings what is behind them, as before M9
+        Hit[] hits = [new Hit(10f, isTrigger: true, isPartner: true), new Hit(10.2f, isPartner: true), new Hit(15f)];
+        PingAimRules.SelectHit(hits, false, includePartners: false).Should().Be(2);
+        PingAimRules.SelectHit(hits, false).Should().Be(0);
+    }
+
+    [TestMethod]
     public void APartnerBehindAWall_IsNot()
     {
         Select(false, new Hit(15f, isTrigger: true, isPartner: true), new Hit(8f)).Should().Be(1);

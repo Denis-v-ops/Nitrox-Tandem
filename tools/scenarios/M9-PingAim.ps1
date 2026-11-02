@@ -11,8 +11,8 @@
     Steps:
     - an item 1 m in front of Alice: a "Look" ping at it (before M9 anything nearer than 3 m was skipped);
     - Bob 10 m in front of Alice, open water behind him: a "Look" ping named after him, Signal icon in Alice's colour,
-      still there on both games 2 s later (a "come here" ping would end at once, he is at it). Before M9 the ray went
-      through his body (a trigger);
+      still there on both games a second later (a "come here" ping would end at once, he is at it). Before M9 the ray
+      went through his body (a trigger). The "come here" key still goes through him;
     - from the Seamoth seat: titanium 8 m straight ahead (crosshair);
     - from the Cyclops helm: titanium 15 m straight ahead (crosshair), and titanium 12 m ahead and below, through the
       sub's floor and hull (PlayerPingManager.RequestPingToward: the bridge can't turn a seated player's camera, so the
@@ -74,7 +74,7 @@ function Show-Aim {
     ray from the camera toward a point. Returns the new ping as the player's own game describes it.
 #>
 function Send-Ping {
-    param([string]$Player, [string]$Target, [double[]]$Toward)
+    param([string]$Player, [string]$Target, [double[]]$Toward, [string]$Method = 'RequestPing', [switch]$AllowNone)
     $before = @(Get-Pings $Player | ForEach-Object { $_.pingId })
     if ($Target) {
         Invoke-Bridge $Player "hold $Target 3 None" | Out-Null
@@ -88,13 +88,13 @@ function Send-Ping {
     }
     else {
         Show-Aim (Invoke-BridgeJson $Player 'call PingAim.Describe')
-        Invoke-Bridge $Player 'call PlayerPingManager.RequestPing' | Out-Null
+        Invoke-Bridge $Player "call PlayerPingManager.$Method" | Out-Null
     }
     # Windowless only (F2-ContextPings.ps1): run the manager's Update between frames, where the cursor is hidden.
     Invoke-Bridge $Player 'call PlayerPingManager.instance.Update' | Out-Null
     $new = Wait-Until { Get-Pings $Player | Where-Object { $before -notcontains $_.pingId } | Select-Object -First 1 } -TimeoutSeconds 5 -IntervalSeconds 0.25
     if ($Target) { Invoke-Bridge $Player 'hold off' | Out-Null }
-    if (-not $new) { throw "$Player's ping made no ping" }
+    if (-not $new -and -not $AllowNone) { throw "$Player's $Method made no ping" }
     $new
 }
 
@@ -198,9 +198,16 @@ try {
             Assert-Equal $own.expectedColor $remote.expectedColor "$B's ping has $A's colour"
             Assert-Equal $remote.expectedColor $remote.markerColor "$B's marker has its colour"
         }
-        Start-Sleep -Seconds 2
-        Assert-True ([bool](Get-Ping $A $own.pingId)) "$A's ping is still there 2 s later"
-        Assert-True ([bool](Get-Ping $B $own.pingId)) "$B's ping is still there 2 s later"
+        # A "come here" ping at him would already be gone (F2's arrival rule); this one lasts 10 s.
+        Start-Sleep -Seconds 1
+        Assert-True ([bool](Get-Ping $A $own.pingId)) "$A's ping is still there a second later"
+        Assert-True ([bool](Get-Ping $B $own.pingId)) "$B's ping is still there a second later"
+
+        # The "come here" key goes through him, as before M9: no ping, or one beyond him.
+        $comeHere = Send-Ping $A $bobId -Method 'RequestComeHerePing' -AllowNone
+        $bobAt = (Get-State $B).position
+        $beyond = -not $comeHere -or (Get-Distance ([double[]]$comeHere.position) ([double[]]$bobAt)) -gt 3
+        Assert-True $beyond "the come-here key at $B doesn't land on him ($(if ($comeHere) { "$($comeHere.kind) at $($comeHere.position -join ', ')" } else { 'no ping' }))"
         Invoke-Bridge $B "teleport $(Format-Point @($Area[0], $Area[1], ($Area[2] + 30)))" | Out-Null
     }
 

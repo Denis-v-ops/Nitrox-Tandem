@@ -374,23 +374,26 @@ decides whether it bites; check before building, and age the server clock in the
     marker vocabulary small (COOP §2 principle 1), and the packet stays as F2 built it. The packet carries no player
     id, so each game names the player nearest the ping other than the sender; with two players that is always the
     pinged partner. On the pinged partner's own game the marker sits within the game's 5 m `minDist` of them and only
-    shows once they move away; they hear the ping sound.
+    shows once they move away; they hear the ping sound. The "come here" key (H) goes through the partner as before
+    M9, for the same arrival reason.
   - Not taken from their ping (as decided): server-stamped sender, rate limit, text cleaning, one ping per player,
     300 m. Their single-ray stepping loop is replaced by one `RaycastNonAlloc` per ray (sorted by the rule).
   - Debug only: `PingAim.Describe` / `DescribeToward x,y,z` (every hit, what was skipped, the winner) and
     `PlayerPingManager.RequestPingToward x,y,z` (the ping key along a ray from the camera toward a point: the bridge
     can't turn a seated player's camera, T4).
-  - **Tests:** `PingAimRulesTest` (11) and `PingRulesTest.APartnerIsLook_NotComeHere`. With the old rule in
-    `IsSkipped` (3 m minimum, every trigger skipped) 6 fail; one line at a time: 3 m minimum fails the 1 m item and
+  - **Tests:** `PingAimRulesTest` (12) and `PingRulesTest.APartnerIsLook_NotComeHere`. With the old rule in
+    `IsSkipped` (3 m minimum, every trigger skipped) 7 fail; one line at a time: 3 m minimum fails the 1 m item and
     the minimum; no own-vehicle skip fails the Seamoth case; no helm skip fails the helm and partner-at-the-helm cases;
-    no partner exception fails both partner cases; without the partner line in `SelectKind` its test fails. Scenario
+    no partner exception fails both partner cases; partners always included fails the come-here case; without the
+    partner line in `SelectKind` its test fails. Scenario
     `tools/scenarios/M9-PingAim.ps1` (written, not run): an item at 1 m; the partner (kind, label, icon, colour, still
-    there after 2 s on both games); the Seamoth seat (titanium 8 m ahead, a guard: the old 3 m minimum also stepped
+    there a second later on both games; the come-here key goes through him); the Seamoth seat (titanium 8 m ahead, a guard: the old 3 m minimum also stepped
     over the nose); the helm (15 m ahead, and 12 m ahead and 45 degrees down through the hull with `RequestPingToward`);
     a passenger's ping at the Cyclops floor is Come here.
   - **Open:** everything in game (implemented, not verified); the Prawn suit's arms (code path as the Seamoth, not in
     the scenario); a partner in the Cyclops pinged from the helm (unit test only); held-tool collider layers; three or
-    more players standing together (the name is the nearest non-sender, may pick the wrong one).
+    more players standing together (the name is the nearest non-sender, may pick the wrong one); the Useable ray keeps
+    32 hits, so past more Useable colliders than that (a base full of hand targets) a partner can be missed.
 
 ## Not taken, and parked
 
@@ -475,4 +478,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | — | Spec created from the review of MultiNaughtica `99428c8` (base upstream `7815b4e4`) against `coop` @ `ddf06755`. Decisions recorded above. Game-rig tests deferred to one pass after M1–M9 are implemented (rigs in use) | Code review only, nothing built or run. Re-read in our code: Cyclops `isDestroyed` at health 0, `Battery_charge_set_Patch` Prefix, radiation `Max()`, Sea Emperor baby parent check. Everything else is *hypothesis (review)* |
 | 2026-11-02 | M3 | Implemented, not verified in game: start backups in `backups/server-starts/` (last 5); reservations wait for the world and the join re-checks the saved player; a reservation that never joined frees its name; a stale session with the same name and IP is kicked; only finished batches are recorded and failed batch loads are retried; one NTP socket per round, closed at its end; Debug `entitycount` | L2 (headless): `JoinSafetyTest` (5, each fails with its line reverted), `ServerStart_OnAnExistingSave_BacksItUpFirst` (fails without the start hook), `GeneratedBatch_StaysRecordedAcrossRestarts` (guard: fails if restored batches aren't marked done). Unit: `ServerStartBackupsTest` (zip and pruning, real files; the rolling-pruning test is a guard), `BatchLoadTasksTest` (running/failed batches not listed, failed loads retried: fail with the old behaviour), `NtpSyncerTest` (2, fail with the old round handling). Scenario written, not run |
 | 2026-11-02 | M1 | Implemented, not verified in game: a Cyclops at 0 HP isn't sent as destroyed until it explodes, a watchdog ends a countdown whose player left, the beacon comes from the game whose countdown fired; battery charge sent after the change and when empty; the partner takes the old power cell out before installing the new one; a building resync respawns a base or module the game lost; a deconstructed loose constructable leaves its cell and lock; vehicle lights drain on the lock holder only, the thermal reactor skips while another player pilots; un-started build bots skip the launch setter; undocking announced at `OnUndockingStart`, the lock given back after a refused click | Unit (each fails with its line reverted): `CyclopsDestructionRulesTest` (old `\|\| health <= 0`), `BatteryChargeRulesTest` (old floor-only rule), `BuildingResyncPairingTest` (pairing with null), `BuildingManagerDeconstructTest` (old `RemoveEntity`, no revoke), `ConstructorBuildBot_launch_set_PatchTest` (prefix always true). L2 `CyclopsDyingPersistsTest`: a server-contract guard, passes without the fix. Not tested headless: power-cell swap, lights, thermal reactor, undocking, watchdog, beacon (scenario only, or not covered). Scenario written, not run |
-| 2026-11-02 | M9 | Implemented, not verified in game: pings aim past the own body, the own Seamoth or Prawn suit and, at the helm, the Cyclops; minimum 0.5 m instead of 3 m; a second ray on the Useable layer with triggers reaches the partner's body, a Look ping "Look! *name*" (Signal icon, sender's colour, no new strings) | Unit: `PingAimRulesTest` (11; with the old rule 6 fail, each M9 line reverted alone fails its cases), `PingRulesTest.APartnerIsLook_NotComeHere` (fails without the partner line). Scenario `M9-PingAim.ps1` written, not run |
+| 2026-11-02 | M9 | Implemented, not verified in game: pings aim past the own body, the own Seamoth or Prawn suit and, at the helm, the Cyclops; minimum 0.5 m instead of 3 m; a second ray on the Useable layer with triggers reaches the partner's body, a Look ping "Look! *name*" (Signal icon, sender's colour, no new strings) | Unit: `PingAimRulesTest` (12; with the old rule 7 fail, each M9 line reverted alone fails its cases), `PingRulesTest.APartnerIsLook_NotComeHere` (fails without the partner line). Scenario `M9-PingAim.ps1` written, not run |

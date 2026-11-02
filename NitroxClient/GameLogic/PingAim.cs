@@ -14,20 +14,21 @@ namespace NitroxClient.GameLogic;
 internal static class PingAim
 {
     private static readonly RaycastHit[] solidHits = new RaycastHit[64];
-    private static readonly RaycastHit[] useableHits = new RaycastHit[16];
+    private static readonly RaycastHit[] useableHits = new RaycastHit[32];
     private static readonly List<RaycastHit> hits = [];
     private static readonly List<PingAimRules.Hit> candidates = [];
 
     /// <summary>The nearest thing the crosshair points at that a ping can land on, or null.</summary>
-    public static RaycastHit? FromCrosshair(float maxDistance)
+    /// <param name="includePartners">False for the "come here" key: the ray goes through a partner's body.</param>
+    public static RaycastHit? FromCrosshair(float maxDistance, bool includePartners = true)
     {
-        return TryGetCrosshairRay(out Ray ray) ? Along(ray, maxDistance) : null;
+        return TryGetCrosshairRay(out Ray ray) ? Along(ray, maxDistance, includePartners) : null;
     }
 
     /// <summary>The same along any ray, e.g. one from the camera toward a point (the dev bridge's pings from a seat).</summary>
-    public static RaycastHit? Along(Ray ray, float maxDistance)
+    public static RaycastHit? Along(Ray ray, float maxDistance, bool includePartners = true)
     {
-        int index = Collect(ray, maxDistance, out _);
+        int index = Collect(ray, maxDistance, includePartners, out _);
         return index < 0 ? null : hits[index];
     }
 
@@ -45,7 +46,7 @@ internal static class PingAim
     }
 
     /// <summary>Fills <see cref="hits" /> and <see cref="candidates" />, returns the index of the winner (-1: none).</summary>
-    private static int Collect(Ray ray, float maxDistance, out bool atHelm)
+    private static int Collect(Ray ray, float maxDistance, bool includePartners, out bool atHelm)
     {
         hits.Clear();
         candidates.Clear();
@@ -68,7 +69,7 @@ internal static class PingAim
         {
             Add(useableHits[i], ownVehicle, currentSub);
         }
-        return PingAimRules.SelectHit(candidates, atHelm);
+        return PingAimRules.SelectHit(candidates, atHelm, includePartners);
     }
 
     private static void Add(RaycastHit hit, Vehicle? ownVehicle, SubRoot? currentSub)
@@ -114,7 +115,7 @@ internal static class PingAim
 
     private static Dictionary<string, object?> Describe(Ray ray, float maxDistance)
     {
-        int winner = Collect(ray, maxDistance, out bool atHelm);
+        int winner = Collect(ray, maxDistance, true, out bool atHelm);
         List<Dictionary<string, object?>> described = [];
         for (int i = 0; i < hits.Count; i++)
         {
