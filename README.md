@@ -51,6 +51,10 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 |---|---|---|---|---|
 | **Sleeping together** | Lying down tells everyone who is still up: "1/2 players sleeping. Waiting for *name*…". The night passes once everyone is in bed | Use a bed | Nobody sleeps until everyone is in bed (as before) | None, always on |
 | **Hear your partner eat and drink** | The eating and drinking sounds play for your partner, from where you are | Eat or drink as usual | Only within about 10 m, and only when you're both in the same base or vehicle, or both outside | None, always on |
+| **Your partner's signal** | Your partner is a faint signal with their name and depth. Their name tag and vitals show only up close | Nothing to do; **Options → Nitrox → Your partner** sets the signal to Off, Faint or Always, and the name tag's range | Faint: no signal within 12 m or while you can see them; it fades in slowly with distance. The name tag shows within 12 m | None (your own setting) |
+| **Hear your partner get hurt and breathe** | Their pain sounds and their breathing from a tank play from their body | Nothing to do | Pain within about 30 m, breathing within about 20 m. No alert, no marker | None, always on |
+| **Their flare burns for you too** | A flare your partner throws is lit in your game as well, also when it lands far from you | Throw a flare as usual | You see it when you get close enough for the game to load it, as with your own | None, always on |
+| **Your partner looks right after you join** | When you join or rejoin, your partner stands or swims as they really do and holds what they hold | Nothing to do | — | None, always on |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -75,10 +79,9 @@ What's planned:
   launch wait until both players are there. Playing alone in between is fine.
 - **Teamwork survival:** a rescue window instead of instant death (revive with a first aid kit, or by hand), buddy
   breathing, handing items over, Cyclops crew roles, and hitching a ride on the Seamoth.
-- **Finding each other:** your partner as a faint signal with name and distance, plus "danger / look / come here" pings.
-- **Keeping it scary:** hear your partner get hurt or run out of air nearby; a distress call when they go down that
-  pulses through even in the deep; see their flashlight and flares in the dark; each of you hears the PDA describe a
-  new place when *you* get there.
+- **Finding each other:** "danger / look / come here" pings.
+- **Keeping it scary:** your partner's signal drops to a last contact in the deep; a distress call when they go down
+  that pulses through even there; each of you hears the PDA describe a new place when *you* get there.
 - **Cozy base life:** seeing each other sit, sleep and use things, and a cuddlefish that plays with both of you.
 
 ### For developers
