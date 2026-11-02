@@ -190,7 +190,7 @@ A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passe
    side. Windowless games are real clients without windows or sound
    ([below](#windowless-games-and-parallel-rigs)): the default for L3, and they can run while the PC is in use.
 3. **Windowed game clients (L3, plain `dual-client.ps1`).** Only for what windowless games can't show: frame timing and
-   smoothness (S13 for now), animation, HUD/UI, screen effects and sound, anything that has to be seen on screen, and a
+   smoothness (S13 and M6 for now), animation, HUD/UI, screen effects and sound, anything that has to be seen on screen, and a
    comparison run when a windowless run fails for no clear reason. They take over the screen, so tell the user first.
 
 | Use **headless (L1/L2)** — fast, parallel, no rig | Use **real game clients (L3)** — windowless unless marked windowed |
@@ -201,7 +201,7 @@ A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passe
 | Late-join payload: what the server sends a rejoining player | Game objects reacting to state: story objects (S3), Cyclops damage effects and fires, machines producing or burning items (S7 step 2) |
 | Duplicates and loss at server level (two adds, missing remove, `EntityDestroyed` deleting a record) | That a Harmony patch fires at all, and when (timing, echo loops) |
 | Packet validation, server processors, commands, save upgrades | A client spawning or applying metadata to the right GameObject (e.g. `RestoreMapRoom`) |
-| Story goals and PDA state stored per player (server side of #2508) | **Windowed:** anything visual, audio or animation; frame timing and smoothness (S13) |
+| Story goals and PDA state stored per player (server side of #2508) | **Windowed:** anything visual, audio or animation; frame timing and smoothness (S13, M6) |
 
 **Per spec item:** most fixes are *hybrid*. Prove the server half headless, then use **one** in-game scenario for the game
 half.

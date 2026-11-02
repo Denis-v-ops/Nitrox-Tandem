@@ -23,7 +23,7 @@ public abstract class MovementReplicator : MonoBehaviour
     /// </summary>
     public float MaxAllowedLatency;
 
-    private float latestLatencyBumpTime;
+    private double latestLatencyBumpTime;
     private float maxLatencyDetectedRecently;
 
     /// <summary>
@@ -40,26 +40,27 @@ public abstract class MovementReplicator : MonoBehaviour
 
     /// <summary>
     /// Used time must be based on real time to avoid effects from time changes/speed.
+    /// A double: it's the world's active play time, which a float only holds to 15.6 ms after 36 h (<see cref="MovementTime"/>).
     /// </summary>
-    private float RealTime => (float)timeManager.RealTimeElapsed;
+    private double RealTime => timeManager.RealTimeElapsed;
 
     public void Awake()
     {
         timeManager = this.Resolve<TimeManager>();
     }
 
-    public void AddSnapshot(MovementData movementData, float snapshotRealTime)
+    public void AddSnapshot(MovementData movementData, double snapshotRealTime)
     {
-        float realTime = RealTime;
+        double realTime = RealTime;
         // Packets are processed once per frame, so a packet waited here for up to the time since the previous processing.
         // After a long frame (cells loading, a hitch) every packet looks late by that much, but that isn't network
         // latency and the snapshots are still in time: counting it kept the object 0.3 s further behind for 10+ s after
         // a single 300 ms frame, then made it skip ahead when the latency was lowered again (FIX_SPEC S13).
-        float latency = Mathf.Max(0f, realTime - snapshotRealTime - Multiplayer.PacketWaitBound);
+        float latency = Mathf.Max(0f, MovementTime.Age(realTime, snapshotRealTime) - Multiplayer.PacketWaitBound);
 
         RecalculateMaxAllowedLatency(latency, realTime);
 
-        float occurrenceTime = snapshotRealTime + INTERPOLATION_TIME + MaxAllowedLatency;
+        double occurrenceTime = snapshotRealTime + INTERPOLATION_TIME + MaxAllowedLatency;
 
         // Cleaning any previous value change that would occur later than the newly received snapshot
         while (!buffer.IsEmpty())
@@ -77,7 +78,7 @@ public abstract class MovementReplicator : MonoBehaviour
         buffer.Add(new Snapshot(movementData, occurrenceTime, snapshotRealTime));
     }
 
-    private void RecalculateMaxAllowedLatency(float latency, float realTime)
+    private void RecalculateMaxAllowedLatency(float latency, double realTime)
     {
         if (latency > MaxAllowedLatency)
         {
@@ -121,9 +122,9 @@ public abstract class MovementReplicator : MonoBehaviour
 
         Snapshot previous = buffer[buffer.Count - 2];
         Snapshot latest = buffer.Last;
-        float deltaTime = latest.SentTime - previous.SentTime;
+        float deltaTime = MovementTime.Age(latest.SentTime, previous.SentTime);
         // Clamped: on two PCs the clocks can differ by more than the network latency
-        float age = Mathf.Max(0f, RealTime - latest.SentTime);
+        float age = Mathf.Max(0f, MovementTime.Age(RealTime, latest.SentTime));
         // Old snapshots: the owner stopped sending because the object stopped moving
         if (deltaTime <= 0f || age > SNAPSHOT_EXPIRATION_TIME)
         {
@@ -200,7 +201,7 @@ public abstract class MovementReplicator : MonoBehaviour
             return;
         }
 
-        float realTime = RealTime;
+        double realTime = RealTime;
 
         // Sorting out expired nodes
         while (!buffer.IsEmpty() && buffer.First.IsExpired(realTime))
@@ -243,7 +244,7 @@ public abstract class MovementReplicator : MonoBehaviour
         Snapshot previousSnapshot = buffer.First;
         Snapshot nextSnapshot = buffer[1];
 
-        float t = (realTime - previousSnapshot.Time) / (nextSnapshot.Time - previousSnapshot.Time);
+        float t = MovementTime.InterpolationFactor(realTime, previousSnapshot.Time, nextSnapshot.Time);
 
         transform.position = Vector3.Lerp(previousSnapshot.Data.Position.ToUnity(), nextSnapshot.Data.Position.ToUnity(), t);
         
@@ -258,11 +259,11 @@ public abstract class MovementReplicator : MonoBehaviour
 
     /// <param name="Time">When the snapshot is shown (sent time + interpolation delay + latency allowance).</param>
     /// <param name="SentTime">When the owner sent it.</param>
-    public record struct Snapshot(MovementData Data, float Time, float SentTime)
+    public record struct Snapshot(MovementData Data, double Time, double SentTime)
     {
-        public bool IsSnapshotNewer(float comparedTime) => comparedTime < Time;
+        public bool IsSnapshotNewer(double comparedTime) => comparedTime < Time;
 
-        public bool IsExpired(float comparedTime) => comparedTime > Time + SNAPSHOT_EXPIRATION_TIME;
+        public bool IsExpired(double comparedTime) => comparedTime > Time + SNAPSHOT_EXPIRATION_TIME;
     }
 
     public static MovementReplicator AddReplicatorToObject(GameObject gameObject)

@@ -287,6 +287,44 @@ second fix for #2761 (#2864 is in both bases). `VehicleMovements.RealTime` is al
 time field. Wire change only, no save change. **Open:** which clock the snapshots use (world time or session time)
 decides whether it bites; check before building, and age the server clock in the S13 rerun.
 
+**Findings (2026-11-02):** implemented on `fix/m6-movement-time`, not verified in game (scenario
+`tools/scenarios/M6-AgedWorldMovement.ps1` written, not run).
+- **Which clock: world time, so it bites. Held.** `MovementBroadcaster.Update` stamped `(float)TimeManager.RealTimeElapsed`,
+  the server's `TimeService.ActiveTime` (sent in `TimeChange`), which is saved as `StoryTiming.RealTimeElapsed` and
+  loaded back (`WorldService.LoadPersistedWorldIntoServicesAsync`). So the step follows the world's total play time: 3.9 ms
+  from 9.1 h, 7.8 ms from 18.2 h, 15.6 ms from 36.4 h. `VehicleMovements.RealTime` was already `double` but carried a
+  value rounded at the sender; the receiver cast it again (`VehicleMovementsProcessor`), compared it with
+  `(float)RealTimeElapsed` and kept `Snapshot.Time`/`SentTime` as floats. The clock itself is fine-grained: S13's
+  recordings show its `rt` steps per frame at 0.1 ms resolution.
+- **Jitter grows with the world's age: held for vehicles (arithmetic, not measured in game).** At 40 h and 120 fps the
+  receiver's "now" is the same on about every second frame, so the sub stands for a frame and then moves two (11 cm
+  steps at 7 m/s); each stamp is off by up to 7.8 ms; latency samples by up to 15.6 ms, which raises
+  `MaxAllowedLatency`; the hand-over velocity (two stamps 33 ms apart, read as 31.3 or 46.9 ms) by -29 % to +7 %.
+  **Remote players: dropped.** They aren't replayed from snapshot times (below); a player riding a replicated sub moves
+  with it.
+- **`PlayerMovement` gains a time field: dropped.** `RemotePlayer.UpdatePosition` sets the body's rigidbody velocity
+  towards the received position (`MovementHelper.GetCorrectedVelocity`, `Time.fixedDeltaTime`), and
+  `UpdatePositionInCyclops` sets the pawn's local pose; neither reads a time. Their field feeds their
+  `RemotePlayerMovementReplicator`, which we don't take.
+- **Built:** times are `double` from the broadcaster to the replicator: `MovementBroadcaster` (its clock, the period
+  check, `BroadcastLocalData`), `VehicleMovementsProcessor` (no cast), `MovementReplicator` (`RealTime`, `AddSnapshot`,
+  the latency bump time, `Snapshot.Time`/`SentTime`). A difference of two times becomes a float only after the double
+  subtraction (`MovementTime.Age`, `MovementTime.InterpolationFactor`, used for the latency sample, the interpolation
+  factor and `HandOverMotion`'s span and age). `MaxAllowedLatency` and `Multiplayer.PacketWaitBound` stay floats
+  (small; the latter is session time). Packet unchanged; no save change; the server relays `VehicleMovements` as is.
+- **Left as is:** `WatchedEntry` (rate limiter on game time, thresholds of seconds), `VehicleDockingProcessor` (reads
+  `MaxAllowedLatency`), `BridgeRecorder` (records `RealTimeElapsed` as a double, S13's `rt`), the radiation leaks'
+  `FixRealTime` and `TimeManager.AuroraRealExplosionTime` (the same clock as floats, compared in seconds; M2's area).
+- **Not ported:** their `MovementClock` (`NITROX_TIME_TEST` offset and float emulation in Debug builds; we age the real
+  clock through the save instead), `ReplicatorTuning`, vehicle extrapolation, the remote-player replicator.
+- **Scenario:** `S13-CyclopsMovement.ps1 -AgeWorldSeconds <s>` saves its fresh world, closes everything, adds the
+  seconds to `StoryTiming.RealTimeElapsed` and `AuroraRealExplosionTime` in its own `WorldData.json` (text edit, exactly
+  one match; game time unchanged so no story timer fires), restarts, and checks both games' movement clock (the `rt`
+  column, `Get-MovementClock`) reads it before driving and in the recorded drive. `M6-AgedWorldMovement.ps1` runs it at
+  144000 s (40 h) without the docking and rejoin parts. Windowed, as S13.
+- **Open:** whether S13's thresholds hold at 40 h with doubles (they were set on a young world) is the rig pass's
+  question.
+
 ## M7: Saving indicator (S)
 
 - **Theirs:** `SaveService` sends `ServerSaving(number)` to everyone when a save starts (timed autosave, the `save`
@@ -428,3 +466,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | — | Spec created from the review of MultiNaughtica `99428c8` (base upstream `7815b4e4`) against `coop` @ `ddf06755`. Decisions recorded above. Game-rig tests deferred to one pass after M1–M9 are implemented (rigs in use) | Code review only, nothing built or run. Re-read in our code: Cyclops `isDestroyed` at health 0, `Battery_charge_set_Patch` Prefix, radiation `Max()`, Sea Emperor baby parent check. Everything else is *hypothesis (review)* |
 | 2026-11-02 | M3 | Implemented, not verified in game: start backups in `backups/server-starts/` (last 5); reservations wait for the world and the join re-checks the saved player; a reservation that never joined frees its name; a stale session with the same name and IP is kicked; only finished batches are recorded and failed batch loads are retried; one NTP socket per round, closed at its end; Debug `entitycount` | L2 (headless): `JoinSafetyTest` (5, each fails with its line reverted), `ServerStart_OnAnExistingSave_BacksItUpFirst` (fails without the start hook), `GeneratedBatch_StaysRecordedAcrossRestarts` (guard: fails if restored batches aren't marked done). Unit: `ServerStartBackupsTest` (zip and pruning, real files; the rolling-pruning test is a guard), `BatchLoadTasksTest` (running/failed batches not listed, failed loads retried: fail with the old behaviour), `NtpSyncerTest` (2, fail with the old round handling). Scenario written, not run |
 | 2026-11-02 | M1 | Implemented, not verified in game: a Cyclops at 0 HP isn't sent as destroyed until it explodes, a watchdog ends a countdown whose player left, the beacon comes from the game whose countdown fired; battery charge sent after the change and when empty; the partner takes the old power cell out before installing the new one; a building resync respawns a base or module the game lost; a deconstructed loose constructable leaves its cell and lock; vehicle lights drain on the lock holder only, the thermal reactor skips while another player pilots; un-started build bots skip the launch setter; undocking announced at `OnUndockingStart`, the lock given back after a refused click | Unit (each fails with its line reverted): `CyclopsDestructionRulesTest` (old `\|\| health <= 0`), `BatteryChargeRulesTest` (old floor-only rule), `BuildingResyncPairingTest` (pairing with null), `BuildingManagerDeconstructTest` (old `RemoveEntity`, no revoke), `ConstructorBuildBot_launch_set_PatchTest` (prefix always true). L2 `CyclopsDyingPersistsTest`: a server-contract guard, passes without the fix. Not tested headless: power-cell swap, lights, thermal reactor, undocking, watchdog, beacon (scenario only, or not covered). Scenario written, not run |
+| 2026-11-02 | M6 | Implemented, not verified in game: movement snapshot times are `double` from the broadcaster to the replicator (the sender's clock and period check, the packet's value without the processor's cast, the replicator's clock, `Snapshot.Time`/`SentTime`, the latency bump time); a difference becomes a float only after the double subtraction (`MovementTime`). No `PlayerMovement` time field (nothing replays remote players from times). Scenario: `S13-CyclopsMovement.ps1 -AgeWorldSeconds` ages its own world through its save, `M6-AgedWorldMovement.ps1` runs it at 40 h | Unit `MovementTimeTest` (6): interpolation factor and snapshot age exact at 1-100 h of play; 3 fail when `MovementTime` rounds its arguments to float first (the old arithmetic); the wiring test (double types, no `conv.r4` in the broadcaster's `Update`, the processor's `Process` or the replicator's `RealTime`) fails on the old three files and on the processor's `(float)` cast alone. `dotnet build` clean (NU190x/DIMA001 only), `dotnet test` 417 pass, 13 skipped. Scenario written, not run (windowed) |

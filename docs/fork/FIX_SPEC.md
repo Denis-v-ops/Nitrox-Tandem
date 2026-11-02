@@ -886,6 +886,10 @@ that is safe for one of the two players, which is what D4 is about.
   off and never turns it back on would leave the player frozen. None was found in the IL, and the rejoin and docking
   steps passed. Rerun S6 `InteriorStateHolds` at the next `coop` integration.
 
+These runs used a world a few hundred seconds old. Snapshot times were floats of the world's active play time, which
+step by 15.6 ms after 36 h of play: [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M6 (doubles, and this scenario
+in a world aged 40 h: `M6-AgedWorldMovement.ps1`, `S13-CyclopsMovement.ps1 -AgeWorldSeconds`).
+
 ---
 
 ## After the top 10 (Tier 1, in rough order)
