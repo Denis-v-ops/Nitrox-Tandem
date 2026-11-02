@@ -115,7 +115,9 @@ try {
         Invoke-Bridge 'server' 'save' | Out-Null
         Start-Sleep -Seconds 3
         & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -Stop | Out-Null
-        Start-Sleep -Seconds 5
+        # dual-client.ps1 refuses to start while the old launcher is still exiting.
+        Wait-Until { -not (Get-Process -Name Nitrox.Launcher, Nitrox.Server.Subnautica, Subnautica -ErrorAction SilentlyContinue) } -TimeoutSeconds 30 | Out-Null
+        Start-Sleep -Seconds 3
         Start-ScenarioGames -Players $A, $B -SaveName $SaveName -KeepSave
         foreach ($player in $A, $B) {
             Assert-Walking $player 'after relogging'
