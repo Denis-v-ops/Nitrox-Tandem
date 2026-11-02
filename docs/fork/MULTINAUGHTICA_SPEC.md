@@ -369,7 +369,11 @@ tags used.
   (`SimulationOwnershipData`: revoke, revoke of an id, and an exclusive lock breaking a transient one, e.g. the
   propulsion cannon, which theirs misses); `CreatureHealthChangedProcessor` still relays that player's report for
   1.5 s, until the new holder reports. The new holder's game takes it for 1 s if its own health hasn't changed since the
-  take-over (`SimulationOwnership.TryGetLockAge`, `CreatureDamageRules.AcceptsReportAfterHandOver`).
+  take-over (`SimulationOwnership.TryGetLockAge`, `CreatureDamageRules.AcceptsReportAfterHandOver`). A disconnect
+  (`RevokeAllForOwner`) records no previous owner: that player sends nothing more. **Open (the PR's):** a hit that
+  reaches the old holder after the lock moved is applied there (a hit is applied wherever the server sent it, for the
+  "nobody simulates it" case), but the old holder no longer reports, so the new holder never learns of it. Lost, not
+  doubled.
 - **Known regression (predator and prey): held, fixed.** The PR's `GetHitSource` returns `World` for a creature
   dealer, and a game that doesn't hold the prey only shows a `World` hit on a streamed copy (`RemotelyControlled`, added
   only by `EntityTransformUpdatesProcessor`, i.e. on copies another game streams). `game:MeleeAttack.OnTouch` passes
@@ -400,7 +404,13 @@ tags used.
   not under `IsRemoteHealthChanging`, so `CreatureDeath_OnKill_Patch` lets `OnKill` run and
   `CreatureDeath_OnKillAsync_Patch` sends `RemoveCreatureCorpse` (`LiveMixin_Kill_Patch` sends `EntityDestroyed` for
   `destroyOnDeath`). A hit sent back because nobody simulates the creature kills in the sender's game, which may run
-  `OnKill` (#2902). Each scenario case checks the death in both games and on the server.
+  `OnKill` (#2902). Each scenario case checks the death in both games and on the server. Not changed, and not M5's:
+  `MeleeAttack.OnTouch` follows a bite with `NotifyCreatureDeathsOfCreatureAttack`, which spawns the respawner of a
+  creature that respawns only when killed by a creature (`game:CreatureDeath.OnAttackByCreature`,
+  `respawnOnlyIfKilledByCreature`). In `coop` that never happens, even when one game simulates both creatures: the
+  corpse path of `OnKillAsync` has no `yield`, so `CreatureDeath_OnKillAsync_Patch` drops the lock inside `Kill`, and
+  `CreatureDeath_OnAttackByCreature_Patch` then refuses. A forwarded bite doesn't replay the call (it would be refused
+  the same way). The ordinary respawner (`respawn && !respawnOnlyIfKilledByCreature`) is spawned by the holder's kill.
 - **What the hitter sees:** its game runs the damage receivers (flinch, flee, aggression), the hit sound and the blood
   effect without changing the health (`PlayCosmeticDamage`), then shows the holder's health (0.2 s throttle). The
   scenario checks `LiveMixin.timeLastDamageEffect`.
@@ -421,6 +431,9 @@ tags used.
   remote-copy cases fail with the creature-dealer rule reverted to `World`), `SimulationOwnershipDataTest` (5; the
   exclusive take-over fails without its line), the PR's processor tests plus the two ported grace cases. Not unit-tested:
   the 0.2 s report throttle (the existing `ThrottledPacketSender`) and the PR's 0.1 s hit batching (Unity-bound).
+  **Covered only by the scenario** (the rules helper tests the decision, not the wiring): `CreatureHealthManager`'s
+  use of it, the `Crash_Detonate_Patch` scope, the client half of the grace (`TryGetLockAge`, `IsInHandOverGrace`;
+  the scenario's hand-over case doesn't provoke a late report either), and everything the games do with the packets.
 - Shared files touched: `LiveMixin_AddHealth_Patch.cs` (the PR's two hunks; also changed by
   `feat/2-g0-g4-story-gates`), `LiveMixin_TakeDamage_Patch.cs`, `Crash_Detonate_Patch.cs` (M4), client and server
   `SimulationOwnership.cs`, `ClientAutoFacRegistrar.cs`, `Multiplayer.cs`, `S4-CreatureDeathSyncs.ps1`.
