@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Nitrox.Model.Core;
 using Nitrox.Model.DataStructures;
 using Nitrox.Server.Subnautica.Models.AppEvents;
@@ -51,8 +53,17 @@ internal sealed class SleepManager(IPacketSender packetSender, PlayerManager pla
 
     private async Task BroadcastStatus()
     {
-        int totalPlayers = playerManager.GetConnectedPlayers().Count;
-        await packetSender.SendPacketToAllAsync(new SleepStatusUpdate(sessionIdsInBed.Count, totalPlayers));
+        await packetSender.SendPacketToAllAsync(CreateStatus(playerManager.GetConnectedPlayers()));
+    }
+
+    /// <param name="connectedPlayers">Everyone who counts for the sleep, without a player who is just leaving.</param>
+    private SleepStatusUpdate CreateStatus(List<Player> connectedPlayers)
+    {
+        string[] awakePlayerNames = connectedPlayers.Where(player => !sessionIdsInBed.Contains(player.SessionId))
+                                                    .Select(player => player.Name)
+                                                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                                                    .ToArray();
+        return new SleepStatusUpdate(sessionIdsInBed.Count, connectedPlayers.Count, awakePlayerNames);
     }
 
     private async Task StartSleep()
@@ -73,23 +84,30 @@ internal sealed class SleepManager(IPacketSender packetSender, PlayerManager pla
 
     public async Task OnEventAsync(ISessionCleaner.Args args)
     {
-        sessionIdsInBed.Remove(args.Session.Id);
+        bool leaverWasInBed = sessionIdsInBed.Remove(args.Session.Id);
         // If sleep is already in progress, let it complete - don't cancel just because someone disconnected
         if (isSleepInProgress)
         {
             return;
         }
-        if (sessionIdsInBed.Count <= 0)
+        // Nobody is waiting for anything
+        if (!leaverWasInBed && sessionIdsInBed.Count <= 0)
+        {
+            return;
+        }
+        // The session cleaners run one after another in no fixed order, so PlayerManager may still list the leaving player
+        List<Player> remainingPlayers = playerManager.GetConnectedPlayersExcept(args.Session.Id);
+        if (remainingPlayers.Count <= 0)
         {
             return;
         }
 
-        // Send to all players except the disconnecting one
-        SleepStatusUpdate packet = new(sessionIdsInBed.Count, args.NewSessionTotal);
-        await packetSender.SendPacketToOthersAsync(packet, args.Session.Id);
+        // Send to all players except the disconnecting one. Also when the only sleeper left, so the others' status
+        // no longer counts them in bed.
+        await packetSender.SendPacketToOthersAsync(CreateStatus(remainingPlayers), args.Session.Id);
 
         // Check if remaining players are now all sleeping (disconnected player was the only one awake)
-        if (args.NewSessionTotal > 0 && sessionIdsInBed.Count >= args.NewSessionTotal)
+        if (sessionIdsInBed.Count > 0 && sessionIdsInBed.Count >= remainingPlayers.Count)
         {
             await StartSleep();
         }
