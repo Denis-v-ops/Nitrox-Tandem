@@ -69,6 +69,8 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **Context pings** | Point and ping, and the marker says why: at a creature that hunts you it's a red "Danger!" (15 s); at something to pick up, break or drill it shows that item's icon (10 s); anywhere else it's a "Come here" beacon that stays until your partner gets there (at most 30 s). Each game writes the text in its own language | **Middle mouse button**: ping what you look at. **H**: always "Come here". Both can be changed in the key bindings | Pings fade with the signal: when either of you is in a cave or the deep, a ping only shows within about 50 m of whoever sent it. Up to 3 pings each, 250 m range | `PartnerSignalInterference` (true) |
 | **Hand items over** | Give your partner something from your inventory: it moves straight into theirs, battery and all | Swim up to your partner, look at them and press the interact key, then move items to their side as with a locker | Only from your inventory, nothing you wear, and only if they have room. You can't take anything from them; it's no more than dropping an item for them to pick up | None, always on |
 | **The deep cuts the line** | In caves, the Lost River, the lava zones, Precursor facilities and below 300 m, your partner's signal drops to a last contact: it stays where you lost them, flickers, and says how long ago ("last contact 2 min"). It comes back as soon as you're both out of there | Build relays: a beacon you place within about 150 m of you, or a powered scanner room within its scan range (300 m, more with range upgrades), carries your signal again | It works both ways: when either of you is down there, both lose the other. Up close nothing changes: you still see their name tag, their light and hear them. The partner signal setting "Always" ignores it | `PartnerSignalInterference` (true), `SignalInterferenceDepth` (300 m) |
+| **Rescue window** | At 0 health you go down instead of dying: the screen dims and pulses, a countdown runs, you can look around but not move or use anything. Your partner can get you back up before it runs out; if they don't, you die as usual and your things drop where you fell | Rescuer: swim up to your downed partner, look at them and hold the interact key for 6 s (about 20 health), or 2 s if you carry a first aid kit (50 health, the kit is used up) | 60 s on the first down, 30 s on the second, none on the third, until you sleep in a bed or go 15 min without going down. Your air keeps draining while you're down. Lava, heat, drowning and the Cyclops exploding still kill. No window when nobody else is up to help. Quit while down and you come back down, with the time you had left. A downed pilot is pushed out of the Seamoth or Prawn suit | `RescueWindowSeconds` (60, 0 = off), `RescueEscalation` (true). Admin: `rescue status`, `rescue rest <player>` |
+| **Distress call** | When your partner goes down, their signal turns red and shows the time left ("Alice · down · 42 s"), at any distance and even in caves and the deep. A short ping sounds with each update, and up close you hear them groan | Nothing to do: follow it | It only shows where they were at the last pulse, every 5 s, not a live track. It ends when they're up again or dead | The rescue window's options |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -81,18 +83,15 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 Not built yet; designed in [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md). The idea: Subnautica
 stays lonely, scary and hard, just shared.
 - **It stays scary.** In caves and the deep the partner's signal is lost, and you find each other by sound and light.
-- **Every help has a price.** A revive takes a few seconds of holding, and the rescue window gets shorter each time you
-  go down before resting. Sharing air costs the donor twice what the receiver gets. Creatures, resources and fragments
-  keep the game's own numbers.
+- **Every help has a price.** Like the rescue window and buddy breathing above. Creatures, resources and fragments keep
+  the game's own numbers.
 - **The big story beats wait for both of you.**
 - **Each rule gets a switch** in the server's `server.cfg`.
 
 What's planned:
 - **Story moments together:** disabling the gun, the Sea Emperor and the cure, and the rocket launch wait until both
   players are there, like the drive core already does. Playing alone in between is fine.
-- **Teamwork survival:** a rescue window instead of instant death (revive with a first aid kit, or by hand), and
-  hitching a ride on the Seamoth.
-- **Keeping it scary:** a distress call when your partner goes down that pulses through even where the signal is lost.
+- **Teamwork survival:** hitching a ride on the Seamoth.
 - **Cozy base life:** seeing each other sit, sleep and use things, and a cuddlefish that plays with both of you.
 
 ### For developers

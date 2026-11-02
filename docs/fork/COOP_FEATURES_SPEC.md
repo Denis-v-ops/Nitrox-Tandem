@@ -497,7 +497,7 @@ gun terminal) comes with R1b, where the object has a Nitrox entity. The enzyme b
 
 ## 6. Teamwork survival
 
-### T1: Rescue window
+### T1: Rescue window — done 2026-11-02 (branch `feat/3-t1-d3-rescue`)
 **Goal:** at 0 health you go **down** instead of dying. Your partner has `RescueWindowSeconds` (default 60) to revive you:
 - a **first aid kit** gives 50 health (`kFirstAidKitHealth`), after a 2 s hold;
 - **holding the interact key** for 6 s gives about 20 health.
@@ -588,6 +588,76 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - Hold to revive with the bridge's `hold <partnerId> 6` (added in A0); `use` only clicks once.
 
 **Size:** L.
+
+**Done (2026-11-02, branch `feat/3-t1-d3-rescue`, with D3):**
+- **The kill hook:** a Prefix on `LiveMixin.Kill` (added to the existing `LiveMixin_Kill_Patch`) for `Player.main.liveMixin`
+  asks `RescueWindow.TryGoDown`; the decision is `DownedRules.GoesDown` (pure). Kills go through when the player is
+  already down (drowning, the timer), has less than 1 unit of air (`DownedRules.OUT_OF_AIR`; the game starts suffocating
+  at exactly 0, `Utils.NearlyEqual` with a 0 operand is only true for 0), `currentSub.subDestroyed`, `DamageType.Heat`
+  (what `TemperatureDamage` deals for hot water and lava contact), or `RescueWindowSeconds` is 0. Everything else goes
+  down, `Explosive` (crashfish) and `Fire` (base fires, geysers) included: of the explosions only the Cyclops
+  destruction kills outright. **Heat while down:** `invincible` would ignore lava, so `LiveMixin_TakeDamage_Patch` turns
+  heat damage on a downed local player into the kill.
+- **Down:** health 1, `tempDamage` 0, `invincible`; a pilot is pushed out with `ToNormalMode` (fallback as
+  `Vehicle.OnKill`, which also leaves the Cyclops helm); input locked as `Player.OnKill` does (PDA closed and ignored,
+  quick slots ignored, `playerController.inputEnabled` false and `SetEnabled(false)`), the camera stays free; no
+  `FreezeStats`. `Player.IsFreeToInteract` gets a Postfix (health 1 is alive, so it wasn't blocked by itself), which
+  stops `GUIHand` targets, tools and held items. **Fade:** `Player.Update` → `SuffocationUpdate` writes overlay 0 every
+  frame, so the pulse (0.35 to 0.75 over 2.5 s) is written in `LateUpdate` as `max(pulse, 1 - suffocationProgress)`.
+  **Countdown:** `HandReticle` `Use` text, written every `Update` (`HandReticle.LateUpdate` clears its texts): "You're
+  down · 42 s until a partner has to reach you" (en, de).
+- **Verified in the game code:** `SuffocationDie` kills only if `IsAlive` (health > 0, so health 1 lets drowning kill);
+  `Kill` ignores `invincible` (only `TakeDamage` checks it); `TakeDamage` sets health before calling `Kill`, and a kill
+  during a cinematic comes later from `ManagedUpdate` as `Kill()` (type `Normal`, also caught).
+- **The server owns the window** (`RescueService`, a hosted service ticking every 0.25 s, plus `RescueRules`). The game
+  can't decide the window in the Prefix (it doesn't know the escalation), so it always goes down and sends
+  `PlayerDowned`; the server answers `PlayerDowned(player, window)` to everyone, or `PlayerRescueExpired` at once (3rd
+  down, option 0, nobody else up). On `PlayerRescueExpired` the game turns `invincible` off and calls `Kill`: vanilla
+  death and Nitrox's death beacon run unchanged. A game dying while down (drowned, lava) sends `PlayerRescueExpired`
+  itself so the others stop showing the distress call; `PlayerDeathEvent` clears the window too. Safety nets in the game:
+  no answer in 10 s, or 10 s past the window's end, and it dies.
+- **Revive:** `ReviveAction` (priority 100) on T2's `PartnerHandTarget`: 6 s by hand → 20 health; 2 s when the rescuer
+  **carries** a first aid kit → 50 health. **(H) answered, the spec changed here:** a first aid kit can't be held in
+  hand: it isn't a hand item (`InventoryItem.isBindable` false, seen in game), so it never gets a quick slot and the game
+  uses it from the inventory. Any kit in the rescuer's inventory counts. The server checks the pair with
+  `PartnerInteractions` (`TargetMayBeDowned`, so a downed rescuer is refused), that the target is down and that the kit
+  is a `FirstAidKit` `InventoryItemEntity` of the rescuer, destroys it and sends `EntityDestroyed` to everyone (the
+  rescuer's game removes it from the inventory through `Pickupable.OnDestroy`), then `PlayerRevived(target, rescuer,
+  health)`. **Priority:** revive outranks buddy breathing, so T2's "downed partner" branch is now unreachable (after a
+  revive the partner is low on air and buddy breathing is offered); T3's give was already off for a downed partner.
+- **Escalation** (`RescueEscalation`): `DownsSinceRest` counts downs that got a window or were refused by the
+  escalation (not "nobody to help"); 1st full, 2nd half, 3rd none. Reset by a completed sleep (`SleepManager` keeps the
+  sleepers from the start of the sleep and resets them after `SleepComplete`) or lazily at the next down when
+  `LastDownedAt` is 15 min (of `ActiveTime`) ago. Admin command `rescue status` / `rescue rest <player>`.
+- **Timer persistence:** `DownedUntil` stays a time of `ActiveTime`; every tick moves an offline downed player's
+  `DownedUntil` on by the time that passed, so the window pauses while they're away and also across a restart (saved,
+  and `ActiveTime` doesn't run while the server is down). On join the server sends the joiner every downed partner's
+  window and, if the joiner quit while down, `PlayerDowned(joiner, left)` to everyone; the joiner's game goes down
+  again. Nobody else up after the join, or the last player who is up leaves: the windows end.
+- **The downed body (partner's game):** `DownedPose` on the body triggers `player_death` and stops the animator
+  (`speed` 0) once the `Death` layer's clip reaches normalized time 0.9 (if it was already left, `Play` at 0.9 first);
+  revived: `speed` 1, the clip ends and the body gets up. `RemotePlayer.IsPoseLocked` (only `IsDowned` today) replaces
+  the `UpdatePlayerAnimations = true` assignments, so #2859's cinematic lock folds into that test. **Deviation from A2:**
+  `UpdatePosition` isn't skipped while down: the body must follow a pushed-out pilot and a moved body. Arm writes
+  (`SetArmState`, R2b) aren't blocked: the animator is stopped, and the arms must be right after a revive. The weak pain
+  sound (`pain_no_tank_light`) plays from the body every 4 s through D1's `RemotePlayerSounds.PlayPain`. The held light
+  stays drawn (D6): nothing holsters it.
+- **Tests:** L1 `RescueRulesTest`, `DownedRulesTest`; L2 `RescueWindowTest` (7 tests: the window runs out, revive only
+  from a partner who can reach a downed target, the kit used up for everyone, nobody up / everyone down / the last one
+  up leaves, death and "died while down", escalation 60/30/none with sleep and 15 min resets and the option off, paused
+  while offline and kept across a restart with a late joiner told), all 7 fail without the three server processors.
+  L3 windowless `tools/scenarios/T1-RescueWindow.ps1` **PASS (73 checks)**: 500 damage → down (alive, health 1,
+  invincible, input locked, camera free, no interaction, fade 0.50, countdown, more damage ignored, air drains 42 → 39);
+  Bob's game: downed partner, pose held (`quick_death` at 0.903, speed 0, still 2 s later), weak pain sound, distress
+  marker; 3 s hold nothing, 6.5 s hold → 20 health, all unlocked, body moves, marker back; 2nd down 30 s window, kit →
+  50 health, kit gone in Bob's game and on the server; 3rd down → death, respawn, death beacon; D3 at 400 m (below);
+  window runs out → death and beacon; out of air while up → drowned without going down; down with 3 s of air →
+  drowned before the window ended, server and Bob cleared. **Negative control:** the same scenario with the Prefix
+  disabled FAILS (see Log).
+- **Needs a windowed check:** how the fade and the countdown look, the held pose on screen (windowless bodies are
+  `CullUpdateTransforms`), the pain sound's volume. **Not checked in game:** a downed pilot pushed out of a Seamoth or
+  Prawn suit, a rejoin while down (L2 only), lava/heat while down, a sleep reset (L2 only), drops reaching the partner and
+  surviving a restart after a death (vanilla `LoseItems`, still (H)).
 
 ### T2: Buddy breathing — done 2026-11-02 (branch `feat/1-t2-buddy-breathing`)
 - **Today:**
@@ -1130,7 +1200,7 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   (the scenario spawns one with the console, which also leaves it unattached); two game languages at once; the F2
   scenario wasn't re-run with the real rule (its spots are shallow open water).
 
-### D3: Distress call (S, with T1)
+### D3: Distress call (S, with T1) — done 2026-11-02 (branch `feat/3-t1-d3-rescue`)
 - **Goal:** when your partner goes down, their marker becomes a distress signal you can follow, even where the signal
   has faded. It turns the rescue window into a race through the dark. (Decided 2026-11-02: it **pulses through**
   interference.)
@@ -1144,6 +1214,29 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - It ends on `PlayerRevived` (back to the normal rule) or on death (Nitrox's death beacon, if
     `MarkDeathPointsWithBeacon` is on).
 - **Tests:** L3, as part of T1: B goes down at 400 m; A's marker turns red, counts down, and moves only every 5 s.
+- **Done (2026-11-02, branch `feat/3-t1-d3-rescue`, with T1):**
+  - `DistressRule` first in `PartnerSignalRules.Rules` (before D2's `LastContactRule` and "faint"), from
+    `PartnerSignalContext.Distress` (the partner has a window in `RescueWindow`). It applies in every mode, Off
+    included, and through interference: `minDist` 3 m (the body is right there), `range` 1 m.
+  - **"Full alpha" is 0.5:** `uGUI_Pings` lerps the icon alpha from `alphaMin` to `alphaMax` (0.5) over `range` beyond
+    `minDist`, so a 1 m range gives the game's maximum from 4 m on. That is the brightest a marker gets.
+  - **(H) answered: no.** `uGUI_Pings` reads `colorIndex` only in `OnAdd` (also when it is enabled again); the colour
+    otherwise changes only through `PingManager.NotifyColor` → `OnColor`. `PartnerSignal` therefore calls
+    `uGUI_Pings.OnColor(id, PingManager.colorOptions[2])` directly, as `PlayerModelManager` colours the marker, and sets
+    `colorIndex` 2 for a re-add; at the end it puts back the old index and the player's colour. `SetColor` is never
+    called (Nitrox would send it as the player's preference).
+  - **Pulse:** every 5 s (the first at once) the marker's `origin` (a static object, as D2's last contact) moves to the
+    body's position; a pulse also counts as contact for D2. **Sound (H answered):** `event:/interface/ping`, the metal
+    detector's short ping (`LootSensor`), not on Nitrox's whitelist, so only the rescuer's game plays it.
+  - Label "<name> · down · 42 s" (`Nitrox_PartnerSignalDistress`, en, de), the server's window counted down locally.
+  - It ends with `PlayerRevived`, `PlayerRescueExpired` or the partner's death; the body keeps the pose until the death
+    arrives.
+  - **Verified:** L1 `PartnerSignalRulesTest` (D3 cases: every mode, distance and interference; rule order; pulse
+    timing; label). L3 in `T1-RescueWindow.ps1`: Alice down at 400 m, Bob at 50 m with the line cut (D2): rule
+    "distress" through the cut, colour index 2, label counting down; Alice moved 30 m: the marker stayed for 3.5 s, then
+    the pulse put it on her; pulses at 3.8, 8.8 and 14.1 s; the ping played with each pulse; after the window ran out
+    the marker went back to the normal rule.
+  - **Needs a windowed check:** the red marker and its brightness on screen, the ping's volume.
 
 ### D4: Threat parity for the rest of the creatures (S probe, then fixes)
 - **Question:** does a creature that A's game simulates actually hurt B? If not, one player is close to immune and no
@@ -1877,3 +1970,5 @@ prices, "keeping it scary").
 | 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
 | 2026-11-02 | R2b | Done: nine arm states as `AnimChangeType` values (`using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump`, `diving`, `diving_land`, `holding_tool`), sent from the local arms animator on change (off after 0.15 s); every arm write on the partner's body through `RemotePlayer.SetArmState` (single entry point for #2859 and T1), which also calls `ArmsController.Reconfigure` on a tool change; server replays them to late joiners except the fall states; join payload pose is the underwater state only. Findings: `jump` is a per-frame state, not a trigger; `using_builder` has no writer in the game; opening the PDA puts the tool away. README row | L1 `ArmStatesTest`; L2 `PartnerArmStatesReplayTest` (fails on the old processor); L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks, incl. a rejoin; tool use driven on the sender's animator); unfixed `coop` FAIL (12 checks). Not verified: real tool input, the look of the poses, a fall onto land (windowed) |
 | 2026-11-02 | B4 | Done, no code change: dousing an Aurora fire already reaches the partner, the server and late joiners and stays out after a restart (Cyclops fire path: `FireDoused` with the parent id, server destroys the batch entity, parsed batches are saved) | L2 `AuroraFireTest` (fails without the server destroy); windowless `B4-AuroraFiresStayOut.ps1` PASS (12 checks) on unchanged `coop`, so no failing negative control. Not covered: half-doused health after a restart, the real extinguisher aim |
+| 2026-11-02 | T1 | Done: at 0 health the player goes down (one `LiveMixin.Kill` Prefix; through when already down, out of air, sub destroyed, heat/lava, option off; heat kills a downed player too); health 1, invincible, pushed out of a vehicle, input locked, camera free, no interaction, pulsing fade, countdown, air keeps draining. The server owns the window (`RescueService`: 60/30/none, reset by a completed sleep or 15 min; nobody up → ends at once; paused while the downed player is offline, kept across a restart; rejoin still down), revive by hand 6 s → 20 or carrying a first aid kit 2 s → 50 (kit destroyed for all), expiry lets vanilla death run. Downed body holds the `player_death` pose, weak pain sound. (H): a first aid kit can't be held in hand (not a hand item), so any kit carried counts. Admin `rescue status|rest`. README row | L1 `RescueRulesTest`, `DownedRulesTest`; L2 `RescueWindowTest` (7 tests, all fail without the server processors); L3 windowless `T1-RescueWindow.ps1` PASS (73 checks); negative control with the Prefix disabled FAIL (35 checks). Full suite green. Not checked: windowed look (fade, countdown, pose), vehicle push-out, lava while down, rejoin while down in game |
+| 2026-11-02 | D3 | Done: `DistressRule` before D2's last contact: full marker alpha (0.5, the game's maximum) at any distance, in every mode and through interference, red via `uGUI_Pings.OnColor` + `colorIndex` 2 ((H): `colorIndex` alone isn't picked up), "<name> · down · 42 s", moved to the real position every 5 s with `event:/interface/ping` ((H) answered); ends on revive, expiry or death. README row | L1 `PartnerSignalRulesTest` (D3 cases); L3 in `T1-RescueWindow.ps1` (400 m with the line cut: pulses at 3.8/8.8/14.1 s, marker stale between pulses, ping per pulse), fails with the T1 Prefix disabled. Windowed look not checked |
