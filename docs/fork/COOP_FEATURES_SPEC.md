@@ -1019,9 +1019,9 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - `PDALog.Add` plays the voice line by default (`playSound = true`, `game:PDALog.cs:159-189`). So when A enters the
     Lost River, B's PDA describes it while B sits in the base.
   - Logs found in the world (`StoryHandTarget.OnHandClick` → `goal.Trigger()`) arrive the same way, as
-    `StoryGoalExecuted`, and play too. (`PDALogEntryAddProcessor` carries the pod radio and the `pdalog` command, not
-    found logs; see "Found logs" below.)
-- **D5a, game side (S, wave 1). Done (2026-11-02, branch `feat/1-d5a-own-firsts`), except found logs (below).**
+    `StoryGoalExecuted`, and play too (until D5b). (`PDALogEntryAddProcessor` carries the pod radio and the `pdalog`
+    command, not found logs; see "Found logs" below.)
+- **D5a, game side (S, wave 1). Done (2026-11-02, branch `feat/1-d5a-own-firsts`); found logs were done in D5b.**
   - **Experiential goals** are the keys in `BiomeGoalData` and `LocationGoalData` (read at runtime from the trackers'
     `goalData`). Everything else syncs as today.
     - In game: 58 biome + 32 location goals, 69 distinct keys: 62 PDA, 13 Radio, 15 Story goals (counted with
@@ -1050,12 +1050,11 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     **For D5b:** filtering the initial PDA log isn't enough. `SetupTrackers` must keep the experiential PDA goals the
     joining player hasn't heard, and `SetScheduledGoals` must skip a partner's delayed ones, or B can't hear them after
     a rejoin.
-  - **Found logs: not done, the premise was wrong.** `PDALogEntryAdd` doesn't carry found logs. It carries every
-    `PDALog.Add` outside `StoryGoal.Execute`, which is the pod radio (`StoryGoalManager.ExecutePendingRadioMessage`) and
-    the `pdalog` console command. Muting it would mute the partner's radio messages. PDAs found in the world
-    (`StoryHandTarget.OnHandClick` → `goal.Trigger()`) arrive as `StoryGoalExecuted` (PDA) like any story line, and the
-    receiver can't tell them apart (`PDALog.EntryType` has no radio/found kind). Options: a "found" flag sent with
-    `StoryGoalExecuted` (patch `StoryHandTarget.OnHandClick`), or leave it. Decision needed.
+  - **Found logs: the premise was wrong; done in D5b with a "found" flag.** `PDALogEntryAdd` doesn't carry found logs.
+    It carries every `PDALog.Add` outside `StoryGoal.Execute`, which is the pod radio
+    (`StoryGoalManager.ExecutePendingRadioMessage`) and the `pdalog` console command; it stays as it is, so the
+    partner's radio messages still play. PDAs found in the world arrive as `StoryGoalExecuted` like any story goal
+    (survivor PDAs are Encyclopedia goals, see D5b), and the receiver couldn't tell them apart, hence the flag.
   - Option `PartnerDiscoveriesSilent` (default true); false restores today's behaviour (L3 negative control). Before
     the initial sync, `CoopSettings` holds false, so packets processed then behave as today.
   - Within one session this gives the whole effect.
@@ -1067,19 +1066,68 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     the schedule fix failed 2 (Bob's own trigger swallowed). Not run: windowed games, delayed lines, location goals.
   - The `kelpforest` goto spot (75, -28, -95) is `safeShallows` on the biome map. (100, -30, 200) is `kelpForest`.
     After a teleport out of the pod, `GetBiomeString` reads `Lifepod` for a few seconds.
-- **D5b, server side (S–M, wave 2):**
+- **D5b, server side (S–M, wave 2). Done (2026-11-02, branch `feat/2-d5b-heard-goals`).**
   - **Why it's needed:** on join, the initial sync restores the whole PDA log silently with `PDALog.Deserialize`
     (`PdaInitialSyncProcessor.cs`, `RestorePDALog`). A line the partner triggered in an earlier session is then already
     in your log, so `PDALog.Add` finds it when you get there and stays silent. With daily sessions, most lines would
     be lost without D5b.
-  - A per-player `heardGoals` set in the player's saved record (field added in A1). A player's own `StoryGoalExecuted`
-    for an experiential key adds it. Initial sync leaves out experiential entries the joining player hasn't heard.
+  - **Heard set:** `Player.HeardGoals` (saved, field from A1). `StoryGoal_Execute_Patch` flags a game's own execute of
+    a biome or location PDA line (`StoryGoalExecuted.Experiential`, classified by `ExperientialGoals` from the game's
+    goal data); `StoryGoalExecutedProcessor` adds it to the *sender's* set. A relayed goal never counts: the partner's
+    game applies it under `PacketSuppressor<StoryGoalExecuted>` and sends nothing.
+    - **Why a flag and not a server-side list:** the classification lives in the game's assets (`BiomeGoalData`,
+      `LocationGoalData`), which the server doesn't load; the game already reads it for D5a. A hard-coded server list
+      would be a second copy that can drift. The server needs no world-level list either: every biome or location line
+      in the shared PDA log got there from someone's flagged execute, so the union of all players' heard sets holds
+      them all.
+  - **Initial sync:** `OwnFirsts.UnheardBy` = lines in any player's heard set that the joining player hasn't heard;
+    `PdaManager.GetInitialPDAData` leaves them out of the joining player's PDA log (option off: nothing left out).
+    The game then (option read from the packet's `CoopSettings`, because `PlayerInitialSyncProcessor` may run later):
+    - `SetupTrackers` keeps a completed biome or location PDA goal in its tracker when it isn't in the PDA log the
+      server sent (`ExperientialGoals.StaysInTracker`), so this player's visit still fires it; D5a's schedule rule then
+      lets it play.
+    - `SetScheduledGoals` skips pending delayed biome and location PDA lines, as `ScheduleProcessor` does in session.
+      **Limit:** the server doesn't know whose trigger scheduled one, so a player's *own* pending delayed line is
+      dropped on rejoin too; their tracker keeps the goal, so it fires again (delay restarted) the next time they're
+      there. Read in game: the biome and location PDA lines with a delay are `Emperor_Telepathic_Contact1` and `2`
+      (1200 s), `Goal_BiomeJellyCave2` (2800 s), `Emperor_Telepathic_Contact3` (10 s) and
+      `Precursor_Prison_MoonPool_Log1` (3 s). An owner on `NitroxScheduledGoal` would fix it (a save-format
+      addition); not done.
+  - **Saves from before D5b:** every player's heard set is empty, so their existing log entries are in nobody's set and
+    stay shared as before (no line re-heard, none recovered). Only lines heard from now on are per player.
+  - **Found logs:** `StoryHandTarget.OnHandClick` only calls `goal.Trigger()`, which adds the goal to
+    `StoryGoalScheduler.schedule`; the scheduler's `Update` executes it on a later frame (`game:Story/StoryGoal.cs`,
+    `game:Story/StoryGoalScheduler.cs`). So `StoryHandTarget_OnHandClick_Patch` remembers the key of a PDA or
+    Encyclopedia goal it scheduled, and `StoryGoal_Execute_Patch` sends `StoryGoalExecuted.Found` when it executes.
+    - **Finding (read in game):** the survivor PDAs in wrecks and at lifepods are **Encyclopedia** goals, not PDA
+      goals (`Wreck17_KelpForest_PDA1` → `InnerBiomeWreckLore2`, `Wreck15_SafeShallows_PDA1` → `InnerBiomeWreckLore1`,
+      `EscapePod_3_PDA_SeaglideCompass` → `Lifepod3`; all without delay). `StoryGoal.Execute` plays them through
+      `PDAEncyclopedia.AddAndPlaySound` (`game:PDAEncyclopedia.cs:142`): `Add(key, verbose: true)`, whose popup
+      (`uGUI_PopupNotification.OnEncyclopediaAdd`) plays the entry's sound, plus `PDASounds.queue.PlayQueued`.
+    - The partner's game (option on) completes the goal, then for an Encyclopedia goal `PDAEncyclopedia.Add(key,
+      false)` and the databank's "new" marker (`NotificationManager` group Encyclopedia, what verbose adds besides the
+      popup); for a PDA goal `PDALog.Add(key, playSound: false)` (`game:PDALog.cs:159`: no voice line or subtitles,
+      timestamped now, with the log notification). Later joiners get them from the shared databank and PDA log as
+      before. The finder's `PDAEncyclopediaEntryAdd` (verbose) comes after the goal and finds the entry there.
+  - **Small effects:** after Bob hears a line Alice heard first, the server keeps Alice's timestamp, so Bob's entry
+    shows her time after his next rejoin. A player who heard a partner's line while the option was off has no heard
+    record for it and hears it again from their own visit once the option is on.
 - **Tests:**
   - L1: classification of keys.
   - L2 (D5b): `heardGoals` per player, the initial-sync filter, `SaveLoadRoundTrip`.
   - L3 (D5a): A teleports into the Kelp Forest (an early biome line); B's PDA queue stays empty (bridge read of
-    `PDASounds.queue`, from A0); B teleports there and hears it once. D5b adds: B rejoins before going there, then
-    still hears it once.
+    `PDASounds.queue`, from A0); B teleports there and hears it once. D5b adds (`D5b-OwnFirstsAfterRejoin.ps1`): B
+    rejoins before going there, then still hears it once; A picks up a found PDA, B gets the entry without the line.
+  - **Verified (D5b):** L1 `ExperientialGoalsTest` (flag, found types, `StaysInTracker`), `OwnFirstsTest` (the
+    left-out set, option off). L2 `OwnFirstsRejoinTest`: only the sender's flagged execute is heard, the heard set
+    survives a restart, a joiner who hasn't heard the line doesn't get it in the PDA log and one who has does, option
+    off sends it, `Found` is relayed (fails without the server change). `PlayerDataSaveLoadTest` (A1) covers the saved
+    set. L3 windowless `tools/scenarios/D5b-OwnFirstsAfterRejoin.ps1` PASS (21 checks): after a server restart Bob
+    has the goal completed, no entry and the goal in his tracker; at the Kelp Forest he hears it once and Alice
+    doesn't; Alice picks up the wreck PDA, Bob's databank gets it with no voice line started or queued. Negative
+    control on the code before D5b: 5 checks fail (Bob gets the entry on rejoin, his tracker loses the goal, he never
+    hears it; he hears Alice's found log). Not run: windowed games, delayed lines after a rejoin, location goals,
+    PDA-type found logs (none seen in game), `-OptionOff` in game (covered headless).
 
 ### D6: Lights in the dark (S probe, then fixes)
 - **Goal:** at night and in caves you see your partner's light from far off: the flashlight beam, the Seaglide light, a
@@ -1570,3 +1618,4 @@ prices, "keeping it scary").
 | 2026-11-02 | D6 | Flare fixed: thrown out of the partner's loaded cells it stayed unlit in the thrower's inventory in the partner's game (no spawn sent); the server now sends those players `EntityDestroyed` for their stale copy. Metadata was fine | L2 `DroppedOutOfSightTest`; windowless `D6-ThrownFlare` PASS, fails the 120 m check without the fix. Lights drawn at 60–120 m: open (windowed) |
 | 2026-11-02 | T4 | Done: the helm screen is interactable for the crew; engine and horn only for the pilot (engine still applies the partner's change); silent running paid only by the game with the lock; decoy patch type and relay fixed; bridge `hold` Down reaches `LeftHandButton`. Finding: the CanvasGroup never blocked the helm buttons (a standing player could already start the engine); silent running drained erratically in two games. README row | L2 `CyclopsCrewTest`; L3 windowless `T4-CyclopsCrew.ps1` PASS (56 checks); negative control on the unfixed patches FAIL (4 checks; silent running drain measured by hand). Not windowed, no real mouse click |
 | 2026-11-02 | F2 | Done: `PingKind` + target tech type in `PlayerPingCreated`, labels built by each game (en/de); Danger/Look/Come here from the crosshair hit (creature aggression read from its components and the player's eco target type); "Ping: come here" on H; `uGUI_Pings` OnAdd/OnIconChange patches keep the icon and colour (the colour was lost on a re-add before too); price via `SignalInterference` (partners' `Interfered`, the local D2 hook returns false until D2). README row | L1 `PingRulesTest`; L2 `ContextPingTest` (fails with send-to-all); L3 windowless `F2-ContextPings.ps1` PASS (146 checks, creature table of 24 types); negative controls: without the patches FAIL (12 checks), unfixed `coop` FAIL. Not verified: two languages at once, real D2 interference, windowed markers, drillables/breakables in game |
+| 2026-11-02 | D5b | Done: `HeardGoals` per player from the game's own flagged execute (`StoryGoalExecuted.Experiential`); the join payload leaves out lines another player heard and the joiner hasn't (`OwnFirsts`), the trackers keep them and pending delayed ones are skipped; old saves stay shared. Found logs resolved: a `Found` flag from `StoryHandTarget`; survivor PDAs turned out to be Encyclopedia goals, the partner gets the databank entry without the voice log. Limit: a player's own delayed line pending at a rejoin needs a new visit. README row | L1 `ExperientialGoalsTest`, `OwnFirstsTest`; L2 `OwnFirstsRejoinTest` (fails without the server change); L3 windowless `D5b-OwnFirstsAfterRejoin.ps1` PASS (21 checks), 5 fail on the code before D5b. Delayed lines, location goals, windowed not run |
