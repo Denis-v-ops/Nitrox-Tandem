@@ -71,12 +71,55 @@ public class CreatureAttackRoutingTest
     }
 
     /// <summary>
+    ///     COOP_FEATURES_SPEC D4: a bite on a vehicle goes from the creature's simulator to the vehicle's lock holder (the
+    ///     pilot), whose game alone changes the vehicle's health. Bites from anyone else, and bites on a vehicle the
+    ///     simulator holds itself or nobody holds, aren't sent.
+    /// </summary>
+    [TestMethod]
+    public async Task VehicleAttack_ReachesOnlyTheVehiclesLockHolder()
+    {
+        await using ServerHarness server = await ServerHarness.StartAsync("L2-CreatureAttackVehicle");
+        FakePlayer alice = await server.JoinAsync("Alice");
+        FakePlayer bob = await server.JoinAsync("Bob");
+        FakePlayer carol = await server.JoinAsync("Carol");
+        WorldEntity aliceBoneShark = await SpawnCreatureAsync(alice, new NitroxVector3(-80, -6, 440), "BoneShark");
+        WorldEntity bobSeamoth = await SpawnCreatureAsync(bob, new NitroxVector3(-80, -6, 450), "Seamoth");
+        WorldEntity aliceSeamoth = await SpawnCreatureAsync(alice, new NitroxVector3(-80, -6, 470), "Seamoth");
+
+        alice.Send(new CreatureAttackedVehicle(aliceBoneShark.Id, bobSeamoth.Id, 30, 0));
+        CreatureAttackedVehicle bite = await bob.WaitForAsync<CreatureAttackedVehicle>();
+        bite.CreatureId.Should().Be(aliceBoneShark.Id);
+        bite.VehicleId.Should().Be(bobSeamoth.Id);
+        bite.Damage.Should().Be(30);
+
+        // Bob doesn't simulate Alice's shark; Alice's own Seamoth is damaged in her game already; an unknown vehicle has
+        // no lock holder. Then a valid bite: once Bob has it, the server has handled Alice's and Bob's earlier packets.
+        bob.Send(new CreatureAttackedVehicle(aliceBoneShark.Id, aliceSeamoth.Id, 30, 0));
+        alice.Send(new CreatureAttackedVehicle(aliceBoneShark.Id, aliceSeamoth.Id, 30, 0));
+        alice.Send(new CreatureAttackedVehicle(aliceBoneShark.Id, new NitroxId(), 30, 0));
+        await Task.Delay(200);
+        alice.Send(new CreatureAttackedVehicle(aliceBoneShark.Id, bobSeamoth.Id, 31, 0));
+        (await bob.WaitForAsync<CreatureAttackedVehicle>(p => p.Damage == 31)).VehicleId.Should().Be(bobSeamoth.Id);
+        await Task.Delay(200);
+
+        alice.ReceivedOf<CreatureAttackedVehicle>().Should().BeEmpty("Bob's packet came from a game that doesn't simulate the shark");
+        bob.ReceivedOf<CreatureAttackedVehicle>().Should().HaveCount(2, "only the two bites on his own Seamoth");
+        carol.ReceivedOf<CreatureAttackedVehicle>().Should().BeEmpty("Carol holds no vehicle");
+
+        // Carol takes the Seamoth over (she gets in): the next bite is hers.
+        carol.Send(new SimulationOwnershipRequest(carol.SessionId, bobSeamoth.Id, SimulationLockType.EXCLUSIVE));
+        (await carol.WaitForAsync<SimulationOwnershipResponse>()).LockAcquired.Should().BeTrue();
+        alice.Send(new CreatureAttackedVehicle(aliceBoneShark.Id, bobSeamoth.Id, 32, 0));
+        (await carol.WaitForAsync<CreatureAttackedVehicle>()).Damage.Should().Be(32);
+    }
+
+    /// <summary>
     ///     What a game sends for a creature it spawns (console "spawn"): the spawner gets the creature's lock.
     /// </summary>
-    private static async Task<WorldEntity> SpawnCreatureAsync(FakePlayer spawner, NitroxVector3 position)
+    private static async Task<WorldEntity> SpawnCreatureAsync(FakePlayer spawner, NitroxVector3 position, string techType = "Stalker")
     {
         WorldEntity creature = new(new NitroxTransform(position, NitroxQuaternion.Identity, NitroxVector3.One), 0, "creature-class-id", false, new NitroxId(),
-                                   new NitroxTechType("Stalker"), null, null, []);
+                                   new NitroxTechType(techType), null, null, []);
         spawner.Send(new EntitySpawnedByClient(creature, false, true));
         await spawner.WaitForAsync<SimulationOwnershipChange>(change => change.Entities.Any(entity => entity.Id == creature.Id && entity.SessionId == spawner.SessionId));
         return creature;
