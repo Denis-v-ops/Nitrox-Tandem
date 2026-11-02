@@ -89,6 +89,10 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
 - **Play/test a build:** run `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe`, create or start a server, launch the
   game, then use **Multiplayer** on the main menu and join `127.0.0.1` (default port `11000`, from
   `Nitrox.Model/Constants/SubnauticaServerConstants.cs`).
+- **One game rig, take turns:** only one dual-client run can exist on this PC at a time. It uses fixed port 11000, and
+  each worktree's launch copies its own `NitroxPatcher.dll` into the shared game install. Hold the lock from before
+  launching until after `-Stop`: `tools\game-lock.ps1 -Acquire -Owner <you>` … `tools\game-lock.ps1 -Release -Owner <you>`.
+  Check who has it with `-Status`. Never restart, shut down or log off the PC, and only stop processes you started.
 - **Two clients on one PC, no clicking (Debug builds):** `tools\dual-client.ps1 -WaitForJoin` builds, runs
   `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe instantlaunch --save <SaveName> --players Alice Bob` (server for
   that save plus one game per name, each auto-joining localhost; the positional form is silently ignored), prints PASS
