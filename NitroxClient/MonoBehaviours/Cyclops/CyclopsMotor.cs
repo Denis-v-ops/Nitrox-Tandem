@@ -104,6 +104,10 @@ public partial class CyclopsMotor : GroundMotor
     public void ToggleCyclopsMotor(bool toggled)
     {
         GroundMotor groundMotor = toggled ? this : ActualMotor;
+        // Cinematics (hatches, the helm, docking, initial sync) disable the controller and enable it again when they end
+        // (PlayerCinematicController.EndCinematicMode, Player.ExitLockedMode, Player.cinematicModeActive). Enabling it here,
+        // in the middle of one, let the pawn walk during the animation and the partner see it (#2379).
+        bool controllerEnabled = Player.main.playerController.enabled;
         Player.main.playerController.SetEnabled(false);
         Player.main.groundMotor = groundMotor;
 
@@ -116,7 +120,10 @@ public partial class CyclopsMotor : GroundMotor
         // SetMotorMode sets some important variables in the motor abstract class PlayerMotor
         Player.main.playerController.SetMotorMode(Player.MotorMode.Walk);
 
-        Player.main.playerController.SetEnabled(true);
+        if (controllerEnabled)
+        {
+            Player.main.playerController.SetEnabled(true);
+        }
     }
 
     private void Setup(bool isEnabled)

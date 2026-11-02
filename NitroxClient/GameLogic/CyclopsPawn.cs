@@ -47,7 +47,8 @@ public class CyclopsPawn
             isLocalPlayer = true;
             RealObject = Player.mainObject;
             CyclopsMotor cyclopsMotor = Player.mainObject.GetComponent<CyclopsMotor>();
-            MaintainPredicate = () => cyclopsMotor.canControl && !Player.main.isPiloting;
+            // The controller is off during cinematics (hatches, leaving the helm): the game moves the player then
+            MaintainPredicate = () => cyclopsMotor.canControl && !Player.main.isPiloting && Player.main.playerController.enabled;
         }
         else if (player is RemotePlayer remotePlayer)
         {
@@ -103,6 +104,22 @@ public class CyclopsPawn
         {
             Handle.transform.localRotation = RealObject.transform.localRotation;
         }
+    }
+
+    public bool IsLocalPlayer => isLocalPlayer;
+
+    /// <summary>
+    /// The pawn's objects can be destroyed without the player leaving the cyclops first (#2372).
+    /// </summary>
+    public bool IsAlive => Handle && RealObject;
+
+    /// <summary>
+    /// While the game moves the local player itself (cinematics), the pawn follows the player, so the position broadcast
+    /// from it (<see cref="NitroxClient.MonoBehaviours.PlayerMovementBroadcaster"/>) is where the player really is.
+    /// </summary>
+    public void FollowRealObject()
+    {
+        Handle.transform.localPosition = realCyclopsTransform.InverseTransformPoint(RealObject.transform.position);
     }
 
     public void MaintainPosition()

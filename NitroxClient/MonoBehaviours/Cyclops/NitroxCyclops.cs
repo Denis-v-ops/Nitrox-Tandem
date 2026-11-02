@@ -122,9 +122,17 @@ public class NitroxCyclops : MonoBehaviour
     {
         foreach (CyclopsPawn pawn in Pawns.Values)
         {
+            if (!pawn.IsAlive)
+            {
+                continue;
+            }
             if (pawn.MaintainPredicate())
             {
                 pawn.MaintainPosition();
+            }
+            else if (pawn.IsLocalPlayer)
+            {
+                pawn.FollowRealObject();
             }
         }
     }
