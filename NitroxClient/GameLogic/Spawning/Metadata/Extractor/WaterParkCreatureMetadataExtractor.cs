@@ -7,6 +7,16 @@ public class WaterParkCreatureMetadataExtractor : EntityMetadataExtractor<WaterP
 {
     public override WaterParkCreatureMetadata Extract(WaterParkCreature entity)
     {
+        // A cuddlefish's water park state travels in its CuddlefishMetadata (an entity holds one metadata)
+        if (entity.GetComponent<CuteFish>())
+        {
+            return null;
+        }
+        return ExtractValues(entity);
+    }
+
+    public static WaterParkCreatureMetadata ExtractValues(WaterParkCreature entity)
+    {
         // We don't need to save metadata for fishes with default values
         if (entity.age == -1)
         {

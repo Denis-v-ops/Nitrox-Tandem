@@ -101,6 +101,32 @@ public class WorldServiceSaveLoadTest
     }
 
     [TestMethod]
+    public void CuddlefishStateSurvivesSaveAndLoad()
+    {
+        // COOP_FEATURES_SPEC P1: follow/stay, the farewell and the water park state (age) of a released cuddlefish, which is a
+        // cell entity (Items.Dropped: level Medium), and one hatched in a tank (a global root entity; the tank is left out here)
+        NitroxTechType cutefish = new("Cutefish");
+        WorldEntity staying = new(new NitroxTransform(new NitroxVector3(48, -17, 226), NitroxQuaternion.Identity, NitroxVector3.One), 1, "cutefish-class-id", false, new NitroxId(), cutefish,
+                                  new CuddlefishMetadata(false, false, new WaterParkCreatureMetadata(0.25f, 2376.07, -1, true)), null, []);
+        WorldEntity saidFarewell = new(new NitroxTransform(new NitroxVector3(-60, -10, 380), NitroxQuaternion.Identity, NitroxVector3.One), 1, "cutefish-class-id", false, new NitroxId(), cutefish,
+                                       new CuddlefishMetadata(false, true, null), null, []);
+        GlobalRootEntity inTank = new(new NitroxTransform(new NitroxVector3(60, -28, 207), NitroxQuaternion.Identity, new NitroxVector3(0.4f, 0.4f, 0.4f)), 1, "cutefish-class-id", true, new NitroxId(), cutefish,
+                                      new CuddlefishMetadata(true, false, new WaterParkCreatureMetadata(0, 2376.07, -1, true)), null, []);
+
+        EntityRegistry loaded = SaveLoadRoundTrip.AssertSurvivesSaveAndLoad(staying, saidFarewell, inTank);
+
+        loaded.TryGetEntityById(staying.Id, out WorldEntity loadedStaying).Should().BeTrue();
+        CuddlefishMetadata metadata = loadedStaying.Metadata.Should().BeOfType<CuddlefishMetadata>().Subject;
+        metadata.FollowingPlayer.Should().BeFalse();
+        metadata.GoodbyePlayed.Should().BeFalse();
+        metadata.WaterParkCreature.Age.Should().Be(0.25f);
+        metadata.WaterParkCreature.BornInside.Should().BeTrue();
+        ((CuddlefishMetadata)loaded.GetEntityById<WorldEntity>(saidFarewell.Id).Value.Metadata).GoodbyePlayed.Should().BeTrue();
+        ((CuddlefishMetadata)loaded.GetEntityById<WorldEntity>(saidFarewell.Id).Value.Metadata).WaterParkCreature.Should().BeNull();
+        ((CuddlefishMetadata)loaded.GetEntityById<GlobalRootEntity>(inTank.Id).Value.Metadata).FollowingPlayer.Should().BeTrue();
+    }
+
+    [TestMethod]
     public void DestroyedCyclopsIsNotSaved()
     {
         // WorldEntityManager.GetPersistentGlobalRootEntities skips Cyclops wrecks on purpose.
