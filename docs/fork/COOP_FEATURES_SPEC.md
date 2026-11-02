@@ -57,7 +57,7 @@ freezing the world while one player is away.
 | **G4** | Aurora drive core gate | M | **Early–mid** | G0 |
 | **G1** | Gun gate | S | Late | G0, S3 (merged) |
 | **G2** | Rocket gate: launch together | S–M | End | G0 |
-| **G3** | Sea Emperor, hatching and cure gates + offline-cure fix | L | Late | G0 |
+| **G3** | Sea Emperor, hatching and cure gates (offline-cure fix done: FIX_SPEC S12) | L | Late | G0 |
 | **T1** | Rescue window | L | Early | — |
 | **P2** | Containment eggs survive (#2538) + aquarium check | M | Mid | — |
 | **P1** | Cuddlefish follows and plays with both | M | Mid | P2 helps |
@@ -177,14 +177,11 @@ Three beats. Size L in total.
 - **3c, the cure:**
   - `EnzymeBall.OnHandClick` (`game:` 85-108): both click a ball, then both cures start together.
   - Nitrox has no `EnzymeBall` or `DropEnzymes` code today.
-  - **Includes a bug fix: the partner offline at cure time stays infected.**
-    - Today the partner is cured remotely and instantly, with no cinematic (`game:StoryGoalCustomEventHandler.cs:171-174`),
-      and their cure balls stop working (`game:EnzymeBall.cs:53-59,87`).
-    - A partner who was **offline** gets their infection restored from saved stats on rejoin
-      (`PlayerInitialSyncProcessor.cs:118`), while the balls stay dead. So they're likely **infected forever (H, from the
-      code path)**.
-    - Fix: base the cured state on the story goal for both players, and restore it on join.
-    - With G0's solo lock in place, the cure can't happen while one player is offline, but the fix still belongs here.
+  - **The offline-partner part is already fixed** (FIX_SPEC S12, 2026-11-02): the server now applies the completed
+    infection goals on join (`InfectionStory`).
+    - What remains for G3: today an online partner is cured remotely and instantly, with no cinematic
+      (`game:StoryGoalCustomEventHandler.cs:171-174`), and their cure balls stop working (`game:EnzymeBall.cs:53-59,87`).
+    - The gate gives both players their own cure moment.
   - Each game spawns its own cure ball (`DropEnzymes.SpawnCureBallAsync`). Whether the partner even sees one is (H).
 - **Tests:**
   - L2: the gate flows.
@@ -520,10 +517,9 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
 
 ## 10. Bugs found during this research (tracked in FIX_SPEC)
 
-- **The partner offline at cure time may stay infected forever** (G3 fix, H).
+- **The partner offline at cure time stayed infected forever:** fixed (FIX_SPEC S12).
 - **#2538:** probable cause found (P2).
-- **Players rejoin at an unrelated position after a server restart.** Seen independently by two fix workers (S1, S7). It
-  may be the rig closing games abruptly, or a real position-save bug. To verify.
+- **Players rejoining at an unrelated position after a restart:** a test-rig artifact, not a game bug (FIX_SPEC S11).
 - **Benches:** walking animations may fight the sitting pose (R1b).
 
 ## 11. Definition of done (per feature)

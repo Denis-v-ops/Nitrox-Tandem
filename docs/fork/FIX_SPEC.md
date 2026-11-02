@@ -590,6 +590,60 @@ the description is empty):
 
 ---
 
+## S11: Players rejoin at an unrelated position after a restart: no game bug, a test-rig artifact
+
+**Reported by:** the S1 and S7 workers, independently. After restarts in dual-client runs, players rejoined at random
+near-surface spots (Alice at (-146, -3, 56) and (40, -4, -48), Bob at (132, -5, -88)).
+
+**Findings** (2026-11-02):
+- **The server's position path is correct.** `PlayerMovement` → `Player.Position` → `PersistedPlayerData.SpawnPosition`
+  → `InitialPlayerSync.PlayerSpawnData`.
+  - L2 `PlayerPositionPersistenceTest`: the last movement survives a save and restart and comes back on rejoin.
+  - L3 `S11-QuitKeepsPosition.ps1`: quitting to the main menu doesn't change the stored position or sub. Tested both
+    swimming and inside the escape pod. **PASS, 6 checks.**
+- **Cause: culture-dependent number formatting in scenario scripts.**
+  - On this PC (German culture), PowerShell's `-f` writes -53.74 as `-53,74`.
+  - The dev bridge parsed that with `InvariantCulture`'s default styles, which allow thousands separators, so the player
+    was teleported to -53 *quadrillion*.
+  - The game then put the player at a random safe spot near the surface.
+  - Reproduced by sampling the client and server position after such a teleport: the game jumped from
+    (-5.4e16, -6.1e16, 378783) to (-51.0, 3.2, 43.8), and the server faithfully stored that.
+  - The reported positions match that pattern (near the surface, all different).
+
+**Fix (tooling):**
+- The bridge parses numbers with `NumberStyles.Float` (`BridgeCommands.ParseFloat`, `BridgeReflection.ConvertArg`), so
+  a comma-formatted number now fails loudly.
+- `ScenarioHelpers.ps1` switches scripts to invariant number formatting.
+- Earlier scenario results that involved computed teleports (some S2 steps use raw `-f`) may have run at the wrong
+  spot. Re-check them in the next suite run.
+
+## S12: A partner offline at cure time stays infected forever
+
+**Cause** (confirmed in game code and an L2 test):
+- The game changes infection only through story goals (`game:StoryGoalCustomEventHandler.cs:155-174`):
+  - `Infection_Progress1`–`4` raise an existing infection to 0.25 / 0.5 / 0.75 / 1 (`InfectedMixin.IncreaseInfectedAmount`
+    only raises a value above 0);
+  - `Infection_Progress5`, the cure, removes it.
+- Goals run only on the games that are online. A partner who was offline keeps their stale stats, which
+  `PlayerInitialSyncProcessor.cs:118` restores on rejoin.
+- Late joiners get completed goals without their listeners, so nothing ever cures them. The same gap applies to
+  progress steps 1–4 missed while offline.
+
+**Fix:**
+- New `Nitrox.Server.Subnautica/Models/GameLogic/InfectionStory.cs` applies the game's own rules to the stored infection,
+  based on the world's completed goals.
+- `JoiningManager.SendInitialSyncAsync` runs it before building the join packet, and logs when it changes something.
+
+**Verified:**
+- L1 `InfectionStoryTest` (6 tests).
+- L2 `OfflineInfectionTest`: Bob is infected (1.0) and offline, Alice completes `Infection_Progress5`, restart, Bob
+  rejoins with infection 0. **Negative control:** without the `JoiningManager` change, the test fails with 1.0.
+
+**Not verified in game:** the cure cinematic itself. The game-side cure for both players at once is planned in
+COOP_FEATURES_SPEC G3 (with the solo lock, the cure won't happen while one player is offline anyway).
+
+---
+
 ## After the top 10 (Tier 1, in rough order)
 
 | Issue | What | Notes from investigation |
@@ -634,13 +688,8 @@ the description is empty):
   (eggs vanish in containment). For #2538, a probable cause was found in code: the egg is destroyed on the game of the
   player who doesn't hold the tank's lock. See COOP_FEATURES_SPEC P2.
 - #2800 birds doubling per restart.
-- **New (2026-11-02): players rejoin at an unrelated position after a server restart.** The S1 and S7 workers saw this
-  independently in dual-client runs (e.g. Alice at (-146, -3, 56), Bob back at the escape-pod spawn). It may be the rig
-  stopping games abruptly before the last position reaches the server, or a real position-save bug. Check with an L2
-  test (send `PlayerMovement`, save, restart, rejoin, compare) before any in-game run.
-- **New (2026-11-02): a partner who is offline when the other player takes the cure may stay infected forever** (code
-  path, hypothesis). The cure is applied remotely through the shared story goal, but on rejoin the infection is restored
-  from saved stats while the cure balls stay dead. Fix planned in COOP_FEATURES_SPEC G3.
+- Players rejoining at an unrelated position: **resolved, a test-rig artifact** (see S11).
+- A partner offline at cure time staying infected: **fixed** (see S12).
 
 See ISSUE_TRIAGE.md for the full verify list.
 
@@ -677,3 +726,5 @@ See ISSUE_TRIAGE.md for the full verify list.
 | 2026-11-02 | S6 | Branch `fix/s6-swimming`. **Code:** `Player_SetCurrentSub_Patch` broadcasts from a Postfix, only when `currentSub` really changed. New `EnterExitHelper_Enter_Patch` forces the sub when a hatch entry didn't set it; when `Enter` runs during a cinematic it waits for the cinematic to end instead of skipping (IL: `PlayerCinematicController.OnPlayerCinematicModeEnd` sends the end message *before* `EndCinematicMode` when an end transform is used, so "skip while `cinematicModeActive`" would skip exactly that case). `SubRoot_OnPlayerExited_Patch` logs every non-base exit (distance to origin, cinematic, vehicle, stack trace, debug level). `PlayerTeleported` carries `InPrecursor` (warp: the target's, `back`: the stored one, `tp`: false), the client applies it after `OnPlayerPositionCheat`; server `Player.Teleport` updates `InPrecursor` and stores the origin's `SubRootId`/`InPrecursor` for `back` (it stored the *destination's* sub). `PlayerPositionInitialSyncProcessor` sets `InPrecursor` again after the world loaded; `PrecursorTracker` sends `InPrecursor` and `DisplaySurfaceWater` once at start. `CyclopsTriggerFilter` + Prefixes on `PrecursorDoorMotorModeSetter`, `PrecursorMoonPoolTrigger` (enter/exit), `DisableWaterRenderingVolume`, `RoomLinks`, `PlayerSoundTrigger` (enter/exit): skip colliders inside a Cyclops that aren't the local player's own (for the door setter this also skips the exosuit branch, only relevant for an exosuit docked in a Cyclops). `CyclopsPawn` drive-by: pawn layer index 19 instead of `1 << (1 << 19)` = layer 1 (TransparentFX). Dev bridge: `find:<Type>#<GameObject name>` targets. **Asset facts (read in game):** the Cyclops `EntranceHatch` calls `EnterExitHelper.CinematicEnter` from `onCinematicStart` (forced, so `CanChangeSub` can't reject a hatch entry); `InternalDiveHatch` calls `CinematicExit` from `onCinematicEnd`. `SubRoot.IsUnderwater` is always false for a Cyclops (IL), so swimming inside one needs `currentSub == null`. **Which root cause fires:** (1) *Cyclops, `currentSub` lost:* not reproduced. 50 hatch cycles (45 hatch, 5 Seamoth dock/undock) with Bob inside and the sub moving: 0 problems, 51 exit traces all from `EnterExitHelper.Exit` (46) or `OnUndockingComplete` (5), 0 heal warnings. #2712's own estimate is 1 in 25 entries, so the hatch path is unlikely to be the cause on its own; the exit logging is there to catch it in the playthrough. (2) *Triggers through the Cyclops parenting:* **confirmed** for Cyclops child colliders without their own PrefabIdentifier (the docking bay's): fed to the QEP moon pool trigger and a ForceWalk door trigger in Alice's game, they gave her the moon pool's water plane and `precursorOutOfWater` true while she stood in the Cyclops. Not via a remote body (it resolves to its own entity root), contrary to the spec's guess. (3) *Warp into a dry precursor room:* **confirmed** (`warp Bob Alice`, Alice behind the PCF main door: Bob Dive mode, underwater, in the air). (4) *#2306 rejoin:* **not reproduced** on coop (rejoin inside the PCF moon pool volume and behind the main door: both walk), so the restore-after-load and tracker changes are unproven defensive fixes. | `dotnet build` (only NU190x/DIMA001 warnings), `dotnet test` 289 pass, 14 skipped (+3 L1 `PlayerTeleportTest`, +1 L2 `PrecursorWarpTest`; both fail with the server half reverted). **L3 in game (1 PASS each, merged build):** `S6-InteriorStateHolds` (50 cycles, 14 checks), `S6-PrecursorRejoin` (30 checks: walk in, warp, `/back` + `/warp`, both relog, Cyclops colliders on precursor triggers, pawn on Player layer and grounded). **Negative controls (client fixes reverted, server kept):** `S6-PrecursorRejoin` FAILS at "after the warp" and "after /warp" (Bob Dive, underwater), relog still passes; Cyclops part FAILS 3 checks (docking bay collider → water plane + `precursorOutOfWater` true); with the fix restored the Cyclops part PASSES again (15 checks, `-CyclopsOnly`). Interior: no negative control possible (no repro). All patches applied without errors (no Harmony/patch errors in the client logs of these runs). **Not verified:** a Cyclops simulated by the *other* player while entering (Alice spawned it, so she held its lock in every cycle; the network-driven case is the most plausible untested path for cause 1), the `EnterExitHelper` heal (never fired), real walking through triggers (moves use `SetPosition` + the trigger's own `OnTriggerEnter/Exit`; `SetPosition` alone fires no triggers), the hull touching a trigger by physics, rejoin inside a Cyclops, `RoomLinks`/`PlayerSoundTrigger`/`DisableWaterRenderingVolume` effects, real pawn walking (only grounded checked). |
 | 2026-11-02 | S4 | No code change. L3 `S4-CreatureDeathSyncs.ps1`: Peeper and Stalker spawned by Alice (she holds the lock), killed by Bob with `LiveMixin.TakeDamage(10000)` (no-damage cheat off for that call: `DamageSystem.CalculateDamage` zeroes all damage, creatures included, while it's on); acid mushroom (`destroyOnDeath` false, `broadcastKillOnDeath` true, so this is #2867's path) damaged to death by Bob; Alice killed with `Player.main.liveMixin.Kill()`. | **PASS, 1 run, 23 checks** (merged build, `-NoLaunch` on the S6 world): corpses (`IsAlive` false) in both games and still dead 5 s later, server entity gone for both creatures; mushroom gone in both games and on the server; Alice's PlayerEntity still on the server while dead and after respawn, Bob has her body within 5 m of her respawn point. Not covered: knife/Prawn-drill hits (damage called directly), heat kills, respawners. |
 | 2026-11-02 | S9 | No code change. L3 `S9-FreshWorldSpawnsInPod.ps1` (new save `s9-fresh`); `ScenarioHelpers` gained `Get-LogMarks`/`Get-LogTextSince` (only the log text written during the run). | **PASS, 1 run, 19 checks:** both players have `currentEscapePod` and `Player.escapePod` true, 2.1 m from the pod, right after joining and 10 s later; the server has 1 pod; no `OptionalEmptyException` or "Game object required from id" in the run's part of `game[Alice/Bob]`, `Player-Alice/Bob.log` and the server log. |
+| 2026-11-02 | S11 | Not a game bug. Cause: culture-formatted numbers (`-53,74`) in scenario scripts, accepted by the dev bridge as thousands-grouped, teleported players out of the world and the game reset them to random surface spots. Bridge now parses with `NumberStyles.Float`; `ScenarioHelpers.ps1` sets invariant culture. New L2 `PlayerPositionPersistenceTest`, L3 `S11-QuitKeepsPosition.ps1`. | L2 pass. L3 PASS (6 checks, 1 run after the fix); before the fix, the same run stored Alice ~570 m away and a sampling run showed the out-of-world teleport and reset. |
+| 2026-11-02 | S12 | `InfectionStory.Reconcile` applies the game's infection rules for completed `Infection_Progress1-5` goals in `JoiningManager.SendInitialSyncAsync`. | L1 `InfectionStoryTest` (6), L2 `OfflineInfectionTest` pass; negative control (fix removed) fails with infection 1.0. Not run in game. |
