@@ -224,7 +224,8 @@ internal sealed class BatchEntitySpawner(
     /// Spawns the regular (can be children of PrefabPlaceholdersGroup) which are always the same thus context independent.
     /// </summary>
     /// <inheritdoc cref="CreateEntityWithChildrenAsync" />
-    private async Task<List<Entity>> SpawnEntitiesStaticallyAsync(EntitySpawnPoint entitySpawnPoint, DeterministicGenerator deterministicBatchGenerator, WorldEntity? parentEntity = null)
+    /// <param name="placeholderParent">See <see cref="PlaceholderTransforms.SetParent" /></param>
+    private async Task<List<Entity>> SpawnEntitiesStaticallyAsync(EntitySpawnPoint entitySpawnPoint, DeterministicGenerator deterministicBatchGenerator, WorldEntity? parentEntity = null, NitroxTransform? placeholderParent = null)
     {
         if (await worldEntityFactory.FindAsync(entitySpawnPoint.ClassId) is { } uweWorldEntity)
         {
@@ -236,14 +237,16 @@ internal sealed class BatchEntitySpawner(
                                             uweWorldEntity.CellLevel,
                                             entitySpawnPoint.Scale,
                                             deterministicBatchGenerator,
-                                            parentEntity);
+                                            parentEntity,
+                                            false,
+                                            placeholderParent);
         }
 
         return [];
     }
 
     /// <returns>The first entity is a <see cref="WorldEntity"/> and the following are its children</returns>
-    private async Task<List<Entity>> CreateEntityWithChildrenAsync(EntitySpawnPoint entitySpawnPoint, string classId, NitroxTechType techType, bool prefabZUp, int cellLevel, NitroxVector3 localScale, DeterministicGenerator deterministicBatchGenerator, Entity? parentEntity = null, bool randomPosition = false)
+    private async Task<List<Entity>> CreateEntityWithChildrenAsync(EntitySpawnPoint entitySpawnPoint, string classId, NitroxTechType techType, bool prefabZUp, int cellLevel, NitroxVector3 localScale, DeterministicGenerator deterministicBatchGenerator, Entity? parentEntity = null, bool randomPosition = false, NitroxTransform? placeholderParent = null)
     {
         WorldEntity spawnedEntity;
         NitroxVector3 position = entitySpawnPoint.LocalPosition;
@@ -281,6 +284,11 @@ internal sealed class BatchEntitySpawner(
                                             true,
                                             deterministicBatchGenerator.NextId(),
                                             parentEntity);
+            // Before its own children are spawned, so their positions are right too
+            if (placeholderParent != null && parentEntity is WorldEntity parentWorldEntity)
+            {
+                PlaceholderTransforms.SetParent(spawnedEntity.Transform, parentWorldEntity.Transform, placeholderParent);
+            }
         }
 
         // See EntitySlotsPlaceholder.Spawn
@@ -406,7 +414,9 @@ internal sealed class BatchEntitySpawner(
                 }
 
                 EntitySpawnPoint esp = new(entity.AbsoluteEntityCell, prefabAsset.Transform.LocalPosition, prefabAsset.Transform.LocalRotation, prefabAsset.Transform.LocalScale, prefabClassId);
-                WorldEntity spawnedEntity = (WorldEntity)(await SpawnEntitiesStaticallyAsync(esp, deterministicBatchGenerator, entity)).First();
+                // The game spawns it under the placeholder's parent, which isn't always the group's root
+                NitroxTransform? placeholderParent = groupAsset.PlaceholderParentTransforms?.ElementAtOrDefault(i);
+                WorldEntity spawnedEntity = (WorldEntity)(await SpawnEntitiesStaticallyAsync(esp, deterministicBatchGenerator, entity, placeholderParent)).First();
                 if (prefabAsset is PrefabPlaceholdersGroupAsset)
                 {
                     spawnedEntity = new PlaceholderGroupWorldEntity(spawnedEntity, i);
@@ -421,6 +431,31 @@ internal sealed class BatchEntitySpawner(
         }
 
         return (true, entity);
+    }
+
+    /// <summary>
+    ///     Links the transform of an entity spawned for one of a group's placeholders (<see cref="PrefabPlaceholderEntity" />
+    ///     or nested <see cref="PlaceholderGroupWorldEntity" />) to its group the way the batch spawner does, so its world
+    ///     position (and cell) is right after loading a save too. Other entities are linked directly.
+    /// </summary>
+    public async Task LinkToParentTransformAsync(WorldEntity child, WorldEntity parent)
+    {
+        int? componentIndex = child switch
+        {
+            PrefabPlaceholderEntity placeholderEntity => placeholderEntity.ComponentIndex,
+            PlaceholderGroupWorldEntity groupEntity => groupEntity.ComponentIndex,
+            _ => null
+        };
+        NitroxTransform? placeholderParent = null;
+        if (componentIndex is { } index && parent is PlaceholderGroupWorldEntity && parent.ClassId != null)
+        {
+            await prefabPlaceholderGroupsResource.WaitUntilLoadedAsync();
+            if (prefabPlaceholderGroupsResource.GroupsByClassId.TryGetValue(parent.ClassId, out PrefabPlaceholdersGroupAsset groupAsset))
+            {
+                placeholderParent = groupAsset.PlaceholderParentTransforms?.ElementAtOrDefault(index);
+            }
+        }
+        PlaceholderTransforms.SetParent(child.Transform, parent.Transform, placeholderParent);
     }
 
     private async Task<WorldEntity?> SpawnPrefabAssetInEntitySlotAsync(NitroxTransform transform, NitroxEntitySlot entitySlot, DeterministicGenerator deterministicBatchGenerator, AbsoluteEntityCell cell, Entity parentEntity)
