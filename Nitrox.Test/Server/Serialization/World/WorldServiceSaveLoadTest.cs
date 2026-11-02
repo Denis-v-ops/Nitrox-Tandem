@@ -101,6 +101,64 @@ public class WorldServiceSaveLoadTest
     }
 
     [TestMethod]
+    public void BasePowerSurvivesSaveAndLoad()
+    {
+        // COOP_FEATURES_SPEC B3 (#1811): the charge of each power source, as the base's lock holder sends it (BasePowerSync)
+        BuildEntity baseEntity = CreateBase();
+        InteriorPieceEntity bioReactor = AddInteriorPiece(baseEntity, "BaseBioReactor", new PowerSourceMetadata(123.25f));
+        InteriorPieceEntity emptyReactor = AddInteriorPiece(baseEntity, "BaseNuclearReactor", new PowerSourceMetadata(0f));
+        InteriorPieceEntity oldReactor = AddInteriorPiece(baseEntity, "BaseNuclearReactor", null);
+        ModuleEntity solarPanel = AddModule(baseEntity, "SolarPanel", new NitroxVector3(0, 3, 0));
+        solarPanel.Metadata = new PowerSourceMetadata(41.5f);
+        ModuleEntity thermalPlant = AddModule(baseEntity, "ThermalPlant", new NitroxVector3(5, 0, 0));
+        thermalPlant.Metadata = new ThermalPlantMetadata(71f, 12.5f);
+        ModuleEntity oldThermalPlant = AddModule(baseEntity, "ThermalPlant", new NitroxVector3(-5, 0, 0));
+        oldThermalPlant.Metadata = new ThermalPlantMetadata(71f, null);
+
+        EntityRegistry loaded = SaveLoadRoundTrip.AssertSurvivesSaveAndLoad(baseEntity);
+
+        loaded.TryGetEntityById(bioReactor.Id, out InteriorPieceEntity loadedBioReactor).Should().BeTrue();
+        loadedBioReactor.Metadata.Should().BeOfType<PowerSourceMetadata>().Which.Power.Should().Be(123.25f);
+        loaded.TryGetEntityById(emptyReactor.Id, out InteriorPieceEntity loadedEmpty).Should().BeTrue();
+        ((PowerSourceMetadata)loadedEmpty.Metadata).Power.Should().Be(0f);
+        loaded.TryGetEntityById(oldReactor.Id, out InteriorPieceEntity loadedOld).Should().BeTrue();
+        loadedOld.Metadata.Should().BeNull();
+        loaded.TryGetEntityById(thermalPlant.Id, out ModuleEntity loadedThermal).Should().BeTrue();
+        loadedThermal.Metadata.Should().BeOfType<ThermalPlantMetadata>().Which.Power.Should().Be(12.5f);
+        loaded.TryGetEntityById(oldThermalPlant.Id, out ModuleEntity loadedOldThermal).Should().BeTrue();
+        ((ThermalPlantMetadata)loadedOldThermal.Metadata).Power.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void ThermalPlantSavedBeforeB3_LoadsWithoutPower()
+    {
+        // A save written before B3 has no "Power" in a thermal plant's metadata: it must load (as null, i.e. "fill up when
+        // spawned", BasePowerSync.RestoredPower) and keep its temperature.
+        ModuleEntity thermalPlant = new(1, true, new NitroxTransform(new NitroxVector3(5, -30, 5), NitroxQuaternion.Identity, NitroxVector3.One), GlobalRootEntity.GLOBAL_ROOT_LEVEL, "thermal-class-id", true,
+                                        new NitroxId(), new NitroxTechType("ThermalPlant"), new ThermalPlantMetadata(64.5f, 99f), null, []);
+        string file = Path.Combine(Path.GetTempPath(), $"NitroxTest_{Guid.NewGuid():N}.json");
+        try
+        {
+            ServerJsonSerializer serializer = new(new SaveLoadRoundTrip.ThrowOnErrorLogger<ServerJsonSerializer>());
+            serializer.Serialize(file, new List<Entity> { thermalPlant });
+            string json = File.ReadAllText(file);
+            json.Should().Contain("\"Power\":99");
+            File.WriteAllText(file, json.Replace(",\"Power\":99.0", "").Replace(",\"Power\":99", ""));
+            File.ReadAllText(file).Should().NotContain("Power", "this is what an old save looks like");
+
+            List<Entity> loaded = serializer.Deserialize<List<Entity>>(file);
+
+            ThermalPlantMetadata metadata = loaded.Should().ContainSingle().Which.Metadata.Should().BeOfType<ThermalPlantMetadata>().Subject;
+            metadata.Temperature.Should().Be(64.5f);
+            metadata.Power.Should().BeNull();
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [TestMethod]
     public void DestroyedCyclopsIsNotSaved()
     {
         // WorldEntityManager.GetPersistentGlobalRootEntities skips Cyclops wrecks on purpose.
@@ -155,6 +213,14 @@ public class WorldServiceSaveLoadTest
                                   new NitroxTechType(techType), null, baseEntity.Id, []);
         baseEntity.ChildEntities.Add(module);
         return module;
+    }
+
+    private static InteriorPieceEntity AddInteriorPiece(BuildEntity baseEntity, string techType, EntityMetadata metadata)
+    {
+        InteriorPieceEntity piece = new(new NitroxBaseFace(new NitroxInt3(1, 0, 1), 4), new NitroxTransform(NitroxVector3.Zero, NitroxQuaternion.Identity, NitroxVector3.One), GlobalRootEntity.GLOBAL_ROOT_LEVEL,
+                                        $"{techType}-class-id", true, new NitroxId(), new NitroxTechType(techType), metadata, baseEntity.Id, []);
+        baseEntity.ChildEntities.Add(piece);
+        return piece;
     }
 
     private static void AddEquipment(ModuleEntity owner, string slot, string techType, float charge)

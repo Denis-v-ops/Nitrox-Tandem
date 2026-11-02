@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using Nitrox.Model.DataStructures;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using NitroxClient.GameLogic;
 
 namespace NitroxPatcher.Patches.Dynamic;
@@ -26,7 +27,8 @@ public sealed partial class ThermalPlant_QueryTemperature_Patch : NitroxPatch, I
         // Mathf.InverseLerp(25, 100, temperature), so sub-degree changes don't matter.
         if (Math.Floor(__instance.temperature) > Math.Floor(__state) && __instance.TryGetNitroxId(out NitroxId entityId))
         {
-            Resolve<Entities>().EntityMetadataChanged(__instance, entityId);
+            // Temperature only: every game near the plant sends this, while its power comes from the lock holder (BasePowerSync)
+            Resolve<Entities>().BroadcastMetadataUpdate(entityId, new ThermalPlantMetadata(__instance.temperature, null));
         }
     }
 }

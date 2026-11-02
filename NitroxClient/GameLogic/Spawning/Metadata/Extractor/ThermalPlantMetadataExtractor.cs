@@ -7,6 +7,6 @@ public class ThermalPlantMetadataExtractor : EntityMetadataExtractor<ThermalPlan
 {
     public override ThermalPlantMetadata Extract(ThermalPlant thermalPlant)
     {
-        return new(thermalPlant.temperature);
+        return new(thermalPlant.temperature, thermalPlant.powerSource ? thermalPlant.powerSource.power : null);
     }
 }

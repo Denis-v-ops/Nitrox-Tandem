@@ -186,6 +186,12 @@ function Test-MetadataEqual {
     param([string]$A, [string]$B)
     if ($A -eq $B) { return $true }
     $number = '-?\d+(\.\d+)?(E[-+]?\d+)?'
+    # Base power (COOP_FEATURES_SPEC B3) changes all the time and is only sent now and then (BasePowerSync: every 5 s or
+    # 1 % of the maximum), so a live value is legitimately a little off. Scenarios check it with their own tolerance
+    # (B3-BasePowerPersists.ps1); here only the rest of the metadata is compared.
+    $A = $A -replace "`"Power`":($number|null)", '"Power":#'
+    $B = $B -replace "`"Power`":($number|null)", '"Power":#'
+    if ($A -eq $B) { return $true }
     if (($A -replace $number, '#') -ne ($B -replace $number, '#')) { return $false }
     $numbersA = [regex]::Matches($A, $number)
     $numbersB = [regex]::Matches($B, $number)
