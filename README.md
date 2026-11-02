@@ -1,69 +1,115 @@
-<p align="center">
-    <img src="https://i.imgur.com/ofnNX5z.gif" alt="Nitrox Subnautica Multiplayer Mod" />
-</p>
+# Nitrox Tandem
 
-# Subnautica Nitrox
-An open-source, multiplayer modification for the game <a href="https://unknownworlds.com/subnautica/">Subnautica</a>.
+**Subnautica co-op, from the first dive to the rocket — together.**
+
+Nitrox Tandem is an unofficial fork of [Nitrox](https://github.com/SubnauticaNitrox/Nitrox), the open-source multiplayer
+mod for [Subnautica](https://unknownworlds.com/subnautica/). It focuses on one thing: two players playing through the
+**whole story** without desyncs that lose progress, while keeping Subnautica's atmosphere.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/SubnauticaNitrox/Nitrox)](https://github.com/SubnauticaNitrox/Nitrox/releases)
-[![Translation status](https://hosted.weblate.org/widgets/subnauticanitrox/-/svg-badge.svg)](https://hosted.weblate.org/engage/subnauticanitrox/)
-[![Discord](https://img.shields.io/discord/525437013403631617?logo=discord&logoColor=white)](https://discord.gg/E8B4X9s)
-[![Build](https://github.com/SubnauticaNitrox/Nitrox/actions/workflows/buildingMaster.yml/badge.svg)](https://github.com/SubnauticaNitrox/Nitrox/actions/workflows/buildingMaster.yml)
+[![Fork of Nitrox](https://img.shields.io/badge/fork%20of-SubnauticaNitrox%2FNitrox-informational)](https://github.com/SubnauticaNitrox/Nitrox)
 
-> [!NOTE]
-> **This is a personal fork** ([Denis-v-ops/Nitrox](https://github.com/Denis-v-ops/Nitrox)) of [SubnauticaNitrox/Nitrox](https://github.com/SubnauticaNitrox/Nitrox), focused on making a two-player co-op story playthrough stable.
-> The `coop` branch carries our fixes; `master` mirrors upstream. Start with [AGENTS.md](AGENTS.md) (build, architecture, workflows),
-> then [docs/fork/ISSUE_TRIAGE.md](docs/fork/ISSUE_TRIAGE.md), [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md) (bugs) and
-> [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md) (new co-op features).
+> [!IMPORTANT]
+> **Unofficial.** Nitrox Tandem is not made, endorsed or supported by the Nitrox team or by Unknown Worlds.
+> Please report problems with this fork **here**
+> ([issues](https://github.com/Denis-v-ops/Nitrox-Tandem/issues)), not on the Nitrox Discord or issue tracker.
 
-## FAQ
+## What's different from official Nitrox
 
-### What is the current status?
-The mod is in the very early stages of development; however, a solid foundation has been laid for the community to iterate on.
-The following milestones have been completed:
+Nitrox Tandem is based on Nitrox `master` (1.9.0.0 in development, snapshot of 2026-11-01). Everything Nitrox does,
+Tandem does too. On top of that:
 
-* Client / Server Communication
-* Player movement
-* Picking up / Dropping item syncing
-* Long-range world syncing
-* Base building
-* Furniture building
-* Most furniture interactions (containers / medkit fabricators / chargers / etc)
-* Power management
-* Seamoth & Exosuit Syncing
-* Cyclops syncing
-* Chat system
-* New HUD for remote players
-* Basic player animations
-* Integration with <a href="https://github.com/pardeike/Harmony">Harmony</a>
-* Friendly Launcher
-* Published on the <a href="https://nitrox.rux.gg">Nitrox website</a>
+### Bug fixes for co-op story play
 
-### How can I play this mod?
-Please do keep in mind that this mod is still in progressional development.
+Each fix is verified automatically: unit tests, headless server tests, and/or scripted two-client in-game scenarios.
+The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md).
 
-You can download the latest release of the mod on the <a href="https://nitrox.rux.gg">Nitrox website</a>. 
-For read-only Linux distros like SteamOS <a href="https://github.com/SubnauticaNitrox/Linux-Setup-Script">see this install script</a>.
+| Area | What's fixed | Upstream issue / PR | Verified |
+|---|---|---|---|
+| **Story** | When one player disables the alien gun, the partner's game now knows too, so the rocket can launch without relogging | [#2640](https://github.com/SubnauticaNitrox/Nitrox/issues/2640) | In game, plus a negative control (the test fails without the fix) |
+| **Story** | A partner who was offline when the other took the cure no longer stays infected forever | new | Headless server test + negative control |
+| **Cyclops** | Damage points, leaks and fires are saved, shared and survive restarts, so no more phantom explosions or leaks that come back | [#2220](https://github.com/SubnauticaNitrox/Nitrox/issues/2220), [#2230](https://github.com/SubnauticaNitrox/Nitrox/issues/2230) (PR [#2881](https://github.com/SubnauticaNitrox/Nitrox/pull/2881)) | In game |
+| **Bases** | Repaired leaks stay repaired; the flood water level survives restarts | [#2769](https://github.com/SubnauticaNitrox/Nitrox/issues/2769) (PR [#2798](https://github.com/SubnauticaNitrox/Nitrox/pull/2798)), [#2808](https://github.com/SubnauticaNitrox/Nitrox/issues/2808) | In game |
+| **Bases** | Scanner room upgrades and camera drones are kept, with no more multiplying drones; charger and upgrade-slot items are safe during "resync" | [#2696](https://github.com/SubnauticaNitrox/Nitrox/issues/2696), [#2576](https://github.com/SubnauticaNitrox/Nitrox/issues/2576), [#2259](https://github.com/SubnauticaNitrox/Nitrox/issues/2259) | In game (partly) + headless |
+| **Bases** | The scanner room is shared: same resource, same blips, and broken outcrops disappear for both players | [#2410](https://github.com/SubnauticaNitrox/Nitrox/issues/2410), [#2046](https://github.com/SubnauticaNitrox/Nitrox/issues/2046), [#2151](https://github.com/SubnauticaNitrox/Nitrox/issues/2151) | In game |
+| **Items** | The water filtration machine no longer overflows, and the bioreactor no longer overfills or loses items | [#2495](https://github.com/SubnauticaNitrox/Nitrox/issues/2495), [#2494](https://github.com/SubnauticaNitrox/Nitrox/issues/2494) | In game |
+| **Items** | Items moved into lockers no longer reappear as floating "ghost" items after a restart | [#2691](https://github.com/SubnauticaNitrox/Nitrox/issues/2691) | In game + headless |
+| **Items** | Empty tools no longer come back with a free full battery | [#2668](https://github.com/SubnauticaNitrox/Nitrox/issues/2668) (PR [#2809](https://github.com/SubnauticaNitrox/Nitrox/pull/2809)) | In game + negative control |
+| **World** | Some wreck objects were placed about 1.4 km from where they belong on the server; now they're correct | new | In game + headless |
+| **Creatures** | A creature killed by the player who isn't "simulating" it now dies for both players, too | [#2510](https://github.com/SubnauticaNitrox/Nitrox/issues/2510), [#1701](https://github.com/SubnauticaNitrox/Nitrox/issues/1701) (PRs [#2902](https://github.com/SubnauticaNitrox/Nitrox/pull/2902), [#2867](https://github.com/SubnauticaNitrox/Nitrox/pull/2867) with a fix) | In game |
+| **Player** | No more "swimming" inside the Cyclops or dry alien rooms in two confirmed cases: Cyclops colliders, and warping to a partner | [#2712](https://github.com/SubnauticaNitrox/Nitrox/issues/2712) | In game + negative control |
+| **Start** | New players reliably spawn inside the escape pod | [#2898](https://github.com/SubnauticaNitrox/Nitrox/issues/2898) (PR [#2899](https://github.com/SubnauticaNitrox/Nitrox/pull/2899)) | In game |
 
-If you want to follow the development progress exactly on each pull request. Refer to the <a href="https://subnauticanitrox.github.io/Documentation/">docs</a> to set up a development environment where pushed updates will be synchronized automatically.
+**In progress:** Cyclops movement glitches, and aggressive creatures ignoring one of the players.
 
-### Problems/bugs/issues
-Due to the huge influx of new players for Subnautica the Issue tracker turned into a forum instead of its actual purpose. Please join the <a href="https://discord.gg/E8B4X9s">Nitrox Discord</a> to discuss any and all issues you have with Nitrox. From there we'll pick up on new issues to track.
+### For players
+- **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
+  snapshot are zipped to `%APPDATA%\Nitrox\reports`. Attach the zips from both PCs to an issue here.
+- **The launcher knows it's Tandem.** It shows "Nitrox Tandem" in the window title and in game, sends crash reports to
+  this repo, and never offers to "update" to official Nitrox. That would remove these fixes and can't load your
+  Tandem world.
 
-Keep in mind that your issue may already exist. Please refer to the existing issues on Discord if you want to add new information about existing issues. You can peruse the existing issues <a href="https://github.com/SubnauticaNitrox/Nitrox/issues">here on Github</a>.
+### Planned co-op features
+Designed to keep Subnautica lonely, scary and beautiful, just shared. Specified in
+[docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md):
+- **Shared story moments:** the Aurora drive core, the gun, the Sea Emperor and the cure, and the rocket launch wait
+  until both players are there. Solo play is fine, but the big beats wait for your partner.
+- **Teamwork survival:** a rescue window instead of instant death, buddy breathing (sharing air), handing items over,
+  Cyclops crew roles, and hitching a ride on the Seamoth.
+- **Finding each other:** your partner as a faint beacon-style signal, plus "danger / look / come here" pings.
+- **Cozy base life:** seeing each other sit and sleep, and a cuddlefish that follows whoever played with it last.
 
-### Translations
-We have a translation platform for those of you who speak another language to work on translating the mod into your native language. You can get started at https://hosted.weblate.org/engage/subnauticanitrox/.
+### For developers
+- An agent- and human-friendly guide to the codebase: [AGENTS.md](AGENTS.md).
+- **A dev bridge** to drive and inspect running game clients from the shell, plus a desync detector (`tools\bridge.ps1`).
+- **A one-command two-client test rig** (`tools\dual-client.ps1`), with scripted scenarios in `tools\scenarios`.
+- **Headless server tests:** a real server in-process with simulated players. Tests run in seconds; no game window.
+- Every upstream issue triaged for co-op story play: [docs/fork/ISSUE_TRIAGE.md](docs/fork/ISSUE_TRIAGE.md).
 
-You'll need to sign up to start translating to a new language, or you can suggest translations for an existing language without an account (but someone with an account will have to manually verify your suggestions). This will send an email to the address you provide. Be sure check your spam folder, as Gmail can sometimes put the emails there.
+## Compatibility — read before playing
 
+- **Everyone must run the same Nitrox Tandem build:** the server and every player. Mixing builds, or mixing Tandem
+  with official Nitrox, doesn't work.
+- **Official Nitrox can't load worlds saved with Tandem.** Tandem stores extra data (Cyclops damage and fires, base
+  flood levels, scanner rooms).
+- **Opening an existing official Nitrox world in Tandem hasn't been tested yet.** Back up first:
+  `%APPDATA%\Nitrox\saves`.
+- Game requirements are the same as Nitrox: a current Subnautica (Steam, Epic, …), not the legacy branch.
 
-### How can I contribute?
-Simply submit a pull request. Full documentation & contribution guidelines can be found on the <a href="https://subnauticanitrox.github.io/Documentation/">documentation site</a>. Feel free to join us in the <a href="https://discord.gg/E8B4X9s">Nitrox Discord channel</a>.
+## Installing
 
-### How can I donate?
-We do not accept donations to the mod.  Those wishing to give money can do so here: https://www.doctorswithoutborders.org/
+There are no packaged releases yet; for now, build it yourself.
+1. Install the [.NET SDK 10](https://dotnet.microsoft.com/download) and Subnautica.
+2. Clone and build:
+   ```bash
+   git clone https://github.com/Denis-v-ops/Nitrox-Tandem.git
+   cd Nitrox-Tandem
+   dotnet build Nitrox.Launcher -c Release -r win-x64
+   ```
+3. Start `Nitrox.Launcher/bin/Release/net10.0/win-x64/Nitrox.Launcher.exe` (the exact folder may differ, see
+   [AGENTS.md](AGENTS.md#3-build-and-test-verified-on-this-machine)). Host a server, launch the game, and join through
+   **Multiplayer** in the main menu.
 
-### Why the name 'Nitrox'?
-Nitrox is an alternative air mixture, used by scuba divers, to achieve longer bottom times. As a mod, it will provide a new dimension of gameplay to extend your enjoyment.
+The branch to use is `coop` (the default). `master` mirrors official Nitrox.
+
+## How it's developed
+
+- Nitrox Tandem is developed with heavy AI assistance ([Claude Code](https://claude.com/claude-code)).
+- Because nobody play-tests each fix by hand, every change has to pass automated checks:
+  - unit and headless server tests;
+  - scripted scenarios with two real game clients;
+  - where possible, a "negative control" showing the test fails without the fix.
+- How that works: [docs/fork/TESTING.md](docs/fork/TESTING.md).
+- Fixes that could help everyone may be offered back to upstream as separate, small pull requests. Those follow
+  Nitrox's [contribution rules](CONTRIBUTING.md), including declaring AI use.
+
+## Credits and license
+
+- **Nitrox** is the work of the [Nitrox team and contributors](https://github.com/SubnauticaNitrox/Nitrox/graphs/contributors).
+  Tandem only builds on top of it. Several fixes here are open upstream pull requests by community contributors, merged
+  early (linked above).
+- **For Nitrox itself** (installation, the official Discord, translations), see the
+  [official repository](https://github.com/SubnauticaNitrox/Nitrox) and [nitrox.rux.gg](https://nitrox.rux.gg).
+- **License:** [GNU GPL v3](LICENSE.txt), same as Nitrox.
+- **Trademarks:** Subnautica is a trademark of Unknown Worlds Entertainment. This project is not affiliated with Unknown
+  Worlds.

@@ -47,7 +47,8 @@ internal partial class CrashWindowViewModel : ViewModelBase
             Platform.MICROSOFT => "MS-Store",
             _ => "Other"
         };
-        string createGithubIssueUrl = $"https://github.com/SubnauticaNitrox/Nitrox/issues/new?assignees=&labels=Type%3A+bug%2CStatus%3A+to+verify&projects=&template=bug_report.yaml&title={HttpUtility.UrlEncode(issueTitle)}&what_happened={HttpUtility.UrlEncode(whatHappened)}&os_type={HttpUtility.UrlEncode(GetOsType())}&store_type={HttpUtility.UrlEncode(storeType)}";
+        // Crashes of this fork belong in the fork's tracker, not upstream's
+        string createGithubIssueUrl = $"{NitroxFork.ISSUES_URL}/new?template=bug_report.yaml&title={HttpUtility.UrlEncode($"[{NitroxFork.NAME}] {issueTitle}")}&what_happened={HttpUtility.UrlEncode(whatHappened)}&os_type={HttpUtility.UrlEncode(GetOsType())}&store_type={HttpUtility.UrlEncode(storeType)}";
         OpenUri(createGithubIssueUrl);
 
         static string GetOsType()

@@ -16,7 +16,7 @@ symbol name.
   - **Build**: no PR exists; implement it ourselves.
   - **Verify**: reproduce on current master first.
 - **Bites in**: when in a playthrough you'd first hit the bug (Start / Early / Mid / Late). Use it to schedule work
-  ahead of where the players are in the story.
+  ahead of where a playthrough is in the story.
 - **Evidence tags**: *confirmed* = read in Nitrox code or decompiled game IL. *hypothesis* = plausible, must be checked
   before coding. *[asset]* = a value from Unity serialized data that the IL can't show.
 - **Done when**: `dotnet build` + `dotnet test` pass, the item's automated check passes (see TESTING.md), and a line
@@ -42,11 +42,11 @@ Rank is severity × likelihood for our run. **Execution order is different, chea
 1. **Phase 0, baseline (before anything else):** S0.1 + S0.5 + S0.6 from TESTING.md. Verify the vehicle-movement
    regression #2761 is fixed on master (fix #2864 merged 2026-09-06). Set up world backups.
 2. **Phase 1, adopt batch + small builds:** S9 (#2899) → S5a (#2798) → S8 (#2809) → S4 (#2902, then #2867 with fix)
-   → S3 (small build) → S7 step 1 (ghost cell entries; pure server logic, L1-testable). The players can start the run on
+   → S3 (small build) → S7 step 1 (ghost cell entries; pure server logic, L1-testable). A playthrough can start on
    this build.
 3. **Phase 2:** S1 (#2881). This is a **one-way save-format change**, so back up the world first.
 4. **Phase 3, builds (after S0.4, the scenario runner):** S2 → S7 → S6 → S5b → S10.
-   S3 must be in before the players reach the Disable-Gun terminal. S10 is the biggest and least urgent.
+   S3 must be in before a playthrough reaches the Disable-Gun terminal. S10 is the biggest and least urgent.
 
 Merge-order facts from a trial merge of all candidate PRs on `62ef043a` (no build):
 - Everything merges cleanly except **#2881 × #2899**, which both add a constructor parameter to
@@ -683,7 +683,7 @@ COOP_FEATURES_SPEC G3 (with the solo lock, the cure won't happen while one playe
   nobody has confirmed it in game on the current build. An in-game check on 2026-11-01 got as far as both players in one
   world with the dev console. It stopped there because the game ignores synthetic mouse-look, so a Seamoth can't be
   aimed at or driven by UI automation. **Still unverified in game:** do it with the S0.4 runner (A drives a Seamoth by
-  script, B asserts its position), or ask the players to watch for it on their first session.
+  script, B asserts its position), or watch for it in the first real session.
 - Possible item or vehicle loss: #2768 (2nd Seamoth despawns 1st), #2448 (lockers vanish in Cyclops), #2538
   (eggs vanish in containment). For #2538, a probable cause was found in code: the egg is destroyed on the game of the
   player who doesn't hold the tank's lock. See COOP_FEATURES_SPEC P2.

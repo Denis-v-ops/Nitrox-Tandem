@@ -12,10 +12,12 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:services="clr-namespace:Nitrox.Launcher.Models.Services"
     xmlns:vm="clr-namespace:Nitrox.Launcher.ViewModels"
+    xmlns:core="clr-namespace:Nitrox.Model.Core;assembly=Nitrox.Model"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:designer="clr-namespace:Nitrox.Launcher.ViewModels.Designer"
     Classes.official="{Binding UsingOfficialVersion}"
-    Classes.newUpdate="{Binding NewUpdateAvailable}">
+    Classes.newUpdate="{Binding NewUpdateAvailable}"
+    Classes.fork="{x:Static core:NitroxFork.IsFork}">
     <UserControl.Styles>
         <Style Selector=":not(.official)">
             <Style Selector="^ controls|RecolorImage.updateIcon">
@@ -77,6 +79,30 @@
             <Style Selector="^ TextBlock.updateDescription">
                 <Setter Property="Text"
                         Value="Time for an update! A new version of Nitrox is now available to download. Back up your content and get the latest version to start using all the latest features and improvements." />
+            </Style>
+        </Style>
+
+        <!-- Last, so it wins over the styles above: this fork gets its updates from its own releases -->
+        <Style Selector=".fork">
+            <Style Selector="^ controls|RecolorImage.updateIcon">
+                <Setter Property="Source" Value="/Assets/Images/nitrox-icon.ico" />
+                <Setter Property="ToolTip.Tip" Value="Dive together, never alone" />
+            </Style>
+            <Style Selector="^ TextBlock.updateHeader">
+                <Setter Property="Text" Value="{x:Static core:NitroxFork.NAME}" />
+            </Style>
+            <Style Selector="^ TextBlock.updateDescription">
+                <Setter Property="Text">
+                    <MultiBinding StringFormat="{}{0}&#x0a;&#x0a;Your version: {1}&#x0a;Updates: {2}">
+                        <Binding>
+                            <Binding.Source>
+                                <x:String>You are using Nitrox Tandem, an unofficial co-op focused fork of Nitrox. Don't install official Nitrox over it: official versions don't have its fixes and can't load worlds saved with it. Back up your saves before updating.</x:String>
+                            </Binding.Source>
+                        </Binding>
+                        <Binding Path="Version" FallbackValue="." />
+                        <Binding Source="{x:Static core:NitroxFork.RELEASES_URL}" />
+                    </MultiBinding>
+                </Setter>
             </Style>
         </Style>
     </UserControl.Styles>
@@ -143,7 +169,8 @@
                                 </Button>
                             </StackPanel>
 
-                            <!-- Download Button -->
+                            <!-- Download Button (never in a fork: it installs official Nitrox) -->
+                            <Panel IsVisible="{x:Static core:NitroxFork.OffersOfficialDownload}">
                             <Button
                                 Classes="primary"
                                 Command="{Binding DownloadUpdateCommand}"
@@ -167,6 +194,7 @@
                                     Download version <Run Text="{Binding OfficialVersion, FallbackValue='.'}" />
                                 </TextBlock>
                             </Button>
+                            </Panel>
                         </StackPanel>
                     </StackPanel>
                 </Grid>

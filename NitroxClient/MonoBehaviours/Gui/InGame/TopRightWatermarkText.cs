@@ -15,7 +15,7 @@ public static class TopRightWatermarkText
 
     public static void Initialize()
     {
-        versionText = AddTextToLoadingScreen("LoadingScreenVersionText", $"\nNitrox {NitroxEnvironment.VersionInfo}");
+        versionText = AddTextToLoadingScreen("LoadingScreenVersionText", $"\n{NitroxFork.NAME} {NitroxEnvironment.VersionInfo}");
         loadingScreenWarning = AddTextToLoadingScreen("LoadingScreenWarnText", $"\n\n{Language.main.Get("Nitrox_LoadingScreenWarn")}");
     }
 

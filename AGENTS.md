@@ -5,9 +5,9 @@ together, and the workflows we use. Claude Code loads it through `CLAUDE.md`. Ot
 
 ## 1. Purpose of this fork
 
-- **Repo:** [Denis-v-ops/Nitrox](https://github.com/Denis-v-ops/Nitrox), a fork of
+- **Repo:** [Nitrox Tandem](https://github.com/Denis-v-ops/Nitrox-Tandem), a fork of
   [SubnauticaNitrox/Nitrox](https://github.com/SubnauticaNitrox/Nitrox), the Subnautica multiplayer mod (C#, Harmony, Unity/Mono).
-- **Goal:** two players (the repo owner and their partner) can play the **whole Subnautica story in co-op** without
+- **Goal:** two players can play the **whole Subnautica story in co-op** without
   desyncs that lose progress. Judge every change by that goal. Linux/macOS/VR/Docker/public-server features are out of
   scope unless they block it.
 - **What to work on:** [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md) (the top 10, in order), backed by
@@ -21,7 +21,7 @@ together, and the workflows we use. Claude Code loads it through `CLAUDE.md`. Ot
 
 | Remote | URL | Use |
 |---|---|---|
-| `origin` | `https://github.com/Denis-v-ops/Nitrox.git` | Our fork. Push here |
+| `origin` | `https://github.com/Denis-v-ops/Nitrox-Tandem.git` | Our fork. Push here |
 | `upstream` | `https://github.com/SubnauticaNitrox/Nitrox.git` | The original. Fetch only |
 
 | Branch | Purpose |
@@ -38,6 +38,10 @@ git fetch upstream
 git switch master && git merge --ff-only upstream/master && git push origin master
 git switch coop && git merge master        # resolve conflicts, build, run tests, then push
 ```
+
+The fork's name is **Nitrox Tandem**. Its identity lives in `Nitrox.Model/Core/NitroxFork.cs`: name, repo URLs, and no
+official-update prompts. The launcher title, the in-game version text, crash reports and the updates page use it.
+`README.md` belongs to the fork: on merge conflicts with upstream, keep ours and fold in anything relevant from theirs.
 
 Adopting an open upstream PR (many of our top-10 items already have one, see the spec):
 
@@ -107,7 +111,7 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
   folder|zip>` starts from a prepared world. This opens game windows, so tell the user before running it. Driving the
   windows with computer use has quirks (QWERTZ keys, no mouse-look); see TESTING.md. By hand: launcher **Options → Allow
   multiple game instances** (Steam). See [docs/fork/TESTING.md](docs/fork/TESTING.md) for the automated test plan.
-  Upstream has no CI for gameplay and the players don't do per-fix playtests, so **automated verification is your job**.
+  Upstream has no CI for gameplay and this project doesn't rely on per-fix human playtests, so **automated verification is your job**.
 - **Controlling the games from the shell (Debug builds):** the dev bridge. `tools\bridge.ps1 Alice state`,
   `... teleport x y z`, `... console item flashlight`, `... get/set/call <id|Type.main> ...`, `... use <id>`,
   `tools\bridge.ps1 server <server command>` (output returned), and `tools\bridge.ps1 diff` (desync detector: each game's
@@ -121,7 +125,7 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
 - **Logs:** Nitrox (launcher, server, client) → `%APPDATA%\Nitrox\logs`. Game →
   `%UserProfile%\AppData\LocalLow\Unknown Worlds\Subnautica\Player.log` (instant-launched games:
   `%APPDATA%\Nitrox\logs\Player-<name>.log`). Always ask for or collect both sides when
-  debugging a desync. **Bug reports** from the players (F4 or `/report <text>`) are zips in `%APPDATA%\Nitrox\reports`:
+  debugging a desync. **Bug reports** from players (F4 or `/report <text>`) are zips in `%APPDATA%\Nitrox\reports`:
   collect them from both PCs (the server's PC also has a save snapshot taken at that moment).
 - **Attaching a debugger to the game:** dnSpyEx + Unity debug Mono DLL (`MonoBleedingEdge/EmbedRuntime/mono-2.0-bdwgc.dll`
   swap), then *Debug → Start Debugging → Unity (Connect)* on `127.0.0.1:5555`. Debug builds raise the network timeout to
@@ -260,7 +264,7 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
 - **Saves:** `%APPDATA%\Nitrox\saves\<SaveName>\`, holding `Version.json`, `PlayerData.json`, `WorldData.json`,
   `GlobalRootData.json`, `EntityData.json` (Newtonsoft, `TypeNameHandling.Auto`), plus `server.cfg` (options:
   `Nitrox.Model/Configuration/SubnauticaServerOptions.cs`) and `backups/`. Save-format changes need an upgrade in
-  `Models/Serialization/SaveDataUpgrades/`. **Never break the players' running save**: test upgrades on a copy of it.
+  `Models/Serialization/SaveDataUpgrades/`. **Never break players' existing saves**: test upgrades on a copy of it.
 
 ### 5.6 Adding a synced feature end to end (checklist)
 1. Packet in `Nitrox.Model.Subnautica/Packets/`, *or* a `*Metadata` class for persistent state (+ `ProtoInclude`).
@@ -291,5 +295,5 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
 - Done means: `dotnet build Nitrox.slnx` passes, `dotnet test` passes, the item's scenario in `tools/scenarios/` passes
   (write one if it's missing, and check it FAILS without the fix), and there's a short note in the PR or commit saying
   what was verified and what wasn't.
-- Don't change the save format without an upgrade path, and don't edit the players' save in place.
+- Don't change the save format without an upgrade path, and don't edit a player's save in place.
 - Keep `docs/fork/FIX_SPEC.md` current: tick off items, record findings and decisions.

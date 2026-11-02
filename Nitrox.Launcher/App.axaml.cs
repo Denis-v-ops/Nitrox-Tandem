@@ -90,7 +90,7 @@ internal class App : Application
 
             if (isCrashReport && CrashReporter.GetLastReport() is {} crashLog)
             {
-                StartupWindowFactory = () => new CrashWindow { DataContext = new CrashWindowViewModel { Title = $"Nitrox {NitroxEnvironment.Version} - Crash Report", Message = crashLog } };
+                StartupWindowFactory = () => new CrashWindow { DataContext = new CrashWindowViewModel { Title = $"{NitroxFork.NAME} {NitroxEnvironment.Version} - Crash Report", Message = crashLog } };
             }
         });
         cliParser.Add("instantlaunch", ([SaveName] string save, [MinLength(1)] params string[] players) =>

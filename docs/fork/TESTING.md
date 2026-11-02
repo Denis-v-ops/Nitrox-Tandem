@@ -1,8 +1,8 @@
 # Testing multiplayer fixes without a human playtest per fix
 
 Every bug in [FIX_SPEC.md](FIX_SPEC.md) is about two players seeing different things, so a fix only counts as tested if
-a second player was involved. **Constraint:** the two people this fork is for will *not* play-test individual fixes.
-Their normal playthrough is the only human testing. So per-fix verification has to be automated and run by agents on
+a second player was involved. **Constraint:** this project doesn't rely on human play-tests of individual fixes.
+Real playthroughs are the only human testing. So per-fix verification has to be automated and run by agents on
 the dev PC, and the playthrough needs safety nets so a bad fix can't cost progress.
 
 ## How multiplayer games are usually tested
@@ -267,7 +267,7 @@ Fallback when a scenario can't assert something (visual-only bugs like the laser
 screenshots of both windows during the run and compare them. Use this rarely; screenshot checks are flaky.
 
 ### Human layer: the playthrough *is* the acceptance test
-- **No per-fix sessions.** Fixes reach the players in **batches** as new `coop` builds, each one gated by L1–L3.
+- **No per-fix sessions.** Fixes reach players in **batches** as new `coop` builds, each one gated by L1–L3.
 - **One-key bug report** (S0.6, built): **F4** or `/report <text>` in chat. When something looks wrong, a player presses the
   key and keeps playing. Collect `%APPDATA%\Nitrox\reports\` from **both** PCs: each player's PC has
   `<time>_<player>.zip` (Nitrox logs, `Player.log`, position), and the server's PC also has `<time>_server_<player>.zip`
@@ -279,9 +279,9 @@ screenshots of both windows during the run and compare them. Use this rarely; sc
     script also copies the save folder.
   - Keep the previous `coop` build next to the new one (tag each playable build `play-YYYYMMDD`), so rolling back takes
     one click.
-  - Change the save format only through migrations, and always test them against a copy of the real playthrough save
+  - Change the save format only through migrations, and always test them against a copy of a real long-running save
     (L1 + L3 with that save as the fixture).
-  - Release builds go to the players, Debug builds to tests.
+  - Release builds go to players, Debug builds to tests.
 
 ### Optional: network chaos
 Run L3 scenarios through `clumsy` (100–200 ms latency, 1–2 % loss) in the overnight batch. Ordering bugs (dupes, items

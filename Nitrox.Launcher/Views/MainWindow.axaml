@@ -24,7 +24,7 @@
     xmlns:core="clr-namespace:Nitrox.Model.Core;assembly=Nitrox.Model">
     <Window.Title>
         <MultiBinding StringFormat="{}{0} - V{1} ({2})">
-            <Binding Source="{x:Static core:NitroxEnvironment.AppName}" />
+            <Binding Source="{x:Static core:NitroxFork.NAME}" />
             <Binding Source="{x:Static core:NitroxEnvironment.Version}" />
             <Binding Source="{x:Static core:NitroxEnvironment.GitShortHash}" />
         </MultiBinding>

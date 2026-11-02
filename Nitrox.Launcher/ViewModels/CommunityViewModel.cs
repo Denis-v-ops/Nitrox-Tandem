@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.Input;
 using Nitrox.Launcher.ViewModels.Abstract;
+using Nitrox.Model.Core;
 
 namespace Nitrox.Launcher.ViewModels;
 
@@ -32,6 +33,6 @@ internal partial class CommunityViewModel : RoutableViewModelBase
     [RelayCommand]
     private void GithubLink()
     {
-        OpenUri("github.com/SubnauticaNitrox/Nitrox");
+        OpenUri(NitroxFork.REPOSITORY_URL);
     }
 }

@@ -61,7 +61,8 @@ internal partial class UpdatesViewModel(NitroxWebsiteApiService nitroxWebsiteApi
             Version currentVersion = NitroxEnvironment.Version;
             Version latestVersion = (await nitroxWebsiteApi.GetNitroxLatestVersionAsync())?.Version ?? new Version(0, 0);
 
-            NewUpdateAvailable = latestVersion > currentVersion;
+            // A fork never offers official releases: they would replace its fixes and can't load the worlds it saved
+            NewUpdateAvailable = !NitroxFork.IsFork && latestVersion > currentVersion;
             if (NewUpdateAvailable)
             {
                 string versionMessage = $"A new version of the mod ({latestVersion}) is available.";
@@ -78,7 +79,7 @@ internal partial class UpdatesViewModel(NitroxWebsiteApiService nitroxWebsiteApi
             UsingOfficialVersion = NitroxEnvironment.IsReleaseMode;
         }
 
-        return NewUpdateAvailable || !UsingOfficialVersion;
+        return !NitroxFork.IsFork && (NewUpdateAvailable || !UsingOfficialVersion);
     }
 
     internal override async Task ViewContentLoadAsync(CancellationToken cancellationToken = default)
