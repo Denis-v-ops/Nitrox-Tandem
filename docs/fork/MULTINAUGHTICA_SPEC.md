@@ -462,6 +462,44 @@ second fix for #2761 (#2864 is in both bases). `VehicleMovements.RealTime` is al
 time field. Wire change only, no save change. **Open:** which clock the snapshots use (world time or session time)
 decides whether it bites; check before building, and age the server clock in the S13 rerun.
 
+**Findings (2026-11-02):** implemented on `fix/m6-movement-time`, not verified in game (scenario
+`tools/scenarios/M6-AgedWorldMovement.ps1` written, not run).
+- **Which clock: world time, so it bites. Held.** `MovementBroadcaster.Update` stamped `(float)TimeManager.RealTimeElapsed`,
+  the server's `TimeService.ActiveTime` (sent in `TimeChange`), which is saved as `StoryTiming.RealTimeElapsed` and
+  loaded back (`WorldService.LoadPersistedWorldIntoServicesAsync`). So the step follows the world's total play time: 3.9 ms
+  from 9.1 h, 7.8 ms from 18.2 h, 15.6 ms from 36.4 h. `VehicleMovements.RealTime` was already `double` but carried a
+  value rounded at the sender; the receiver cast it again (`VehicleMovementsProcessor`), compared it with
+  `(float)RealTimeElapsed` and kept `Snapshot.Time`/`SentTime` as floats. The clock itself is fine-grained: S13's
+  recordings show its `rt` steps per frame at 0.1 ms resolution.
+- **Jitter grows with the world's age: held for vehicles (arithmetic, not measured in game).** At 40 h and 120 fps the
+  receiver's "now" is the same on about every second frame, so the sub stands for a frame and then moves two (11 cm
+  steps at 7 m/s); each stamp is off by up to 7.8 ms; latency samples by up to 15.6 ms, which raises
+  `MaxAllowedLatency`; the hand-over velocity (two stamps 33 ms apart, read as 31.3 or 46.9 ms) by -29 % to +7 %.
+  **Remote players: dropped.** They aren't replayed from snapshot times (below); a player riding a replicated sub moves
+  with it.
+- **`PlayerMovement` gains a time field: dropped.** `RemotePlayer.UpdatePosition` sets the body's rigidbody velocity
+  towards the received position (`MovementHelper.GetCorrectedVelocity`, `Time.fixedDeltaTime`), and
+  `UpdatePositionInCyclops` sets the pawn's local pose; neither reads a time. Their field feeds their
+  `RemotePlayerMovementReplicator`, which we don't take.
+- **Built:** times are `double` from the broadcaster to the replicator: `MovementBroadcaster` (its clock, the period
+  check, `BroadcastLocalData`), `VehicleMovementsProcessor` (no cast), `MovementReplicator` (`RealTime`, `AddSnapshot`,
+  the latency bump time, `Snapshot.Time`/`SentTime`). A difference of two times becomes a float only after the double
+  subtraction (`MovementTime.Age`, `MovementTime.InterpolationFactor`, used for the latency sample, the interpolation
+  factor and `HandOverMotion`'s span and age). `MaxAllowedLatency` and `Multiplayer.PacketWaitBound` stay floats
+  (small; the latter is session time). Packet unchanged; no save change; the server relays `VehicleMovements` as is.
+- **Left as is:** `WatchedEntry` (rate limiter on game time, thresholds of seconds), `VehicleDockingProcessor` (reads
+  `MaxAllowedLatency`), `BridgeRecorder` (records `RealTimeElapsed` as a double, S13's `rt`), the radiation leaks'
+  `FixRealTime` and `TimeManager.AuroraRealExplosionTime` (the same clock as floats, compared in seconds; M2's area).
+- **Not ported:** their `MovementClock` (`NITROX_TIME_TEST` offset and float emulation in Debug builds; we age the real
+  clock through the save instead), `ReplicatorTuning`, vehicle extrapolation, the remote-player replicator.
+- **Scenario:** `S13-CyclopsMovement.ps1 -AgeWorldSeconds <s>` saves its fresh world, closes everything, adds the
+  seconds to `StoryTiming.RealTimeElapsed` and `AuroraRealExplosionTime` in its own `WorldData.json` (text edit, exactly
+  one match; game time unchanged so no story timer fires), restarts, and checks both games' movement clock (the `rt`
+  column, `Get-MovementClock`) reads it before driving and in the recorded drive. `M6-AgedWorldMovement.ps1` runs it at
+  144000 s (40 h) without the docking and rejoin parts. Windowed, as S13.
+- **Open:** whether S13's thresholds hold at 40 h with doubles (they were set on a young world) is the rig pass's
+  question.
+
 ## M7: Saving indicator (S)
 
 - **Theirs:** `SaveService` sends `ServerSaving(number)` to everyone when a save starts (timed autosave, the `save`
@@ -745,3 +783,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | M2 | Implemented, not verified in game: babies of the server swim to the mother and teleported ones are destroyed on the server, incubator metadata applied once; radiation radius for a joiner from all leaks, stale leak health dropped (both sides); the pod respawn keeps the player in the pod, a new player's entity transform is parented (S13 finding); story and Aurora packets wait for the initial sync; goals completed outside `StoryGoal.Execute` (door keys) are sent, teleporter pairs persist as `Nitrox_TeleporterActive:<id>` goals, only a teleporter that opened reports; the server drops `RadioSunbeam4` on `Goal_Disable_Gun`, the partner's open gun terminal closes; double fragment scan; rocket reports merged, a launch for an unloaded rocket ignored, stage before elevator; beacon keys compared ignoring case. Hypothesis "goals lost while loading" only partly held (see Findings) | L2 (headless): `StoryProgressTest` (6 fail with their fix reverted, 1 guard). Unit: `RadiationRadiusModelTest` (fails with the old `Max()` rule), `RocketMetadataTest`, `SeaEmperorBabyRulesTest`, `DirectGoalCompletionsTest`, `TeleporterGoalKeyTest`, `InitialSyncDeferralTest`. Scenario `M2-StoryProgress.ps1` written, not run |
 | 2026-11-02 | M7 | Implemented, not verified in game: the server tells every player when a save starts and ends (finished or failed); the game's own `SavingIndicator` shows it (Postfix on `Update`) for at least 2 s, at most 60 s without an end; where no indicator runs in the play scene, the game's notice shows `SavingGame` once per save. A game's copy of the packet is dropped. No new strings, no `ProtoInclude` tags | Unit `ServerSaveIndicatorTest` (10; 7 fail with their rule reverted, 3 guards). L2 `ServerSavingTest` (3, each fails with its line reverted). Scenario written, not run |
 | 2026-11-02 | M9 | Implemented, not verified in game: pings aim past the own body, the own Seamoth or Prawn suit and, at the helm, the Cyclops; minimum 0.5 m instead of 3 m; a second ray on the Useable layer with triggers reaches the partner's body, a Look ping "Look! *name*" (Signal icon, sender's colour, no new strings) | Unit: `PingAimRulesTest` (12; with the old rule 7 fail, each M9 line reverted alone fails its cases), `PingRulesTest.APartnerIsLook_NotComeHere` (fails without the partner line). Scenario `M9-PingAim.ps1` written, not run |
+| 2026-11-02 | M6 | Implemented, not verified in game: movement snapshot times are `double` from the broadcaster to the replicator (the sender's clock and period check, the packet's value without the processor's cast, the replicator's clock, `Snapshot.Time`/`SentTime`, the latency bump time); a difference becomes a float only after the double subtraction (`MovementTime`). No `PlayerMovement` time field (nothing replays remote players from times). Scenario: `S13-CyclopsMovement.ps1 -AgeWorldSeconds` ages its own world through its save, `M6-AgedWorldMovement.ps1` runs it at 40 h | Unit `MovementTimeTest` (6): interpolation factor and snapshot age exact at 1-100 h of play; 3 fail when `MovementTime` rounds its arguments to float first (the old arithmetic); the wiring test (double types, no `conv.r4` in the broadcaster's `Update`, the processor's `Process` or the replicator's `RealTime`) fails on the old three files and on the processor's `(float)` cast alone. `dotnet build` clean (NU190x/DIMA001 only), `dotnet test` 417 pass, 13 skipped. Scenario written, not run (windowed) |
