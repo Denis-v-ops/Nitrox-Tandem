@@ -327,7 +327,7 @@ public sealed class LockerCrafting
         ReadOnlyCollection<Ingredient> ingredients = null;
         if (response.Outcome == CraftingClaimOutcome.Taken)
         {
-            foreach (NitroxId unavailable in response.UnavailableIds)
+            foreach (NitroxId unavailable in response.UnavailableIds ?? new List<NitroxId>())
             {
                 claim.Unavailable.Add(unavailable.ToString());
             }
@@ -453,13 +453,14 @@ public sealed class LockerCrafting
     public bool OnConsumeResources(TechType techType, ref bool result)
     {
         Claim claim = granting;
-        if (claim == null || claim.TechType != techType)
+        ReadOnlyCollection<Ingredient> ingredients = TechData.GetIngredients(techType);
+        if (claim == null || claim.TechType != techType || ingredients == null)
         {
             return true;
         }
 
         List<IngredientLine<TechType>> lines = [];
-        foreach (Ingredient ingredient in TechData.GetIngredients(techType))
+        foreach (Ingredient ingredient in ingredients)
         {
             lines.Add(new IngredientLine<TechType>(ingredient.techType, ingredient.amount));
         }
