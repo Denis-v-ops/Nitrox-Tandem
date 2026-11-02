@@ -95,6 +95,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<ConstructionLocks>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<LockerCrafting>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<LiveMixinManager>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<CreatureHealthManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Entities>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<MedkitFabricator>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Items>().InstancePerLifetimeScope();

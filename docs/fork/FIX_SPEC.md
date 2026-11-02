@@ -284,6 +284,8 @@ replayed. Separately, `LiveMixin` kills of non-creature entities don't send `Ent
     through #2902) or a `Player` component.
 - **Later, not now:** [#2903](https://github.com/SubnauticaNitrox/Nitrox/pull/2903) (damage from both players adds up)
   contains #2902. It is large and unreviewed, and its tests have never run. Skip #2842; it's superseded and conflicts.
+  **Taken in [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M5** (2026-11-02, not verified in game), with a fix for
+  creature-on-creature bites; this item's scenario now passes the player as the kill's dealer.
 
 **Automated check:**
 - L3 scenario `CreatureDeathSyncs`: spawn a peeper/stalker near both players and kill it from the non-simulating
@@ -730,6 +732,7 @@ applied.
 
 **Not verified:** network latency; a player dying from a relayed bite. The creatures S14 didn't run and bites on
 vehicles were covered later by COOP_FEATURES_SPEC D4 (vehicle bites fixed there; the gaps it found are S15).
+Bites on *creatures* another player simulates: [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M5 (2026-11-02).
 
 **Risks (fear factor and balance):**
 - The partner is now exactly as exposed as the simulating player, which is vanilla danger for both players, not double.

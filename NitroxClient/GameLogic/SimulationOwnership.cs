@@ -13,6 +13,7 @@ namespace NitroxClient.GameLogic
         private readonly IMultiplayerSession multiplayerSession;
         private readonly IPacketSender packetSender;
         private readonly Dictionary<NitroxId, SimulationLockType> simulatedIdsByLockType = [];
+        private readonly Dictionary<NitroxId, float> lockAcquiredTimeById = [];
         private readonly Dictionary<NitroxId, LockRequestBase> lockRequestsById = [];
 
         private readonly Dictionary<NitroxId, SimulatedEntity> newerSimulationById = [];
@@ -72,12 +73,32 @@ namespace NitroxClient.GameLogic
 
         public void SimulateEntity(NitroxId id, SimulationLockType lockType)
         {
+            if (!simulatedIdsByLockType.ContainsKey(id))
+            {
+                lockAcquiredTimeById[id] = Time.time;
+            }
             simulatedIdsByLockType[id] = lockType;
         }
 
         public void StopSimulatingEntity(NitroxId id)
         {
             simulatedIdsByLockType.Remove(id);
+            lockAcquiredTimeById.Remove(id);
+        }
+
+        /// <summary>
+        ///     MULTINAUGHTICA_SPEC M5 (ported from MultiNaughtica): true if this game simulates the entity, with the seconds
+        ///     since it took it over (a lock type change doesn't count as a take-over).
+        /// </summary>
+        public bool TryGetLockAge(NitroxId id, out float seconds)
+        {
+            if (simulatedIdsByLockType.ContainsKey(id) && lockAcquiredTimeById.TryGetValue(id, out float acquiredTime))
+            {
+                seconds = Time.time - acquiredTime;
+                return true;
+            }
+            seconds = 0f;
+            return false;
         }
 
         public void TreatSimulatedEntity(SimulatedEntity simulatedEntity)

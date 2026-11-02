@@ -453,6 +453,90 @@ previous holder's last report is still accepted for 1–1.5 s after a hand-over.
   cosmetic when the other player simulates the prey; the prey's simulator never bites it either. So a predator and prey
   simulated by different players: the prey never dies. Needs a scenario case before merging.
 
+**Findings (2026-11-02):** implemented on `fix/m5-creature-health`, not verified in game (scenario
+`tools/scenarios/M5-CreatureHealth.ps1` written, not run). No save change, nothing persisted (as before); two new
+packets, `CreatureDamageAction` and `CreatureHealthChanged` (all three programs must run the same build). No metadata
+tags used.
+- **PR review comments: none.** `gh pr view 2903` and the review-comments API return no comments and no reviews (open,
+  CI never ran on it). Nothing to address.
+- **Built from** the PR's four commits, cherry-picked (#2902, its base, is already in `coop`). The one conflict, in
+  `LiveMixin_TakeDamage_Patch`, keeps the S14/D4 code and adds the PR's two hunks. Then the grace delta, then the
+  regression fix below. Left out of MultiNaughtica's version: their `LiveMixin_TakeDamage_Patch` (drone, hit matcher),
+  `CreatureDamageSource`, the `LiveMixin_Kill_Patch` destruction watcher, `LiveMixinManager`'s hit replay and drone
+  lines, their `LogHealth` debug lines.
+- **Hand-over grace: ported, one gap closed.** The server remembers who lost a creature's lock last
+  (`SimulationOwnershipData`: revoke, revoke of an id, and an exclusive lock breaking a transient one, e.g. the
+  propulsion cannon, which theirs misses); `CreatureHealthChangedProcessor` still relays that player's report for
+  1.5 s, until the new holder reports. The new holder's game takes it for 1 s if its own health hasn't changed since the
+  take-over (`SimulationOwnership.TryGetLockAge`, `CreatureDamageRules.AcceptsReportAfterHandOver`). A disconnect
+  (`RevokeAllForOwner`) records no previous owner: that player sends nothing more. **Open (the PR's):** a hit that
+  reaches the old holder after the lock moved is applied there (a hit is applied wherever the server sent it, for the
+  "nobody simulates it" case), but the old holder no longer reports, so the new holder never learns of it. Lost, not
+  doubled.
+- **Known regression (predator and prey): held, fixed.** The PR's `GetHitSource` returns `World` for a creature
+  dealer, and a game that doesn't hold the prey only shows a `World` hit on a streamed copy (`RemotelyControlled`, added
+  only by `EntityTransformUpdatesProcessor`, i.e. on copies another game streams). `game:MeleeAttack.OnTouch` passes
+  the creature itself as dealer, and `CanBite` needs `Aggression >= biteAggressionThreshold`, which for creatures
+  outside `AI.syncedCreatureWhitelist` only the simulating game raises (FIX_SPEC S14, confirmed in game there). So with
+  the predator simulated by A and the prey by B, A's bite was only shown and B's copy never bites. Fix
+  (`CreatureDamageRules.CreatureDealerSource`): a bite by a creature this game simulates is `Local`, sent to the prey's
+  simulating player like a player's hit; a streamed copy's bite is `RemoteCopy` (dropped by the holder, shown
+  elsewhere); the four leviathans keep `World`, since every copy of them bites, each game's copy of the prey takes the
+  bite and only the holder counts it (*unverified in game*: a leviathan biting a creature). Lost: the predator's game
+  sees its prey alive after a deadly bite, so it doesn't eat it (`MeleeAttack.TryEat`); the prey leaves a corpse.
+- **Other damage that isn't a player's** (each from `game:` code; none is applied twice):
+  - Crash fish blast (M4): `DamageSystem.RadiusDamage` passes no dealer and runs only in the crash fish's simulating
+    game, so on a creature the other player simulates it was only shown. Fixed: `Crash_Detonate_Patch` opens the PR's
+    local-attack scope for the blast.
+  - Environment (`TemperatureDamage` heat, `AcidicBrineDamage`, `Geyser`, `Lava`; which creatures carry the first two
+    is asset data, not read): no dealer, every loaded copy takes it, only the holder counts it. Ampeel shock
+    (`ShockerMeleeAttack.OnTouch`, no dealer, no aggression gate) and `HangingStinger`'s damage over time: the same, if
+    the contact also happens in the holder's game.
+  - Vehicle and Cyclops ramming (`DealDamageOnImpact`, the vehicle as dealer): `Local` in its pilot's game,
+    `RemoteCopy` elsewhere (PR; its author tested rams in game).
+  - **Open:** gas pods (`GasPod.Update`, Poison, no dealer; small fish and gasopods are immune). `GasoPod.Update` drops
+    pods from any copy whose `Scared` is high, not gated by the AI; whether `Scared` rises on a non-simulating copy
+    wasn't read. If only one game makes pods, their damage on the other player's creatures is only shown. The same for
+    lava lizard rocks (`Projectile`) and warp balls, which exist only in the caster's simulating game. Gas torpedoes: the
+    PR's own limitation (one explosion counts instead of two).
+- **Death sync (FIX_SPEC S4) still works, by reading:** a forwarded hit is a plain `TakeDamage` in the holder's game,
+  not under `IsRemoteHealthChanging`, so `CreatureDeath_OnKill_Patch` lets `OnKill` run and
+  `CreatureDeath_OnKillAsync_Patch` sends `RemoveCreatureCorpse` (`LiveMixin_Kill_Patch` sends `EntityDestroyed` for
+  `destroyOnDeath`). A hit sent back because nobody simulates the creature kills in the sender's game, which may run
+  `OnKill` (#2902). Each scenario case checks the death in both games and on the server. Not changed, and not M5's:
+  `MeleeAttack.OnTouch` follows a bite with `NotifyCreatureDeathsOfCreatureAttack`, which spawns the respawner of a
+  creature that respawns only when killed by a creature (`game:CreatureDeath.OnAttackByCreature`,
+  `respawnOnlyIfKilledByCreature`). In `coop` that never happens, even when one game simulates both creatures: the
+  corpse path of `OnKillAsync` has no `yield`, so `CreatureDeath_OnKillAsync_Patch` drops the lock inside `Kill`, and
+  `CreatureDeath_OnAttackByCreature_Patch` then refuses. A forwarded bite doesn't replay the call (it would be refused
+  the same way). The ordinary respawner (`respawn && !respawnOnlyIfKilledByCreature`) is spawned by the holder's kill.
+- **What the hitter sees:** its game runs the damage receivers (flinch, flee, aggression), the hit sound and the blood
+  effect without changing the health (`PlayCosmeticDamage`), then shows the holder's health (0.2 s throttle). The
+  scenario checks `LiveMixin.timeLastDamageEffect`.
+- **A hit on a creature nobody sees or simulates:** routed by lock, not visibility. Nobody holds the lock (not in
+  `SimulationWhitelist`, unknown to the server): the hit comes back and the sender applies it. A holder that hasn't
+  loaded the creature keeps the hit 1 s, then sends it again (at most 2 hops); the server drops a re-sent hit when
+  nobody holds the creature. Health reports reach only players who see the creature, none for an entity the server
+  doesn't have.
+- **S4's scenario changed with it:** its kill was a dealer-less `TakeDamage` from the game that doesn't simulate the
+  creature, which M5 counts as environment damage there (only shown), so it would have failed. It now passes the player
+  as dealer, as the knife does (`Knife_OnToolUseAnim_Patch`), with the no-damage cheat off in both games (the hit lands
+  in the simulating game).
+- **Tests.** L2 `CreatureHealthRoutingTest` (5): a hit reaches only the holder; with nobody holding it goes back to the
+  sender and a re-sent hit is dropped; a report reaches only those who see the creature, a non-holder's is dropped (all
+  five fail without the PR's two server processors: the default processor relays to everyone); the previous holder's
+  report is relayed after a hand-over until the new holder reports (fails with the grace off, and with
+  `ForgetPreviousOwner` removed), and not after the window. Unit: `CreatureDamageRulesTest` (13; the predator/prey and
+  remote-copy cases fail with the creature-dealer rule reverted to `World`), `SimulationOwnershipDataTest` (5; the
+  exclusive take-over fails without its line), the PR's processor tests plus the two ported grace cases. Not unit-tested:
+  the 0.2 s report throttle (the existing `ThrottledPacketSender`) and the PR's 0.1 s hit batching (Unity-bound).
+  **Covered only by the scenario** (the rules helper tests the decision, not the wiring): `CreatureHealthManager`'s
+  use of it, the `Crash_Detonate_Patch` scope, the client half of the grace (`TryGetLockAge`, `IsInHandOverGrace`;
+  the scenario's hand-over case doesn't provoke a late report either), and everything the games do with the packets.
+- Shared files touched: `LiveMixin_AddHealth_Patch.cs` (the PR's two hunks; also changed by
+  `feat/2-g0-g4-story-gates`), `LiveMixin_TakeDamage_Patch.cs`, `Crash_Detonate_Patch.cs` (M4), client and server
+  `SimulationOwnership.cs`, `ClientAutoFacRegistrar.cs`, `Multiplayer.cs`, `S4-CreatureDeathSyncs.ps1`.
+
 ## M6: Movement timestamps as `double` (S)
 
 *Hypothesis (review):* `MovementReplicator` keeps snapshot times as `float`. A float steps 3.9 ms from 2^15 s (about
@@ -784,3 +868,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | M7 | Implemented, not verified in game: the server tells every player when a save starts and ends (finished or failed); the game's own `SavingIndicator` shows it (Postfix on `Update`) for at least 2 s, at most 60 s without an end; where no indicator runs in the play scene, the game's notice shows `SavingGame` once per save. A game's copy of the packet is dropped. No new strings, no `ProtoInclude` tags | Unit `ServerSaveIndicatorTest` (10; 7 fail with their rule reverted, 3 guards). L2 `ServerSavingTest` (3, each fails with its line reverted). Scenario written, not run |
 | 2026-11-02 | M9 | Implemented, not verified in game: pings aim past the own body, the own Seamoth or Prawn suit and, at the helm, the Cyclops; minimum 0.5 m instead of 3 m; a second ray on the Useable layer with triggers reaches the partner's body, a Look ping "Look! *name*" (Signal icon, sender's colour, no new strings) | Unit: `PingAimRulesTest` (12; with the old rule 7 fail, each M9 line reverted alone fails its cases), `PingRulesTest.APartnerIsLook_NotComeHere` (fails without the partner line). Scenario `M9-PingAim.ps1` written, not run |
 | 2026-11-02 | M6 | Implemented, not verified in game: movement snapshot times are `double` from the broadcaster to the replicator (the sender's clock and period check, the packet's value without the processor's cast, the replicator's clock, `Snapshot.Time`/`SentTime`, the latency bump time); a difference becomes a float only after the double subtraction (`MovementTime`). No `PlayerMovement` time field (nothing replays remote players from times). Scenario: `S13-CyclopsMovement.ps1 -AgeWorldSeconds` ages its own world through its save, `M6-AgedWorldMovement.ps1` runs it at 40 h | Unit `MovementTimeTest` (6): interpolation factor and snapshot age exact at 1-100 h of play; 3 fail when `MovementTime` rounds its arguments to float first (the old arithmetic); the wiring test (double types, no `conv.r4` in the broadcaster's `Update`, the processor's `Process` or the replicator's `RealTime`) fails on the old three files and on the processor's `(float)` cast alone. `dotnet build` clean (NU190x/DIMA001 only), `dotnet test` 417 pass, 13 skipped. Scenario written, not run (windowed) |
+| 2026-11-02 | M5 | Implemented, not verified in game: upstream #2903 (only a creature's simulating game changes its health; other players' hits are sent there, or back when nobody simulates it; the health is shared with those who see it) plus MultiNaughtica's hand-over grace (server 1.5 s, new holder 1 s; also after an exclusive take-over). Regression fixed: a creature's bite on a creature the other player simulates, and a crash fish blast on one, are sent to the prey's simulating game. S4's scenario kill passes the player as dealer. No ProtoInclude tags | L2 `CreatureHealthRoutingTest` (5, all fail without the server processors; the grace case fails with the grace off and with `ForgetPreviousOwner` removed). Unit `CreatureDamageRulesTest` (13; predator/prey and remote-copy cases fail with the old creature-dealer rule), `SimulationOwnershipDataTest` (5; exclusive take-over fails without its line), PR processor tests + 2 ported grace cases. Scenario written, not run |
