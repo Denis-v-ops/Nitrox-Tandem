@@ -111,6 +111,8 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
   loaded entities vs the server's records and vs each other). Scenario scripts over it live in `tools/scenarios/`
   (`S3-GunDisableSyncs.ps1`, `S8-EmptyToolNoDupe.ps1`, about 2 min each). Localhost only, absent from Release builds.
   Details, diff kinds and gotchas: [TESTING.md](docs/fork/TESTING.md#the-dev-bridge-driving-games-from-the-shell).
+- **Headless server tests (L2):** `Nitrox.Test/Helper/Headless/` runs the real server in-process with fake players over the real
+  protocol (join, broadcasts, restart). Use it before the game rig; see TESTING.md, "Writing a headless (L2) test".
 - **Persistence tests:** `Nitrox.Test/Helper/SaveLoadRoundTrip.cs` (`AssertSurvivesSaveAndLoad(entityTrees…)`) runs
   entities through the server's real save and load code. Use it for every "gone after restart" fix.
 - **Logs:** Nitrox (launcher, server, client) → `%APPDATA%\Nitrox\logs`. Game →
