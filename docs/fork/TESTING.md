@@ -33,7 +33,8 @@ we copy.
   `Nitrox.Model(.Subnautica)` also target `net10.0`, so a plain console app can speak the protocol.
 - Simulation ownership is handed out from `CellVisibilityChanged` packets
   (`Nitrox.Server.Subnautica/Models/Packets/Processors/CellVisibilityChangedProcessor.cs`, `.../GameLogic/Entities/EntitySimulation.cs`).
-  So a bot that never reports cells should own nothing. *Needs verification*: check `JoiningManager`.
+  A bot that never reports cells gets no cell-based simulation, but the first player to join takes a transient lock on
+  every free global root (`EntitySimulation.AssignGlobalRootEntitiesAndGetData`, called from `JoiningManager`).
 - The game-side code runs through Harmony patches inside the real game. A test runner injected the same way can call real
   game methods (e.g. a terminal's `OnHandClick`), and those calls go through the same Nitrox patches a player's input would.
 - **A multi-client auto-launch exists (Debug builds only):**
@@ -137,7 +138,7 @@ tools\bridge.ps1 diff                                  # desync detector, see be
 | Layer | What runs | Who runs it | Catches |
 |---|---|---|---|
 | **L1 Unit/persistence tests** | `dotnet test Nitrox.Test/Nitrox.Test.csproj` + new tests per fix. Includes a **save → load round-trip helper** (S0.5) | Agent, every change | Serialization registration, server processors, "gone after restart" bugs |
-| **L2 Headless server tests** | Real server hosted inside `Nitrox.Test`, with simulated players that speak the real protocol. No game window (being built: branch `fix/l2-server-harness`) | Agent, every change, in parallel | Server persistence across restart, broadcasts to the partner, late-join sync, dupes and ghost entries |
+| **L2 Headless server tests** | Real server hosted inside `Nitrox.Test` (`ServerHarness`), with `FakePlayer`s that speak the real protocol. No game window. Part of `dotnet test`; `--filter TestCategory=L2` runs only them (about 6 s), `TestCategory!=L2` skips them. See [below](#writing-a-headless-l2-test) | Agent, every change, in parallel | Server persistence across restart, broadcasts to the partner, late-join sync, dupes and ghost entries |
 | **L3 Automated dual-client scenarios** | Two real Subnautica instances + server on the dev PC, each running a scripted role, asserting on in-game state (S0.1–S0.2, S0.4) | Agent, unattended (PC must be free; about 3–6 min per scenario) | Real client↔client behaviour: AI, physics, Cyclops, story objects |
 
 A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passes (or L2, if that item has no L3 scenario).
@@ -173,6 +174,56 @@ half.
 | S8 Battery dupe | Server child count under a dropped tool | The game's pickup conversion |
 | S9 Escape pod | Pod registered and sent in the join payload | Player placed inside the pod |
 | S10 Scanner room | Scan target/camera metadata persist and reach the partner | Scanner UI, blips, `ResourceTracker` |
+
+### Writing a headless (L2) test
+`Nitrox.Test/Helper/Headless/`: `ServerHarness` starts the real `Nitrox.Server.Subnautica` host inside the test process
+(all services and processors; left out: console input, the launcher connection, the dev bridge and the start-up status
+log). It uses a free UDP port and a fresh save in `%TEMP%\nitrox-l2\<name>-<guid>` (deleted afterwards; set
+`NITROX_L2_KEEP=1` to keep it, the server log is in its `logs` folder). `FakePlayer` speaks the real protocol (key
+`"nitrox"`, length-prefixed `Packet.Serialize()`, CRC32C in Release) using only `Nitrox.Model(.Subnautica)`, does the real
+join handshake and records every packet it gets. Needs Subnautica installed, not running.
+
+```csharp
+[TestClass]
+[TestCategory("L2")]
+public class MyFeatureTest
+{
+    [TestMethod]
+    public async Task PartnerSeesIt_AndItSurvivesRestart()
+    {
+        await using ServerHarness server = await ServerHarness.StartAsync("L2-MyFeature"); // about 0.6 s
+        FakePlayer alice = await server.JoinAsync("Alice");  // policy, reservation, join queue, InitialPlayerSync, PlayerSyncFinished
+        FakePlayer bob = await server.JoinAsync("Bob");
+
+        alice.Send(new EntityReparented(itemId, lockerStorageId));             // whatever the game would send
+        await bob.WaitForAsync<EntityReparented>(p => p.Id == itemId);         // broadcast reached the partner
+        server.EntityRegistry.TryGetEntityById(itemId, out Entity item).Should().BeTrue(); // server state, via its DI container
+
+        await server.RestartAsync();                                            // save, stop, start on the same save
+        FakePlayer bobAgain = await server.JoinAsync("Bob");                    // bobAgain.InitialSync = join payload
+        bobAgain.Send(new CellVisibilityChanged(bobAgain.SessionId, [cell], []));
+        SpawnEntities reply = await bobAgain.WaitForAsync<SpawnEntities>(p => p.SpawnedCells.Contains(cell));
+    }
+}
+```
+
+- **Server state:** `server.Get<T>()` resolves any server service (`EntityRegistry`, `WorldEntityManager`, `PlayerManager`,
+  ...). `server.SaveAsync()` writes the save; the files are in `server.SavePath`.
+- **Waiting:** most packets get no reply. Wait for the broadcast the partner receives (`WaitForAsync`), or poll server
+  state with `ServerHarness.WaitUntilAsync(() => ..., "reason")`. `AssertNotReceivedAsync` can only show that nothing came
+  *yet*; prefer a reply that always comes (the `SpawnEntities` answering `CellVisibilityChanged` is sent even when empty).
+- **Sharing:** a server start costs about 0.6 s (first one in a run about 1.2 s), so one per class (`[ClassInitialize]`)
+  or per test are both fine. With a shared server, call `server.DisconnectPlayersAsync()` in `[TestCleanup]` so the next
+  test can use the same player names.
+- **Negative control:** revert the fix, the test must fail (same rule as L3).
+- **Can't be faked:** anything the game decides. A `FakePlayer` sends exactly what the test tells it, so the packets
+  must match what the client really sends (read the client code: `NitroxClient/GameLogic/Items.cs` and friends). It
+  doesn't spawn what it receives, reports no cells unless told to and never answers server requests the game would
+  answer. It still gets simulation locks: on join, `EntitySimulation.AssignGlobalRootEntitiesAndGetData` gives the
+  joining player a transient lock on every free global root (escape pod, vehicles), and it simulates none of them.
+  Two servers in one process share static state (logging dedup, the packet serializer); pooled processor contexts
+  were made per server for this.
+- Examples: `Nitrox.Test/Server/Headless/` (S7 ghost cell entries, S9 join payload, S8 tool batteries).
 
 ### Game-time budget (the rig is the bottleneck)
 There is one game rig: one PC, port 11000, `tools\game-lock.ps1`. A launch plus join takes minutes, so game time is the
@@ -242,7 +293,7 @@ coming back) often show up only then.
 |---|---|---|---|
 | S0.1 | `tools/dual-client.ps1`: Debug build + copy fixture save + `Nitrox.Launcher.exe instantlaunch --save <save> --players A B` (**done**) | hours (`instantlaunch` exists) | One-command dual-client runs |
 | S0.2 | Forward `--nitrox-scenario/--nitrox-role` through `instantlaunch`; clients quit on scenario end | small | Unattended runs |
-| S0.3 | `tools/Nitrox.Bot` (idle/follow/script + packet log) | 1–2 days | L2 |
+| S0.3 | Headless players: built as `ServerHarness` + `FakePlayer` in `Nitrox.Test/Helper/Headless` (**done**, see [L2](#writing-a-headless-l2-test)) | 1–2 days | L2 |
 | S0.4 | Scenario runner: built as the dev bridge (`tools/bridge.ps1`, `diff`) + `tools/scenarios/` with S3 and S8 (**done**) | 1 day | L3, the per-fix gate |
 | S0.5 | Save → load round-trip test helper (**done**) | small | L1 for persistence bugs |
 | S0.6 | `/report` bundle hotkey (**done**) + packet ring buffer (open) | 1 day | Playthrough-as-testing |
