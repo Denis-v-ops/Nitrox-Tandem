@@ -142,6 +142,17 @@ tools\bridge.ps1 diff                                  # desync detector, see be
 
 A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passes (or L2, if that item has no L3 scenario).
 
+### Game-time budget (the rig is the bottleneck)
+There is one game rig: one PC, port 11000, `tools\game-lock.ps1`. A launch plus join takes minutes, so game time is the
+scarcest resource. Rules:
+- **Prove as much as possible in L1.** Server processors, metadata logic and `SaveLoadRoundTrip` run in seconds and in
+  parallel. An L1 test that fails without the fix is the preferred negative control.
+- **Per fix, run each scenario in game until it passes once.** No repeat confirmation runs. Run an in-game negative
+  control only when the root cause is a hypothesis.
+- **Batch:** launch once and run several scenarios with `-NoLaunch`. Relaunch only for restart or rejoin steps. Build
+  setup-heavy worlds once as fixture saves.
+- **Regression:** the full scenario suite runs once per integration into `coop`, not once per fix branch.
+
 ### L3 in detail: the scenario runner (the key investment)
 **Built differently (2026-11-02):** the dev bridge above plus `tools/scenarios/*.ps1`. Scenarios run outside the game
 and act through the bridge, so they need no per-role arguments and no in-game result files. The original design below
