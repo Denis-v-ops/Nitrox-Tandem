@@ -9,9 +9,10 @@
     filterfast console command toggles: 80x, so salt every ~5 s and water every ~11 s).
       1. Both machines fill up: exactly Salt=2, BigFilteredWater=2 each, on the server and in both games.
       2. Bob takes a salt out of machine A (ItemsContainer.AddItem into his inventory): it refills to 2, never more.
-      3. The producer (base lock holder, read from the server's query) leaves to the main menu: the lock moves to the
-         other player, who takes a water out of machine B and sees it refill. The producer rejoins and sees 2 + 2.
-      4. Restart (save, close, start from the save): still 2 + 2 everywhere.
+      3. The producer (base lock holder, read from the server's query) quits to the main menu: the lock moves to the
+         other player, who takes a water out of machine B and sees it refill.
+      4. Restart (save, close, start from the save; quitting ends the game process, so this is also how the producer
+         returns): still 2 + 2 everywhere.
     Without FiltrationMachine_Spawn_Patch both games produce and the machines end up above 2 + 2 (#2495).
 #>
 param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's7-filtration')
@@ -101,14 +102,13 @@ try {
         Invoke-Bridge $other "call Inventory.main.container.AddItem $($water.Id)" | Out-Null
         $refilled = Wait-Until { (Get-ContainerContent 'server' $S7.FiltrationB).Text -eq 'BigFilteredWater=2, Salt=2' } -TimeoutSeconds 60 -IntervalSeconds 2
         Assert-True ([bool]$refilled) "machine B refilled while only $other is in the game"
-        Wait-S7Rejoined $producer
-        Enable-FastFiltering $producer
-        $max = Watch-MaxCount 20
-        Assert-True ($max -le 2) "no overflow after $producer rejoined (max $max)"
-        Assert-MachinesFull "after $producer rejoined"
+        $max = Watch-MaxCount 15
+        Assert-True ($max -le 2) "no overflow while only $other is in the game (max $max)"
+        Assert-MachinesFull "while only $other is in the game" -Where 'server', $other
     }
 
-    Step 'Restart: still 2 salt + 2 water everywhere' {
+    # Quitting to the main menu ends the game process, so the producer comes back through a restart of everything
+    Step 'Restart, both players back: still 2 salt + 2 water everywhere' {
         Restart-S7World $SaveName $A, $B
         Enable-FastFiltering $A, $B
         $max = Watch-MaxCount 25

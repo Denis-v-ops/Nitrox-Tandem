@@ -83,27 +83,22 @@ function Restart-S7World {
     if (-not $saved) { throw "The server didn't write $worldData" }
     Start-Sleep -Seconds 3
     & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -Stop
+    # Stop-Process returns before the processes are gone, and dual-client.ps1 refuses to start next to a launcher
+    Wait-Until { -not (Get-Process -Name 'Nitrox.Launcher', 'Nitrox.Server.Subnautica', 'Subnautica' -ErrorAction SilentlyContinue) } -TimeoutSeconds 60 | Out-Null
     Start-ScenarioGames -Players $Players -SaveName $SaveName -KeepSave
     Initialize-S7Players $Players
 }
 
 <#
-    The player quits to the main menu (Nitrox disconnects) and the instant-launch auto-join runs again there.
+    The player quits to the main menu (Nitrox disconnects; with instant launch the game process then ends) and waits
+    until the server has the player offline.
 #>
 function Disconnect-S7Player {
     param([Parameter(Mandatory)][string]$Player)
-    Invoke-Bridge $Player 'set NitroxPatcher.Patches.Persistent.uGUI_MainMenu_Start_Patch.applied false' | Out-Null
     Invoke-Bridge $Player 'call IngameMenu.main.QuitGame false' | Out-Null
-    $left = Wait-Until { -not (Invoke-BridgeJson $Player 'state').joined } -TimeoutSeconds 60
+    $left = Wait-Until { -not ((Invoke-BridgeJson 'server' 'players') | Where-Object { $_.name -eq $Player -and $_.online }) } -TimeoutSeconds 60
     if (-not $left) { throw "$Player didn't leave the game" }
-}
-
-function Wait-S7Rejoined {
-    param([Parameter(Mandatory)][string]$Player)
-    Wait-BridgeJoined $Player | Out-Null
-    Invoke-Bridge $Player 'call GameModeUtils.ActivateCheat NoOxygen' | Out-Null
-    Invoke-Bridge $Player 'set NoDamageConsoleCommand.main.noDamageCheat true' | Out-Null
-    Initialize-S7Players $Player
+    Start-Sleep -Seconds 3
 }
 
 <#

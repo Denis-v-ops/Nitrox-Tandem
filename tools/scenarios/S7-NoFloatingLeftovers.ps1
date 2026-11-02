@@ -8,7 +8,7 @@
     Starts the fixture world tools\fixtures\s7-machine-base unless -NoLaunch, and uses the escape pod's locker.
       1. Bob spawns 8 items and moves every one that fits from his inventory into the locker (ItemsContainer.AddItem,
          the add the inventory UI makes).
-      2. Alice leaves to the main menu and rejoins, then goes where Bob stood.
+      2. Alice quits to the main menu (that ends her game), then everything restarts and Alice goes where Bob stood.
       3. The moved items are in the locker on the server and in both games, none of them is a world item anywhere, the
          desync check finds nothing for them, and the server logged no stale cell entry.
       4. #2047: both players open and close the locker 3 times; the content stays the same. Restart: still the same.
@@ -29,12 +29,12 @@ function Assert-LockerContent {
 }
 
 function Assert-NoWorldCopies {
-    param([string]$Context)
+    param([string]$Context, [string[]]$Players = @($A, $B))
     $server = Get-BridgeEntities 'server'
     foreach ($id in $moved) {
         Assert-Equal $locker $server.Entities[$id].ParentId "$Context, server: $id is in the locker ($($server.Entities[$id].Kind))"
     }
-    foreach ($player in $A, $B) {
+    foreach ($player in $Players) {
         $game = Get-BridgeEntities $player
         $outside = @($moved | Where-Object { $game.Entities.ContainsKey($_) -and $game.Entities[$_].ParentKind -ne 'container' })
         Assert-Equal 0 $outside.Count "$Context, $player has none of the moved items outside a container ($($outside -join ', '))"
@@ -81,9 +81,12 @@ try {
         Assert-NoWorldCopies 'after moving'
     }
 
-    Step 'Alice leaves and returns, then goes where Bob stood' {
+    # Quitting to the main menu ends the game process, so Alice comes back through a restart of everything
+    Step 'Alice leaves, everything restarts, Alice goes where Bob stood' {
         Disconnect-S7Player $A
-        Wait-S7Rejoined $A
+        Start-Sleep -Seconds 5
+        Assert-NoWorldCopies 'while Alice is away' -Players $B
+        Restart-S7World $SaveName $A, $B
         Invoke-Bridge $A ("teleport {0} {1} {2}" -f $bobPosition[0], $bobPosition[1], $bobPosition[2]) | Out-Null
         Start-Sleep -Seconds 8
         Assert-LockerContent 'after Alice returned'

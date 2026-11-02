@@ -7,8 +7,9 @@
     Starts the fixture world tools\fixtures\s7-machine-base unless -NoLaunch. Both players stand in the room.
       1. Alice puts 2 big eggs into the bioreactor, Bob tries to put 3 more: only what fits goes in (4 big eggs in its
          4x4 grid). Server and both games agree.
-      2. The burn is sped up by raising BaseBioReactor._toConsume (the energy the reactor still has to take from its
-         items) in both games: the producer (base lock holder) burns every egg in its next frame. The eggs disappear
+      2. The burn is sped up by emptying the reactor's power source and raising BaseBioReactor._toConsume (the energy the
+         reactor still has to take from its items) in both games: the producer (base lock holder) burns every egg in its
+         next frame. The eggs disappear
          from the server and from both games.
       3. Bob puts one egg in, then a restart: the bioreactor holds that one egg everywhere, and the burned eggs don't
          come back.
@@ -25,9 +26,10 @@ $reactor = $S7.BioReactor
 
 function Get-NewEggs {
     param([string]$Player, [int]$Count)
-    $before = @(Get-InventoryItem $Player -TechType $EggTechType | ForEach-Object { $_.id })
+    # An egg reports "<Egg>Undiscovered" until its creature is known
+    $before = @((Invoke-BridgeJson $Player 'state').inventory | ForEach-Object { $_.id })
     Invoke-Bridge $Player "console item $EggTechType $Count" | Out-Null
-    $eggs = Wait-Until { $now = @(Get-InventoryItem $Player -TechType $EggTechType | Where-Object { $before -notcontains $_.id }); if ($now.Count -ge $Count) { , $now } } -TimeoutSeconds 15
+    $eggs = Wait-Until { $now = @((Invoke-BridgeJson $Player 'state').inventory | Where-Object { $_.techType -like "$EggTechType*" -and $before -notcontains $_.id }); if ($now.Count -ge $Count) { , $now } } -TimeoutSeconds 15
     @($eggs | ForEach-Object { $_.id })
 }
 
@@ -84,6 +86,8 @@ try {
 
     Step 'The producer burns the eggs, they are gone everywhere' {
         foreach ($player in $A, $B) {
+            # It only burns while its power source has room (ProducePower asks for maxPower - power at most)
+            Invoke-Bridge $player "set $reactor BaseBioReactor._powerSource.power 0" | Out-Null
             Invoke-Bridge $player "set $reactor BaseBioReactor._toConsume 100000" | Out-Null
         }
         Assert-ReactorContent 0 'after burning'
@@ -98,7 +102,7 @@ try {
 
     Step 'Bob adds one egg, restart: one egg everywhere, burned eggs stay gone' {
         foreach ($player in $A, $B) { Invoke-Bridge $player "set $reactor BaseBioReactor._toConsume 0" | Out-Null }
-        $egg = Get-NewEggs $B 1
+        $egg = @(Get-NewEggs $B 1)
         Assert-True (Add-ToReactor $B $egg[0]) "$B put an egg in"
         Assert-ReactorContent 1 'one egg'
         Restart-S7World $SaveName $A, $B

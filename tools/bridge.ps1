@@ -155,7 +155,8 @@ function Get-BridgeEntities {
     Keep this list short and explain every entry; when in doubt, report.
 #>
 $script:KnownNoise = @(
-    @{ Kind = 'TECHTYPE'; Pattern = '^EscapePod server: SmallStorage$'; Why = "The pod's locker carries the pod's TechTag in game; the server records SmallStorage" }
+    @{ Kind = 'TECHTYPE'; Pattern = '^EscapePod server: SmallStorage$'; Why = "The pod's locker carries the pod's TechTag in game; the server records SmallStorage" },
+    @{ Kind = 'TECHTYPE'; Pattern = '^(\w+) server: \1Undiscovered$'; Why = "Eggs of unknown creatures: the game's TechTag says GasopodEgg, the item (Pickupable.GetTechType, what the server records) GasopodEggUndiscovered" }
 )
 
 function Test-KnownNoise {
