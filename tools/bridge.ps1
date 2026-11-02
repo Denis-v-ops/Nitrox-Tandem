@@ -4,7 +4,8 @@
 
 .DESCRIPTION
     Every Debug game and Debug server opens a localhost-only endpoint (NitroxClient/Debuggers/Bridge,
-    Nitrox.Server.Subnautica/Services/DevBridgeService.cs) and writes its port to %APPDATA%\Nitrox\bridge\<name>.json.
+    Nitrox.Server.Subnautica/Services/DevBridgeService.cs) and writes its port to %APPDATA%\Nitrox\bridge\<name>.json
+    (rigs 1..9: their own data folder, see tools\rig.ps1; pick one with -Rig or $env:NITROX_RIG).
     Games started by "instantlaunch" (tools\dual-client.ps1) use their player name, the server uses "server".
 
     bridge.ps1 <name> <command...>   sends one command and prints the reply (exit 1 if it is an error)
@@ -44,10 +45,13 @@ param(
     # diff: issue kinds not to report (GHOST, MISSING, TECHTYPE, PARENT, POSITION, METADATA).
     [string[]]$Ignore = @(),
     # diff: at most this many lines per issue kind.
-    [int]$MaxPerKind = 25
+    [int]$MaxPerKind = 25,
+    # The games and server of this rig (tools\rig.ps1; defaults to $env:NITROX_RIG).
+    [int]$Rig = [int]$env:NITROX_RIG
 )
 
-$script:BridgeDir = Join-Path $env:APPDATA 'Nitrox\bridge'
+. (Join-Path $PSScriptRoot 'rig.ps1')
+$script:BridgeDir = (Get-NitroxRig $Rig).BridgeDir
 
 function Get-BridgeInfo {
     param([string]$Name)

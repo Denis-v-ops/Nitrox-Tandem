@@ -115,9 +115,8 @@ function Restart-ScenarioWorld {
     param([Parameter(Mandatory)][string]$SaveName, [string[]]$Players = @('Alice', 'Bob'))
     Write-Host (Invoke-Bridge 'server' 'save')
     Start-Sleep -Seconds 3
+    # -Stop waits until they are gone.
     & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -Stop
-    # Stop-Process returns before the processes are gone, and dual-client.ps1 refuses to start next to a running launcher
-    $gone = Wait-Until { -not (Get-Process -Name 'Subnautica', 'Nitrox.Server.Subnautica', 'Nitrox.Launcher' -ErrorAction SilentlyContinue) } -TimeoutSeconds 60
-    if (-not $gone) { throw 'The games, server or launcher are still running after dual-client.ps1 -Stop' }
+    if ($LASTEXITCODE -ne 0) { throw 'The games, server or launcher are still running after dual-client.ps1 -Stop' }
     Start-ScenarioGames -Players $Players -SaveName $SaveName -KeepSave
 }

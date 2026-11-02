@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using HarmonyLib;
@@ -42,13 +43,18 @@ public sealed partial class uGUI_MainMenu_Start_Patch : NitroxPatch, IPersistent
 
         string[] args = NitroxEnvironment.CommandLineArgs;
         Log.Info($"CommandLineArgs: '{string.Join(" ", args)}'");
+        // Test rigs that run side by side each have their own server port (tools/rig.ps1).
+        if (!int.TryParse(args.GetCommandArgs("--instantlaunch-port").FirstOrDefault(), out int port))
+        {
+            port = SubnauticaServerConstants.DEFAULT_PORT;
+        }
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i].Equals("--instantlaunch", StringComparison.OrdinalIgnoreCase) && args.Length > i + 1)
             {
                 playerName = args[i + 1];
-                Log.Info($"Detected instant launch, connecting to {IPAddress.Loopback}:{SubnauticaServerConstants.DEFAULT_PORT} as {playerName}");
-                _ = JoinServerBackend.StartDetachedMultiplayerClientAsync(IPAddress.Loopback, SubnauticaServerConstants.DEFAULT_PORT, SessionConnectionStateChangedHandler);
+                Log.Info($"Detected instant launch, connecting to {IPAddress.Loopback}:{port} as {playerName}");
+                _ = JoinServerBackend.StartDetachedMultiplayerClientAsync(IPAddress.Loopback, port, SessionConnectionStateChangedHandler);
             }
         }
 #endif

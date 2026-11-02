@@ -19,9 +19,7 @@ $script:S7 = @{
 
 function Get-SavePath {
     param([Parameter(Mandatory)][string]$SaveName)
-    $savesDir = (Get-ItemProperty -Path 'HKCU:\SOFTWARE\Nitrox' -Name 'SavesFolderDir' -ErrorAction SilentlyContinue).SavesFolderDir
-    if (-not $savesDir) { $savesDir = Join-Path $env:APPDATA 'Nitrox\saves' }
-    Join-Path $savesDir $SaveName
+    Join-Path (Get-NitroxRig).SavesDir $SaveName
 }
 
 <#
@@ -82,9 +80,8 @@ function Restart-S7World {
     $saved = Wait-Until { (Get-Item $worldData -ErrorAction SilentlyContinue).LastWriteTimeUtc -gt $before } -TimeoutSeconds 60
     if (-not $saved) { throw "The server didn't write $worldData" }
     Start-Sleep -Seconds 3
+    # -Stop waits until they are gone.
     & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -Stop
-    # Stop-Process returns before the processes are gone, and dual-client.ps1 refuses to start next to a launcher
-    Wait-Until { -not (Get-Process -Name 'Nitrox.Launcher', 'Nitrox.Server.Subnautica', 'Subnautica' -ErrorAction SilentlyContinue) } -TimeoutSeconds 60 | Out-Null
     Start-ScenarioGames -Players $Players -SaveName $SaveName -KeepSave
     Initialize-S7Players $Players
 }
@@ -106,13 +103,13 @@ function Disconnect-S7Player {
 #>
 function Get-ServerLogMark {
     $mark = @{}
-    Get-ChildItem (Join-Path $env:APPDATA 'Nitrox\logs') -Filter '*_server_*.log' | ForEach-Object { $mark[$_.FullName] = @(Get-Content $_.FullName).Count }
+    Get-ChildItem (Get-NitroxRig).LogsDir -Filter '*_server_*.log' | ForEach-Object { $mark[$_.FullName] = @(Get-Content $_.FullName).Count }
     $mark
 }
 
 function Get-ServerLogLines {
     param([Parameter(Mandatory)][hashtable]$Mark, [Parameter(Mandatory)][string]$Pattern)
-    Get-ChildItem (Join-Path $env:APPDATA 'Nitrox\logs') -Filter '*_server_*.log' | ForEach-Object {
+    Get-ChildItem (Get-NitroxRig).LogsDir -Filter '*_server_*.log' | ForEach-Object {
         $skip = if ($Mark.ContainsKey($_.FullName)) { $Mark[$_.FullName] } else { 0 }
         Get-Content $_.FullName | Select-Object -Skip $skip
     } | Where-Object { $_ -match $Pattern }

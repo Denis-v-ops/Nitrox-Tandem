@@ -79,11 +79,12 @@ we copy.
 
 **Debug builds only** (`#if DEBUG`; a Release build contains none of it). Each game opens a localhost-only TCP endpoint
 when it starts, named after its `--instantlaunch` player name (`pid<id>` otherwise); the server opens one named
-`server`. Ports are stable per name (21000 + hash) and written to `%APPDATA%\Nitrox\bridge\<name>.json`; the Nitrox
+`server`. Ports are stable per name (21000 + hash, the next free one if taken) and written to
+`%APPDATA%\Nitrox\bridge\<name>.json` (rigs 1–9: their own data folder, `bridge.ps1 -Rig <n>`); the Nitrox
 logs show `Dev bridge for 'Alice' listening on 127.0.0.1:<port>`. Game commands run on the Unity main thread.
 
 ```powershell
-tools\dual-client.ps1 -WaitForJoin                    # games + server (opens windows)
+tools\dual-client.ps1 -Windowless -WaitForJoin        # games + server, no windows (drop -Windowless to see them)
 tools\bridge.ps1 list                                  # running bridges
 tools\bridge.ps1 Alice help                            # all game commands
 tools\bridge.ps1 Alice state                           # position, sub, underwater, oxygen, health, inventory (ids, batteries)
@@ -98,7 +99,7 @@ tools\bridge.ps1 Bob set player Survival.food 50
 tools\bridge.ps1 Bob call <nitroxId> LiveMixin.Kill
 tools\bridge.ps1 Alice call Inventory.main.InternalDropItem <nitroxId> true   # ids convert to the parameter's component
 tools\bridge.ps1 Bob use <nitroxId>                    # OnHandClick as the local player (pick up, open, press)
-tools\bridge.ps1 Alice screenshot $env:TEMP\a.png
+tools\bridge.ps1 Alice screenshot $env:TEMP\a.png      # windowless games: main camera only, no HUD
 tools\bridge.ps1 server query <nitroxId>               # any server console command, output returned (save, restart, warp, ...)
 tools\bridge.ps1 diff                                  # desync detector, see below
 tools\bridge.ps1 Alice record start sub <nitroxId> [relativeTo]   # per-frame track (S13Helpers.ps1 compares games)
@@ -120,8 +121,10 @@ tools\bridge.ps1 Alice call Thread.Sleep 300           # one long frame (a hitch
 - **Scenarios** are PowerShell scripts in `tools/scenarios/` over `ScenarioHelpers.ps1`: `Start-ScenarioGames` (fresh
   world `bridge-scenario`, both games joined, no-oxygen and no-damage cheats on), `Step` (runs a block, then `diff`),
   `Assert-*`, `Wait-Until`, `Assert-NoDiff -Ids` (no desync for the scenario's entities), `Complete-Scenario` (PASS/FAIL,
-  exit code, stops the games). `-NoLaunch` reuses running games, `-Keep` leaves them running. A run takes about 2 min.
+  exit code, stops the games). `-NoLaunch` reuses running games, `-Keep` leaves them running. A run takes about 2 min
+  (S3 windowless: 55 s).
   ```powershell
+  $env:NITROX_WINDOWLESS = 1          # windowless games, kept through the scenario's restarts
   tools\scenarios\S3-GunDisableSyncs.ps1
   tools\scenarios\S8-EmptyToolNoDupe.ps1
   ```
@@ -143,17 +146,23 @@ tools\bridge.ps1 Alice call Thread.Sleep 300           # one long frame (a hitch
 |---|---|---|---|
 | **L1 Unit/persistence tests** | `dotnet test Nitrox.Test/Nitrox.Test.csproj` + new tests per fix. Includes a **save → load round-trip helper** (S0.5) | Agent, every change | Serialization registration, server processors, "gone after restart" bugs |
 | **L2 Headless server tests** | Real server hosted inside `Nitrox.Test` (`ServerHarness`), with `FakePlayer`s that speak the real protocol. No game window. Part of `dotnet test`; `--filter TestCategory=L2` runs only them (about 6 s), `TestCategory!=L2` skips them. See [below](#writing-a-headless-l2-test) | Agent, every change, in parallel | Server persistence across restart, broadcasts to the partner, late-join sync, dupes and ghost entries |
-| **L3 Automated dual-client scenarios** | Two real Subnautica instances + server on the dev PC, each running a scripted role, asserting on in-game state (S0.1–S0.2, S0.4) | Agent, unattended (PC must be free; about 3–6 min per scenario) | Real client↔client behaviour: AI, physics, Cyclops, story objects |
+| **L3 Automated dual-client scenarios** | Two real Subnautica instances + server on the dev PC, each running a scripted role, asserting on in-game state (S0.1–S0.2, S0.4). [Windowless](#windowless-games-and-parallel-rigs) by default, windowed only where the next section says so | Agent, unattended (windowed runs need the PC to be free; about 1–6 min per scenario) | Real client↔client behaviour: AI, physics, Cyclops, story objects |
 
 A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passes (or L2, if that item has no L3 scenario).
 
-### Which layer to use: headless first, the game only where the game decides
-**The rule:** if the question is "what does the *server* store, reload, or send to whom?", test it **headless (L1/L2)**.
-If the question is "what does *Subnautica itself* do?", meaning AI, physics, player state, a Harmony patch firing, or
-a client applying a change to a GameObject, it **needs real game clients (L3)**. Headless tests can't see game logic,
-and a fake client only does what the test tells it, so a passing L2 test says nothing about the game side.
+### Which layer to use: headless, then windowless, then windowed
+**The rule:** use the first of these that can answer the question.
+1. **Headless (L1/L2), no game.** If the question is "what does the *server* store, reload, or send to whom?".
+2. **Windowless game clients (L3, `-Windowless`).** If the question is "what does *Subnautica itself* do?", meaning AI,
+   physics, player state, a Harmony patch firing, or a client applying a change to a GameObject. Headless tests can't
+   see game logic, and a fake client only does what the test tells it, so a passing L2 test says nothing about the game
+   side. Windowless games are real clients without windows or sound
+   ([below](#windowless-games-and-parallel-rigs)): the default for L3, and they can run while the PC is in use.
+3. **Windowed game clients (L3, plain `dual-client.ps1`).** Only for what windowless games can't show: frame timing and
+   smoothness (S13 for now), animation, HUD/UI, screen effects and sound, anything that has to be seen on screen, and a
+   comparison run when a windowless run fails for no clear reason. They take over the screen, so tell the user first.
 
-| Use **headless (L1/L2)** — fast, parallel, no rig | Use **real game clients (L3)** — the old approach, scarce |
+| Use **headless (L1/L2)** — fast, parallel, no rig | Use **real game clients (L3)** — windowless unless marked windowed |
 |---|---|
 | Entity/metadata survives save → server restart → load | Creature AI, combat, deaths and corpses (S4) |
 | Server bookkeeping: registry, reparenting, cell lists, ghost entries (S7 step 1, #2691) | Physics, movement, vehicles, docking |
@@ -161,7 +170,7 @@ and a fake client only does what the test tells it, so a passing L2 test says no
 | Late-join payload: what the server sends a rejoining player | Game objects reacting to state: story objects (S3), Cyclops damage effects and fires, machines producing or burning items (S7 step 2) |
 | Duplicates and loss at server level (two adds, missing remove, `EntityDestroyed` deleting a record) | That a Harmony patch fires at all, and when (timing, echo loops) |
 | Packet validation, server processors, commands, save upgrades | A client spawning or applying metadata to the right GameObject (e.g. `RestoreMapRoom`) |
-| Story goals and PDA state stored per player (server side of #2508) | Anything visual, audio or animation |
+| Story goals and PDA state stored per player (server side of #2508) | **Windowed:** anything visual, audio or animation; frame timing and smoothness (S13) |
 
 **Per spec item:** most fixes are *hybrid*. Prove the server half headless, then use **one** in-game scenario for the game
 half.
@@ -230,8 +239,9 @@ public class MyFeatureTest
 - Examples: `Nitrox.Test/Server/Headless/` (S7 ghost cell entries, S9 join payload, S8 tool batteries).
 
 ### Game-time budget (the rig is the bottleneck)
-There is one game rig: one PC, port 11000, `tools\game-lock.ps1`. A launch plus join takes minutes, so game time is the
-scarcest resource. Rules:
+There is one PC. Rig 0 (port 11000, `tools\game-lock.ps1`) is the usual rig; windowless games and extra rigs
+([below](#windowless-games-and-parallel-rigs)) make runs cheaper, but RAM still allows one two-player rig at a time on
+the dev PC. A launch plus join takes minutes, so game time is the scarcest resource. Rules:
 - **Prove as much as possible in L1.** Server processors, metadata logic and `SaveLoadRoundTrip` run in seconds and in
   parallel. An L1 test that fails without the fix is the preferred negative control.
 - **Per fix, run each scenario in game until it passes once.** No repeat confirmation runs. Run an in-game negative
@@ -239,6 +249,65 @@ scarcest resource. Rules:
 - **Batch:** launch once and run several scenarios with `-NoLaunch`. Relaunch only for restart or rejoin steps. Build
   setup-heavy worlds once as fixture saves.
 - **Regression:** the full scenario suite runs once per integration into `coop`, not once per fix branch.
+
+### Windowless games and parallel rigs
+The game clients themselves can run without a window (Unity batch mode). This is different from the headless L1/L2
+tests above, which run no game at all. Debug builds only, like everything here.
+
+```powershell
+tools\dual-client.ps1 -Windowless -WaitForJoin              # rig 0: no windows, no sound
+tools\dual-client.ps1 -Windowless -Rig 1 -WaitForJoin       # rig 1: its own port, data folder and game folder
+tools\bridge.ps1 Alice state -Rig 1                         # or $env:NITROX_RIG = 1
+tools\dual-client.ps1 -Stop -Rig 1
+$env:NITROX_WINDOWLESS = 1; tools\scenarios\S3-GunDisableSyncs.ps1   # any scenario, restarts included
+tools\run-suite.ps1 -Windowless
+```
+
+- **How it starts.** With `-Windowless` or `-Rig`, `dual-client.ps1` starts the server and the games itself instead of
+  through the launcher, with what the launcher passes (`--embedded` server, `SteamAppId`, `NITROX_LAUNCHER_PATH`), and
+  `-Stop` stops exactly the processes it started. The game install must carry the launcher's entry patch: any
+  multiplayer start from the launcher adds it, and the script refuses to start without it. `$env:NITROX_WINDOWLESS` and
+  `$env:NITROX_RIG` are the defaults, so the `dual-client.ps1` calls inside scenarios (restarts) keep the mode and rig.
+- **Cost** (dev PC 2026-11-02: Ryzen 7 7800X3D, RTX 4090, 32 GB; one game joined and idle, a windowed 1280×720 game for
+  comparison): CPU 0.35–0.4 cores instead of 1.5, GPU 0.3 % instead of 9 %, join time the same (two games in 21 s).
+  **RAM and VRAM are the same**: about 3–3.5 GB working set and 3 GB VRAM per game; over an S13 run, available RAM
+  dropped by about 3.7 GB per game. `-nographics` is ignored by this Unity player, which creates its Direct3D 11 device
+  anyway (tried in both argument orders), so textures still load. Idle in the pod, a windowless game runs at a steady
+  105 fps (`Application.targetFrameRate` is 144).
+- **Verified 2026-11-02:** S3 PASS windowless on rig 1 (10 checks, 55 s including launch and join). Rigs 1 and 2 ran
+  at the same time (one player each, both named Alice): separate servers, ports, saves and bridges.
+- **Not yet trusted for frame-timing checks: S13.** Windowless, S13 failed 2, 5 and 3 of its 63 checks in three runs,
+  always path-following checks (residual, stalled or backward frames) in one or two driving windows, and in each of those
+  windows the *observing* game ran at 9–25 fps for several seconds (55–145 frames in about 6 s instead of 440–670). The
+  second run was disturbed by bridge queries, the first by low free RAM; the third was clean. When S13 was built, the
+  windowed runs held 120 fps and passed, but S13 hasn't run windowed on the merged `coop` build, so it is open whether
+  the drops come from batch mode. Run S13 (and anything that judges frame timing) windowed until that's compared.
+- **What differs from a windowed game:**
+  - No camera renders, so `Renderer.isVisible` is always false. `BehaviourLOD` (creatures, the Cyclops, bases) would
+    stay Minimal beyond 10 m, and the Cyclops engine (`SubControl`), fires (`SubFire`), `SubRoot` and base flooding
+    (`BaseFloodSim`) skip work below Full. `BehaviourLOD_CheckVisibility_Patch` (Debug, batch mode only) counts a
+    renderer as visible when its bounds are in the main camera's view instead. Checked: a creature 24 m away in view
+    becomes Full, the ones out of view stay Minimal. A Cyclops with players aboard is Full either way (its distance is
+    measured to its bounds), so the patch doesn't change S13.
+  - `bridge.ps1 <player> screenshot` renders the main camera into a texture instead (no HUD); `ScreenCapture` writes
+    nothing in batch mode.
+  - Still different (read from the game code, not checked in game): animators and UI canvases that switch off when not
+    visible (`AnimatorLink`, `CanvasLink`, Animator culling) stay off, so animation-driven bones don't move. Screen
+    effects (`OnPreRender`) never run.
+  - Sound is muted (`NitroxBootstrapper.MuteIfWindowless`, not saved in the game's options). The game keeps playing
+    sound in the background otherwise, because Nitrox forces run-in-background.
+  - Works as usual: terrain and its colliders, physics, creature AI, initial sync, spawning (including
+    `WaitForEndOfFrame` coroutines), the dev bridge and `diff`.
+- **Rigs.** Rig *n* (1–9) uses port 11000+*n*, the data folder `%LOCALAPPDATA%\Nitrox\rigs\rig<n>\data` (passed to the
+  server and the games as `--data-path`, so saves, logs, bridge files and reports stay apart) and the game folder
+  `%LOCALAPPDATA%\Nitrox\rigs\rig<n>\game`: junctions to the install's `StreamingAssets` (6.4 GB), `MonoBleedingEdge`
+  and `SNAppData`, copies of the rest (270 MB, refreshed at every start), so its `NitroxPatcher.dll` doesn't replace
+  another rig's. Each rig has its own lock (`game-lock.ps1 -Rig <n>`). The games load the other Nitrox DLLs from the
+  worktree's build output, so don't rebuild while a rig of that worktree runs.
+- **RAM is the limit, not the rig count.** On the dev PC about 14–17 GB are available with no game running (other
+  programs take the rest), so one two-player rig fits and a second does not. `dual-client.ps1` refuses to start
+  unless 4 GB per game plus 2 GB to spare are available. More parallel runs need more RAM; windowless games don't save
+  any.
 
 ### L3 in detail: the scenario runner (the key investment)
 **Built differently (2026-11-02):** the dev bridge above plus `tools/scenarios/*.ps1`. Scenarios run outside the game

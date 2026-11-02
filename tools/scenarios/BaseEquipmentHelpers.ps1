@@ -236,8 +236,7 @@ function Restart-ScenarioFromSave {
     param([string]$PlayerA, [string]$PlayerB, [string]$SaveName)
     Write-Host (Invoke-Bridge 'server' 'save')
     Start-Sleep -Seconds 3
+    # -Stop waits until they are gone.
     & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -Stop | Out-Null
-    # Stopped processes take a moment to go away, and dual-client.ps1 refuses to start next to a running launcher
-    Wait-Until { -not (Get-Process -Name 'Nitrox.Launcher', 'Nitrox.Server.Subnautica', 'Subnautica' -ErrorAction SilentlyContinue) } -TimeoutSeconds 60 | Out-Null
     Start-ScenarioGames -Players $PlayerA, $PlayerB -SaveName $SaveName -KeepSave
 }

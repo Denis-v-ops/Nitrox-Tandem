@@ -96,21 +96,34 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
 - **Play/test a build:** run `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe`, create or start a server, launch the
   game, then use **Multiplayer** on the main menu and join `127.0.0.1` (default port `11000`, from
   `Nitrox.Model/Constants/SubnauticaServerConstants.cs`).
-- **Headless first.** Anything about what the *server* stores, reloads or sends to whom is tested headless (unit tests
-  and the in-process server harness): seconds per test, many in parallel, no game. Only what *Subnautica itself* does
-  needs real game clients: AI, physics, player state, patches firing, a client applying state to GameObjects. The table
-  is in [TESTING.md](docs/fork/TESTING.md#which-layer-to-use-headless-first-the-game-only-where-the-game-decides).
-- **One game rig, take turns:** only one dual-client run can exist on this PC at a time. It uses fixed port 11000, and
-  each worktree's launch copies its own `NitroxPatcher.dll` into the shared game install. Hold the lock from before
-  launching until after `-Stop`: `tools\game-lock.ps1 -Acquire -Owner <you>` … `tools\game-lock.ps1 -Release -Owner <you>`.
+- **Test in this order: headless, then windowless games, then windowed games.** Use the first one that can answer the
+  question; the table is in [TESTING.md](docs/fork/TESTING.md#which-layer-to-use-headless-then-windowless-then-windowed).
+  1. **Headless, no game** (unit tests and the in-process server harness): anything about what the *server* stores,
+     reloads or sends to whom. Seconds per test, many in parallel.
+  2. **Windowless games** (`dual-client.ps1 -Windowless`, `$env:NITROX_WINDOWLESS=1` for scenarios,
+     `run-suite.ps1 -Windowless`): the default for what *Subnautica itself* does: AI, physics, player state, patches
+     firing, a client applying state to GameObjects. Real game clients in Unity batch mode, without windows or sound and
+     at a quarter of the CPU, so they can run while the PC is in use.
+  3. **Windowed games** (plain `dual-client.ps1`): only for what windowless games can't show. That means frame timing
+     and smoothness (S13 for now), animation, HUD/UI and screen effects, and anything you must see on screen. Also use
+     them to compare when a windowless run fails for no clear reason. They open game windows, so tell the user first.
+  Before treating a windowless-only failure as a bug, check the list of batch-mode differences in
+  [TESTING.md](docs/fork/TESTING.md#windowless-games-and-parallel-rigs).
+- **Game rigs, take turns:** only one dual-client run can exist per rig. Rig 0 uses port 11000, and each worktree's
+  launch copies its own `NitroxPatcher.dll` into the shared game install. Rigs 1–9 (`-Rig <n>`) have their own port,
+  data folder and game folder, but this PC's RAM fits only one two-player run at a time (`dual-client.ps1` refuses when
+  it doesn't fit). Hold the rig's lock from before launching until after `-Stop`:
+  `tools\game-lock.ps1 -Acquire -Owner <you>` … `tools\game-lock.ps1 -Release -Owner <you>` (add `-Rig <n>` for rig n).
   Check who has it with `-Status`. Never restart, shut down or log off the PC, and only stop processes you started.
 - **Two clients on one PC, no clicking (Debug builds):** `tools\dual-client.ps1 -WaitForJoin` builds, runs
   `Nitrox.Launcher/bin/Debug/net10.0/Nitrox.Launcher.exe instantlaunch --save <SaveName> --players Alice Bob` (server for
   that save plus one game per name, each auto-joining localhost; the positional form is silently ignored), prints PASS
   once both have joined (about 20 s on this PC), and `tools\dual-client.ps1 -Stop` closes it all. `-Fixture <save
-  folder|zip>` starts from a prepared world. This opens game windows, so tell the user before running it. Driving the
-  windows with computer use has quirks (QWERTZ keys, no mouse-look); see TESTING.md. By hand: launcher **Options → Allow
-  multiple game instances** (Steam). See [docs/fork/TESTING.md](docs/fork/TESTING.md) for the automated test plan.
+  folder|zip>` starts from a prepared world. Add `-Windowless` unless the run needs windows (order above); without it,
+  this opens game windows, so tell the user before running it. Windowless games use the same RAM as windowed ones.
+  Driving the windows with computer use has quirks (QWERTZ keys, no mouse-look); see TESTING.md. By hand: launcher
+  **Options → Allow multiple game instances** (Steam). See [docs/fork/TESTING.md](docs/fork/TESTING.md) for the
+  automated test plan.
   Upstream has no CI for gameplay and this project doesn't rely on per-fix human playtests, so **automated verification is your job**.
 - **Controlling the games from the shell (Debug builds):** the dev bridge. `tools\bridge.ps1 Alice state`,
   `... teleport x y z`, `... console item flashlight`, `... get/set/call <id|Type.main> ...`, `... use <id>`,
@@ -294,7 +307,8 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
 - One spec item or fix per branch. Keep diffs small and in the style of the surrounding code.
 - Before writing code that depends on game behaviour, read the decompiled game method. Say what you verified.
 - Done means: `dotnet build Nitrox.slnx` passes, `dotnet test` passes, the item's scenario in `tools/scenarios/` passes
-  (write one if it's missing, and check it FAILS without the fix), and there's a short note in the PR or commit saying
-  what was verified and what wasn't.
+  (write one if it's missing, and check it FAILS without the fix; run it windowless unless it's one of the windowed-only
+  cases in §4), and there's a short note in the PR or commit saying what was verified, how (headless, windowless or
+  windowed) and what wasn't.
 - Don't change the save format without an upgrade path, and don't edit a player's save in place.
 - Keep `docs/fork/FIX_SPEC.md` current: tick off items, record findings and decisions.

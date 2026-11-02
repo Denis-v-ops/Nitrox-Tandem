@@ -40,6 +40,7 @@ internal static class BridgeCommands
                                  call <target> <Comp.method> [args...] | call <Type.static...method> [args...]
                                  use <target> [ComponentType]   OnHandClick on the target's IHandTarget, as the local player
                                  screenshot <path.png>          written at the end of the frame (poll for the file)
+                                                                windowless games: the main camera only, written at once
                                  entities                       dump of all loaded entities for "bridge.ps1 diff"
                                  record start <name> <target> [relativeTo] | record stop <name> | record list
                                                                 per-frame pose samples (wall clock, position, velocity, ...)
@@ -296,8 +297,38 @@ internal static class BridgeCommands
         {
             File.Delete(path);
         }
+        if (Application.isBatchMode)
+        {
+            // Windowless games (dual-client.ps1 -Windowless) present no frame, so ScreenCapture writes nothing.
+            File.WriteAllBytes(path, RenderMainCamera(1280, 720));
+            return new Dictionary<string, object?> { ["path"] = path, ["note"] = "batch mode: the main camera only, without the HUD" };
+        }
         ScreenCapture.CaptureScreenshot(path);
         return new Dictionary<string, object?> { ["path"] = path, ["note"] = "written at the end of this frame" };
+    }
+
+    private static byte[] RenderMainCamera(int width, int height)
+    {
+        Camera camera = MainCamera.camera;
+        RenderTexture target = RenderTexture.GetTemporary(width, height, 24);
+        RenderTexture previousTarget = camera.targetTexture;
+        RenderTexture previousActive = RenderTexture.active;
+        Texture2D image = new(width, height, TextureFormat.RGB24, false);
+        try
+        {
+            camera.targetTexture = target;
+            camera.Render();
+            RenderTexture.active = target;
+            image.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+            return image.EncodeToPNG();
+        }
+        finally
+        {
+            camera.targetTexture = previousTarget;
+            RenderTexture.active = previousActive;
+            RenderTexture.ReleaseTemporary(target);
+            UnityEngine.Object.Destroy(image);
+        }
     }
 
     /// <summary>

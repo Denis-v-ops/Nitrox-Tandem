@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    Takes turns on this PC's game rig. Only one dual-client run (server on port 11000 + games) can exist at a time,
-    and every worktree's launch copies its own NitroxPatcher.dll into the shared game install.
+    Takes turns on one of this PC's game rigs. Only one dual-client run (server on the rig's port + games) can exist
+    per rig at a time, and every worktree's launch copies its own NitroxPatcher.dll into the rig's game folder (rig 0:
+    the game install itself). Rigs 1..9 (tools\rig.ps1) have their own lock, port and game folder.
 
 .DESCRIPTION
     -Acquire waits until the lock is free, then takes it. -Release frees it (only for its owner unless -Force).
@@ -12,6 +13,8 @@
     tools\game-lock.ps1 -Acquire -Owner s6-swimming
     tools\scenarios\S6-InteriorStateHolds.ps1
     tools\game-lock.ps1 -Release -Owner s6-swimming
+.EXAMPLE
+    tools\game-lock.ps1 -Acquire -Owner s3-windowless -Rig 2
 #>
 param(
     [switch]$Acquire,
@@ -20,10 +23,11 @@ param(
     [string]$Owner = $env:USERNAME,
     [int]$StaleMinutes = 45,
     [int]$TimeoutMinutes = 180,
-    [switch]$Force
+    [switch]$Force,
+    [int]$Rig = [int]$env:NITROX_RIG
 )
 $ErrorActionPreference = 'Stop'
-$lockFile = Join-Path $env:LOCALAPPDATA 'Nitrox\game-rig.lock'
+$lockFile = Join-Path $env:LOCALAPPDATA "Nitrox\game-rig$(if ($Rig -gt 0) { $Rig }).lock"
 New-Item -ItemType Directory -Force (Split-Path $lockFile) | Out-Null
 
 function Read-Lock {

@@ -21,6 +21,7 @@ public class NitroxBootstrapper : MonoBehaviour
 #if DEBUG
         EnableDeveloperFeatures();
         CreateDebugger();
+        MuteIfWindowless();
 #endif
 
         // This is very important, see Application_runInBackground_Patch.cs
@@ -46,6 +47,30 @@ public class NitroxBootstrapper : MonoBehaviour
         debugger.transform.SetParent(transform);
         // Lets agents drive this game from the shell (tools/bridge.ps1). Never in Release builds.
         debugger.AddComponent<Debuggers.Bridge.DevBridge>();
+    }
+
+    /// <summary>
+    ///     Windowless test games (tools/dual-client.ps1 -Windowless) run while someone uses the PC, and FMOD plays sound
+    ///     without a window too. Muting its master channel group, unlike the volume options, isn't saved in the game's
+    ///     settings.
+    /// </summary>
+    private static void MuteIfWindowless()
+    {
+        if (!Application.isBatchMode)
+        {
+            return;
+        }
+        FMOD.RESULT result = FMODUnity.RuntimeManager.CoreSystem.getMasterChannelGroup(out FMOD.ChannelGroup master);
+        if (result == FMOD.RESULT.OK)
+        {
+            result = master.setMute(true);
+        }
+        if (result != FMOD.RESULT.OK)
+        {
+            Log.Warn($"Batch mode: couldn't mute the game's sound ({result})");
+            return;
+        }
+        Log.Info("Batch mode: game sound muted");
     }
 #endif
 }

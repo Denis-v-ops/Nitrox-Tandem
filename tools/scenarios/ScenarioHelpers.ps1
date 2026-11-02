@@ -19,16 +19,15 @@ $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 <#
     Starts a server with a brand-new world (save "bridge-scenario", replaced every run) and two games that join it,
-    or with -NoLaunch uses the games that are already running. Opens game windows on this PC.
+    or with -NoLaunch uses the games that are already running. Opens game windows on this PC, unless
+    $env:NITROX_WINDOWLESS is set; $env:NITROX_RIG picks the rig (dual-client.ps1, tools\rig.ps1).
 #>
 function Start-ScenarioGames {
     param([string[]]$Players = @('Alice', 'Bob'), [string]$SaveName = 'bridge-scenario', [switch]$NoLaunch, [switch]$KeepSave,
         # Save folder or zip (e.g. tools\fixtures\s7-machine-base) to start from instead of a new world. Ignored with -KeepSave.
         [string]$Fixture)
     if (-not $NoLaunch) {
-        $savesDir = (Get-ItemProperty -Path 'HKCU:\SOFTWARE\Nitrox' -Name 'SavesFolderDir' -ErrorAction SilentlyContinue).SavesFolderDir
-        if (-not $savesDir) { $savesDir = Join-Path $env:APPDATA 'Nitrox\saves' }
-        $saveDir = Join-Path $savesDir $SaveName
+        $saveDir = Join-Path (Get-NitroxRig).SavesDir $SaveName
         if ((Test-Path $saveDir) -and -not $KeepSave) {
             # Only this scenario's own throw-away world.
             Write-Host "Removing the previous scenario world $saveDir"
@@ -146,7 +145,7 @@ function Get-InventoryItem {
 #>
 function Get-ScenarioLogFiles {
     param([string[]]$Players, [string]$SaveName)
-    $logsDir = Join-Path $env:APPDATA 'Nitrox\logs'
+    $logsDir = (Get-NitroxRig).LogsDir
     $date = Get-Date -Format 'yyyyMMdd'
     $files = @()
     foreach ($player in $Players) {
