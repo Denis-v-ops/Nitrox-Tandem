@@ -15,8 +15,10 @@ namespace Nitrox.Test.Server.Headless;
 ///     giving it a command asks for an exclusive lock, which takes it from the partner's normal lock; afterwards the
 ///     player drops back to a normal lock and keeps it, so the partner can't take it with a normal request ("last
 ///     interaction wins", no "nearest player" handover), only by playing with it. When the holder leaves, the partner gets
-///     it. Its follow/stay state is metadata, kept across a restart. This documents the server's existing lock rules that
-///     the game side (CuteFishHandTarget patches, the L3 scenario P1-CuddlefishBoth) builds on; no server code changed.
+///     it. A following cuddlefish stays with its holder when it drops out of their loaded cells (the only server change,
+///     <c>EntitySimulation.FollowsItsHolder</c>). Its follow/stay state is metadata, kept across a restart. The rest
+///     documents the server's existing lock rules that the game side (CuteFishHandTarget patches, the L3 scenario
+///     P1-CuddlefishBoth) builds on.
 /// </summary>
 [TestClass]
 [TestCategory("L2")]
@@ -65,6 +67,38 @@ public class CuddlefishLockTest
         bob.Dispose();
         await alice.WaitForAsync<SimulationOwnershipChange>(packet => packet.Entities.Exists(entity => entity.Id == cuddlefish.Id && entity.SessionId == alice.SessionId));
         AssertHolder(server, cuddlefish.Id, "Alice", SimulationLockType.TRANSIENT);
+    }
+
+    [TestMethod]
+    [DataRow(true, "Bob", DisplayName = "Following: Bob keeps it")]
+    [DataRow(false, "Alice", DisplayName = "Staying: an ordinary creature of its cell")]
+    public async Task HolderLosesSightOfIt_AFollowingCuddlefishStaysTheirs(bool following, string expectedHolder)
+    {
+        // Seen in the L3 scenario: Bob played with it and sped off; its cell left his loaded cells before his game warped it to
+        // him, and the server gave it to Alice, who could still see it. It then followed Alice.
+        await using ServerHarness server = await ServerHarness.StartAsync("L2-P1-CuddlefishOutOfSight");
+        FakePlayer alice = await server.JoinAsync("Alice");
+        FakePlayer bob = await server.JoinAsync("Bob");
+        WorldEntity cuddlefish = Cuddlefish(new CuddlefishMetadata(following, false, null));
+        AbsoluteEntityCell cell = cuddlefish.AbsoluteEntityCell;
+        foreach (FakePlayer player in new[] { alice, bob })
+        {
+            player.Send(new CellVisibilityChanged(player.SessionId, [cell], []));
+            await player.WaitForAsync<SpawnEntities>(packet => packet.SpawnedCells.Contains(cell));
+        }
+        alice.Send(new EntitySpawnedByClient(cuddlefish, true));
+        await bob.WaitForAsync<SpawnEntities>(packet => packet.Entities.Exists(entity => entity.Id == cuddlefish.Id));
+        (await RequestAsync(bob, cuddlefish.Id, SimulationLockType.EXCLUSIVE)).Should().BeTrue();
+        (await RequestAsync(bob, cuddlefish.Id, SimulationLockType.TRANSIENT)).Should().BeTrue();
+
+        bob.ClearReceived();
+        bob.Send(new CellVisibilityChanged(bob.SessionId, [], [cell]));
+        // The reply to a cell change always comes; a later one proves the first was processed
+        AbsoluteEntityCell otherCell = new(new NitroxVector3(500, -10, -400), 1);
+        bob.Send(new CellVisibilityChanged(bob.SessionId, [otherCell], []));
+        await bob.WaitForAsync<SpawnEntities>(packet => packet.SpawnedCells.Contains(otherCell));
+
+        AssertHolder(server, cuddlefish.Id, expectedHolder, SimulationLockType.TRANSIENT);
     }
 
     [TestMethod]
