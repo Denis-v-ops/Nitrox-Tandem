@@ -33,7 +33,10 @@ public sealed partial class MeleeAttack_CanDealDamageTo_Patch : NitroxPatch, IDy
 
         if (target.TryGetComponent(out RemotePlayerIdentifier remotePlayerIdentifier))
         {
-            __result = simulated && __instance.canBitePlayer && remotePlayerIdentifier.RemotePlayer.CanBeAttacked() && IsPathClear(__instance, target);
+            RemotePlayer remotePlayer = remotePlayerIdentifier.RemotePlayer;
+            // A body in a vehicle sits inside the hull, out of reach of a bite (the creature bites the vehicle)
+            __result = simulated && __instance.canBitePlayer && remotePlayer.CanBeAttacked() && !remotePlayer.Vehicle && !remotePlayer.PilotingChair &&
+                       IsPathClear(__instance, target);
             return false;
         }
         if (!simulated && Player.main && target == Player.main.gameObject)

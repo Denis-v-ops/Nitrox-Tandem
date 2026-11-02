@@ -14,8 +14,8 @@ internal sealed class CreatureAttackedPlayerProcessor : IClientPacketProcessor<C
     public Task Process(ClientProcessorContext context, CreatureAttackedPlayer packet)
     {
         Player player = Player.main;
-        // The same check the creature's game made with what it knows of us (RemotePlayer.CanBeAttacked), now with our own state
-        if (!player || !player.liveMixin || !player.CanBeAttacked())
+        // The same checks the creature's game made with what it knows of us (RemotePlayer.CanBeAttacked, not in a vehicle), now with our own state
+        if (!player || !player.liveMixin || !player.CanBeAttacked() || player.GetVehicle())
         {
             return Task.CompletedTask;
         }
