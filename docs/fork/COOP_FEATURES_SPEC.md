@@ -931,7 +931,9 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     (14 checks: 20 m lit; 120 m gone from A's inventory in B's game; lit when B comes near). Negative control in game:
     the same run without the fix fails only the 120 m check.
   - **Open (windowed only, not run):** whether the flashlight, Seaglide light and flare are *drawn* for B at 60–120 m
-    (culling, light range), with night screenshots. The downed light (T1).
+    (culling, light range), with night screenshots. The downed light (T1). Seen, not changed: the destroy also makes the
+    partner's scanner room forget a resource dropped out of their cells until the cell loads it again; and if their game
+    is spawning a batch at that moment, `MarkForDeletion` could skip a spawn of the same id until the next cell load.
 
 ---
 
