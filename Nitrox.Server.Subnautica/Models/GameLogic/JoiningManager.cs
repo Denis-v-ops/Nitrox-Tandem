@@ -238,7 +238,8 @@ internal sealed class JoiningManager(
                 RescueWindowSeconds = options.Value.RescueWindowSeconds,
                 PartnerSignalInterference = options.Value.PartnerSignalInterference,
                 SignalInterferenceDepth = options.Value.SignalInterferenceDepth,
-                PartnerDiscoveriesSilent = options.Value.PartnerDiscoveriesSilent
+                PartnerDiscoveriesSilent = options.Value.PartnerDiscoveriesSilent,
+                CraftFromLockers = options.Value.CraftFromLockers
             }
         );
 
