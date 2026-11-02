@@ -19,7 +19,8 @@ public class PlayerPingCreated(SessionId sessionId, PingKind kind, NitroxTechTyp
     public PingKind Kind { get; } = kind;
     /// <summary>
     ///     What was pinged: the creature for <see cref="PingKind.Danger" />, the item for <see cref="PingKind.Look" /> (its
-    ///     name and icon), <see cref="NitroxTechType.None" /> for <see cref="PingKind.ComeHere" />.
+    ///     name and icon) or <c>Player</c> for a partner (each game names the player nearest the ping other than the
+    ///     sender), <see cref="NitroxTechType.None" /> for <see cref="PingKind.ComeHere" />.
     /// </summary>
     public NitroxTechType TargetTechType { get; } = targetTechType;
     public NitroxVector3 Position { get; } = position;

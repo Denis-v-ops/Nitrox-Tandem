@@ -1,4 +1,5 @@
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
+using NitroxClient.GameLogic.PlayerLogic;
 using UnityEngine;
 
 namespace NitroxClient.GameLogic;
@@ -9,14 +10,24 @@ namespace NitroxClient.GameLogic;
 /// </summary>
 internal static class PingTarget
 {
+    /// <summary>The target of a "look" ping at a partner (MULTINAUGHTICA_SPEC M9); each game names the player itself.</summary>
+    public const TechType PLAYER_TECH_TYPE = TechType.Player;
+
     /// <param name="hitObject">The collider's GameObject; colliders sit on child objects, so the components are looked up in its parents.</param>
-    /// <param name="techType">The creature (Danger) or the item (Look) that was pinged, None for "come here".</param>
+    /// <param name="techType">The creature (Danger), the item or <see cref="PLAYER_TECH_TYPE" /> (Look) that was pinged, None for "come here".</param>
     public static PingKind Classify(GameObject hitObject, out TechType techType)
     {
         techType = TechType.None;
         if (!hitObject)
         {
             return PingKind.ComeHere;
+        }
+
+        // A partner's body, or what they hold: checked first, a held item is a Pickupable too.
+        if (hitObject.GetComponentInParent<RemotePlayerIdentifier>())
+        {
+            techType = PLAYER_TECH_TYPE;
+            return PingRules.SelectKind(isAggressiveCreature: false, isLoot: false, isPartner: true);
         }
 
         Creature creature = hitObject.GetComponentInParent<Creature>();

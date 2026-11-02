@@ -75,7 +75,10 @@ public class PlayerPing : MonoBehaviour
         playerPing.SpawnTime = Time.time;
         playerPing.Lifetime = PingRules.Lifetime(kind);
         playerPing.hasArrived = kind == PingKind.ComeHere ? hasArrived : null;
-        playerPing.Icon = kind == PingKind.Look && targetTechType != TechType.None ? SpriteManager.Get(SpriteManager.Group.Item, targetTechType.AsString(), null) : null;
+        // A ping at a partner keeps the Signal icon, in the sender's colour (MULTINAUGHTICA_SPEC M9).
+        playerPing.Icon = kind == PingKind.Look && targetTechType != TechType.None && targetTechType != PingTarget.PLAYER_TECH_TYPE
+            ? SpriteManager.Get(SpriteManager.Group.Item, targetTechType.AsString(), null)
+            : null;
         playerPing.Color = kind switch
         {
             PingKind.Danger => Color.red,
