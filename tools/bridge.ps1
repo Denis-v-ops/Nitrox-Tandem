@@ -155,8 +155,7 @@ function Get-BridgeEntities {
     Keep this list short and explain every entry; when in doubt, report.
 #>
 $script:KnownNoise = @(
-    @{ Kind = 'TECHTYPE'; Pattern = '^EscapePod server: SmallStorage$'; Why = "The pod's locker carries the pod's TechTag in game; the server records SmallStorage" },
-    @{ Kind = 'POSITION'; Pattern = '\(PrefabPlaceholderEntity\)$'; Why = 'Real but tracked separately (FIX_SPEC log 2026-11-02): some nested placeholders have a bogus server LocalPosition, so the server puts them in the wrong cell. The game places them right.' }
+    @{ Kind = 'TECHTYPE'; Pattern = '^EscapePod server: SmallStorage$'; Why = "The pod's locker carries the pod's TechTag in game; the server records SmallStorage" }
 )
 
 function Test-KnownNoise {
