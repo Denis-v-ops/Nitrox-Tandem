@@ -6,6 +6,8 @@ using NitroxClient.GameLogic;
 using NitroxClient.GameLogic.Spawning.Metadata.Extractor;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
+using NitroxClient.MonoBehaviours.Cyclops;
+using UnityEngine;
 
 namespace NitroxPatcher.Patches.Dynamic;
 
@@ -15,6 +17,15 @@ namespace NitroxPatcher.Patches.Dynamic;
 public sealed partial class PrecursorDoorMotorModeSetter_OnTriggerEnter_Patch : NitroxPatch, IDynamicPatch
 {
     internal static readonly MethodInfo TARGET_METHOD = Reflect.Method((PrecursorDoorMotorModeSetter t) => t.OnTriggerEnter(default));
+
+    /// <summary>
+    /// Ignores colliders inside a Cyclops: through Nitrox' parenting they would resolve to the local player standing in it
+    /// (or to a docked exosuit) and flip its precursorOutOfWater (FIX_SPEC S6).
+    /// </summary>
+    public static bool Prefix(Collider col)
+    {
+        return !CyclopsTriggerFilter.IsInsideCyclopsButNotLocalPlayer(col);
+    }
 
     /*
      * Exosuit componentInHierarchy2 = global::UWE.Utils.GetComponentInHierarchy<Exosuit>(gameObject);

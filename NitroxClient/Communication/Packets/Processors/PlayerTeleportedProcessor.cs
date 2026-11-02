@@ -21,6 +21,8 @@ internal sealed class PlayerTeleportedProcessor : IClientPacketProcessor<PlayerT
         }
 
         Player.main.SetPosition(packet.DestinationTo.ToUnity());
+        // OnPlayerPositionCheat cleared it, and a teleport doesn't pass the trigger volumes that set it (FIX_SPEC S6).
+        Player.main.precursorOutOfWater = packet.InPrecursor;
 
         if (packet.SubRootID.HasValue && NitroxEntity.TryGetComponentFrom(packet.SubRootID.Value, out SubRoot subRoot))
         {

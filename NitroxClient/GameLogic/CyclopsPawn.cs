@@ -13,7 +13,11 @@ namespace NitroxClient.GameLogic;
 public class CyclopsPawn
 {
     private static readonly List<CharacterController> controllers = [];
+    /// <summary>
+    /// Layer mask (not layer index) of the "Player" layer, see <see cref="PLAYER_LAYER_INDEX" />.
+    /// </summary>
     public static readonly int PLAYER_LAYER = 1 << LayerMask.NameToLayer("Player");
+    public static readonly int PLAYER_LAYER_INDEX = LayerMask.NameToLayer("Player");
 
     private readonly INitroxPlayer player;
     private readonly NitroxCyclops cyclops;
@@ -61,7 +65,7 @@ public class CyclopsPawn
         CharacterController reference = Player.main.GetComponent<CharacterController>();
 
         Handle = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        Handle.layer = 1 << PLAYER_LAYER;
+        Handle.layer = PLAYER_LAYER_INDEX;
         Handle.name = name;
         Handle.transform.parent = virtualTransform;
         Handle.transform.localPosition = localPosition;

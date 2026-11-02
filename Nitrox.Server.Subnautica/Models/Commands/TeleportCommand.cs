@@ -23,7 +23,7 @@ internal sealed class TeleportCommand(IPacketSender packetSender) : ICommandHand
         }
 
         NitroxVector3 position = new(x, y, z);
-        playerContext.Player.Teleport(position, Optional.Empty, packetSender);
+        playerContext.Player.Teleport(position, Optional.Empty, false, packetSender);
         await playerContext.ReplyAsync($"Teleported to {position}");
     }
 }

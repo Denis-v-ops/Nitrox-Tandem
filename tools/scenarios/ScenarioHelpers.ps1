@@ -136,6 +136,58 @@ function Get-InventoryItem {
     (Invoke-BridgeJson $Player 'state').inventory | Where-Object { (-not $TechType -or $_.techType -eq $TechType) -and (-not $Id -or $_.id -eq $Id) }
 }
 
+<#
+    Log files of a run: the Nitrox game logs (game[<player>]-<date>.log, appended across runs), each game's Unity log
+    (Player-<player>.log) and the server logs of the save. Get-LogMarks before the launch, Get-LogTextSince after it:
+    only what was written in between is returned (the files are shared with earlier runs and other worktrees).
+#>
+function Get-ScenarioLogFiles {
+    param([string[]]$Players, [string]$SaveName)
+    $logsDir = Join-Path $env:APPDATA 'Nitrox\logs'
+    $date = Get-Date -Format 'yyyyMMdd'
+    $files = @()
+    foreach ($player in $Players) {
+        $files += Join-Path $logsDir "game[$player]-$date.log"
+        $files += Join-Path $logsDir "Player-$player.log"
+    }
+    $files += Get-ChildItem -Path $logsDir -Filter "*_server_${SaveName}_*.log" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+    $files
+}
+
+function Get-LogMarks {
+    param([string[]]$Players, [string]$SaveName)
+    $marks = @{}
+    foreach ($file in Get-ScenarioLogFiles $Players $SaveName) {
+        # Each launch recreates the Unity log (Player-<player>.log), so all of it belongs to the run.
+        if (-not (Test-Path -LiteralPath $file) -or (Split-Path -Leaf $file) -like 'Player-*') { continue }
+        $stream = [IO.File]::Open($file, 'Open', 'Read', 'ReadWrite, Delete')
+        try { $marks[$file] = $stream.Length } finally { $stream.Dispose() }
+    }
+    $marks
+}
+
+<#
+    Text written to each log since the marks, as a hashtable file -> text.
+#>
+function Get-LogTextSince {
+    param([hashtable]$Marks, [string[]]$Players, [string]$SaveName)
+    $texts = @{}
+    foreach ($file in Get-ScenarioLogFiles $Players $SaveName) {
+        if (-not (Test-Path -LiteralPath $file)) { continue }
+        $offset = if ($Marks.ContainsKey($file)) { $Marks[$file] } else { 0 }
+        $stream = [IO.File]::Open($file, 'Open', 'Read', 'ReadWrite, Delete')
+        try {
+            if ($offset -gt $stream.Length) { $offset = 0 }
+            $stream.Seek($offset, 'Begin') | Out-Null
+            $texts[$file] = (New-Object IO.StreamReader($stream)).ReadToEnd()
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+    $texts
+}
+
 function Complete-Scenario {
     param([Parameter(Mandatory)][string]$Name, [switch]$Keep)
     Write-Host ''

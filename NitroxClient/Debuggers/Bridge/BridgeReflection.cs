@@ -42,11 +42,13 @@ internal static class BridgeReflection
         }
         if (token.StartsWith("find:", StringComparison.OrdinalIgnoreCase))
         {
-            Type type = FindType(token.Substring("find:".Length));
-            Component? nearest = FindLoaded(type).FirstOrDefault();
+            // find:<Type> or find:<Type>#<GameObject name> (e.g. find:CinematicModeTrigger#EntranceHatch)
+            string[] parts = token.Substring("find:".Length).Split(['#'], 2);
+            Type type = FindType(parts[0]);
+            Component? nearest = FindLoaded(type).FirstOrDefault(c => parts.Length == 1 || c.gameObject.name == parts[1]);
             if (!nearest)
             {
-                throw new InvalidOperationException($"No loaded {type.Name}");
+                throw new InvalidOperationException($"No loaded {type.Name}{(parts.Length > 1 ? $" named {parts[1]}" : "")}");
             }
             return nearest!.gameObject;
         }
