@@ -6,6 +6,7 @@ using NitroxClient.Communication.Abstract;
 using NitroxClient.GameLogic.FMOD;
 using NitroxClient.MonoBehaviours;
 using UnityEngine;
+using static NitroxClient.GameLogic.CreatureDamageRules;
 
 namespace NitroxClient.GameLogic;
 
@@ -28,6 +29,7 @@ public class CreatureHealthManager
     private readonly IPacketSender packetSender;
     private readonly ThrottledPacketSender throttledPacketSender;
     private readonly SimulationOwnership simulationOwnership;
+    private readonly AI ai;
 
     private readonly Dictionary<(NitroxId CreatureId, DamageType Type), OutgoingHit> outgoingHits = [];
     private readonly List<(NitroxId CreatureId, DamageType Type)> idleOutgoingHitKeys = [];
@@ -35,20 +37,28 @@ public class CreatureHealthManager
     private readonly DamageInfo cosmeticDamageInfo = new();
 
     /// <summary>
+    ///     When the health of a creature this game simulates last changed here: tells a late report of the previous simulating
+    ///     player from a newer change of our own (<see cref="CreatureDamageRules.AcceptsReportAfterHandOver" />).
+    /// </summary>
+    private readonly Dictionary<NitroxId, float> localHealthChangeTimeById = [];
+
+    /// <summary>
     ///     Creature currently taking a hit from <see cref="TryApplyForwardedHit" />.
     /// </summary>
     private LiveMixin remoteDamageTarget;
 
     /// <summary>
-    ///     Above 0 while a local player's attack which gives no dealer to LiveMixin.TakeDamage runs (Prawn suit claw and drill, punching a bleeder).
+    ///     Above 0 while a local player's attack which gives no dealer to LiveMixin.TakeDamage runs (Prawn suit claw and drill, punching a bleeder),
+    ///     or the blast of a crash fish this game simulates (Crash_Detonate_Patch).
     /// </summary>
     public int LocalAttackCount;
 
-    public CreatureHealthManager(IPacketSender packetSender, ThrottledPacketSender throttledPacketSender, SimulationOwnership simulationOwnership)
+    public CreatureHealthManager(IPacketSender packetSender, ThrottledPacketSender throttledPacketSender, SimulationOwnership simulationOwnership, AI ai)
     {
         this.packetSender = packetSender;
         this.throttledPacketSender = throttledPacketSender;
         this.simulationOwnership = simulationOwnership;
+        this.ai = ai;
     }
 
     /// <summary>
@@ -73,28 +83,17 @@ public class CreatureHealthManager
         }
 
         HitSource source = GetHitSource(dealer, type);
-
-        if (simulationOwnership.HasAnyLockType(creatureId))
+        DamageOutcome outcome = CreatureDamageRules.DecideDamage(source, simulationOwnership.HasAnyLockType(creatureId), liveMixin.GetComponent<RemotelyControlled>(),
+                                                                 liveMixin.IsAlive() && !liveMixin.invincible, originalDamage > 0f);
+        switch (outcome)
         {
-            // The player simulating the dealer computes this hit on its side and forwards it to us
-            return source != HitSource.RemoteCopy;
-        }
-
-        if (source == HitSource.World && !liveMixin.GetComponent<RemotelyControlled>())
-        {
-            // Nobody streams this creature to us so it's most likely not simulated at all (e.g. creatures the server doesn't simulate):
-            // it keeps being damaged locally like before instead of becoming immune to the environment and other creatures
-            return true;
-        }
-
-        if (!liveMixin.IsAlive() || liveMixin.invincible)
-        {
-            return false;
-        }
-
-        if (source == HitSource.Local && originalDamage > 0f)
-        {
-            ForwardHit(liveMixin, creatureId, originalDamage, position, type, dealer);
+            case DamageOutcome.Apply:
+                return true;
+            case DamageOutcome.Drop:
+                return false;
+            case DamageOutcome.ForwardAndShow:
+                ForwardHit(liveMixin, creatureId, originalDamage, position, type, dealer);
+                break;
         }
 
         // The health stays untouched but the creature still reacts locally like before (effects, flinch, a reaper releasing a grabbed vehicle)
@@ -136,19 +135,28 @@ public class CreatureHealthManager
         if (!liveMixin.IsAlive())
         {
             throttledPacketSender.RemovePendingPackets(dedupeKey);
+            localHealthChangeTimeById.Remove(creatureId);
             return;
         }
 
         if (simulationOwnership.HasAnyLockType(creatureId))
         {
+            localHealthChangeTimeById[creatureId] = Time.time;
             throttledPacketSender.SendThrottled(new CreatureHealthChanged(creatureId, liveMixin.health), _ => dedupeKey, HEALTH_BROADCAST_INTERVAL);
         }
     }
 
     public void ApplyRemoteHealth(CreatureHealthChanged packet)
     {
-        // The simulating player's own value is the real one, which also makes it ignore late reports of the previous simulating player
-        if (!(packet.Health > 0f) || simulationOwnership.HasAnyLockType(packet.CreatureId))
+        if (!(packet.Health > 0f))
+        {
+            return;
+        }
+
+        // The simulating player's own value is the real one, which also makes it ignore late reports of the previous simulating player,
+        // except the last one right after the lock moved here: it can still be on its way (its throttle held it back during the hand-over)
+        // and carries hits we haven't got. The server lets it through for the same window (CreatureHealthChangedProcessor).
+        if (simulationOwnership.HasAnyLockType(packet.CreatureId) && !IsInHandOverGrace(packet.CreatureId))
         {
             return;
         }
@@ -166,6 +174,16 @@ public class CreatureHealthManager
         {
             liveMixin.tempDamage = 0f;
         }
+    }
+
+    private bool IsInHandOverGrace(NitroxId creatureId)
+    {
+        if (!simulationOwnership.TryGetLockAge(creatureId, out float secondsSinceLockTaken))
+        {
+            return false;
+        }
+        float? secondsSinceLocalChange = localHealthChangeTimeById.TryGetValue(creatureId, out float changeTime) ? Time.time - changeTime : null;
+        return AcceptsReportAfterHandOver(secondsSinceLockTaken, secondsSinceLocalChange);
     }
 
     /// <summary>
@@ -200,9 +218,9 @@ public class CreatureHealthManager
             Vehicle vehicle = dealer.GetComponentInParent<Vehicle>();
             return vehicle && IsSimulatedLocally(vehicle.gameObject) ? HitSource.Local : HitSource.RemoteCopy;
         }
-        if (dealer.GetComponent<Creature>())
+        if (dealer.TryGetComponent(out Creature creature))
         {
-            // Sea dragon attacks only run for the sea dragon's simulating player (SeaDragonMeleeAttack_*_Patch), other creatures' attacks run for everyone
+            // Sea dragon attacks only run for the sea dragon's simulating player (SeaDragonMeleeAttack_*_Patch)
             if (dealer.GetComponent<SeaDragon>())
             {
                 return IsSimulatedLocally(dealer) ? HitSource.Local : HitSource.RemoteCopy;
@@ -210,7 +228,8 @@ public class CreatureHealthManager
             // A creature thrown with a propulsion cannon deals impact damage (always Collide) like any thrown object, its other attacks don't change
             if (type != DamageType.Collide || !dealer.GetComponent<PropulseCannonAmmoHandler>())
             {
-                return HitSource.World;
+                // M5: other creatures attack only in their simulating game (FIX_SPEC S14), except the aggression-synced leviathans
+                return CreatureDamageRules.CreatureDealerSource(ai.AttacksPlayersFromSimulator(creature), IsSimulatedLocally(dealer), IsSimulatedRemotely(dealer));
             }
         }
         // Only the local player's repulsion cannon throws an object which we don't simulate (propulsion cannon grabs take the lock),
@@ -422,24 +441,6 @@ public class CreatureHealthManager
             global::Utils.SpawnPrefabAt(liveMixin.damageEffect, liveMixin.transform, hitPosition);
             liveMixin.timeLastDamageEffect = Time.time;
         }
-    }
-
-    private enum HitSource
-    {
-        /// <summary>
-        ///     Damage which the creature's simulating player also gets on its side (environment, creature attacks, replicated torpedoes...).
-        /// </summary>
-        World,
-
-        /// <summary>
-        ///     Damage computed on our side only (the local player's attacks, what we simulate): sent to the creature's simulating player.
-        /// </summary>
-        Local,
-
-        /// <summary>
-        ///     Our copy of something another player simulates, who sends its own version of the hit.
-        /// </summary>
-        RemoteCopy
     }
 
     private sealed class OutgoingHit

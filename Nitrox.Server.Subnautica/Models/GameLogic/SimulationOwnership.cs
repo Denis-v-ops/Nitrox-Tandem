@@ -20,6 +20,20 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic
 
         Dictionary<NitroxId, PlayerLock> playerLocksById = new Dictionary<NitroxId, PlayerLock>();
 
+        /// <summary>
+        /// MULTINAUGHTICA_SPEC M5 (ported from MultiNaughtica): who lost the lock of an id last, and when
+        /// (<see cref="TickCount" />). Guarded by <see cref="playerLocksById" />.
+        /// </summary>
+        private readonly Dictionary<NitroxId, (SessionId Session, long Tick)> previousOwnersById = [];
+
+        private const int MAX_REMEMBERED_PREVIOUS_OWNERS = 256;
+        private const long FORGET_PREVIOUS_OWNER_AFTER_MS = 5000;
+
+        /// <summary>
+        /// Milliseconds clock for <see cref="WasOwnerWithin" />; tests replace it.
+        /// </summary>
+        internal Func<long> TickCount { get; init; } = () => Environment.TickCount64;
+
         public bool TryToAcquire(NitroxId id, Player player, SimulationLockType requestedLock)
         {
             lock (playerLocksById)
@@ -42,6 +56,7 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic
                 // If the current lock owner has a transient lock then only override if we are requesting exclusive access
                 if (playerLock.LockType == SimulationLockType.TRANSIENT && requestedLock == SimulationLockType.EXCLUSIVE)
                 {
+                    RememberPreviousOwner(id, playerLock.Player);
                     playerLocksById[id] = new PlayerLock(player, requestedLock);
                     return true;
                 }
@@ -59,6 +74,7 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic
                 if (playerLocksById.TryGetValue(id, out PlayerLock playerLock) && playerLock.Player == player)
                 {
                     playerLocksById.Remove(id);
+                    RememberPreviousOwner(id, playerLock.Player);
                     return true;
                 }
 
@@ -93,8 +109,57 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic
         {
             lock (playerLocksById)
             {
+                if (playerLocksById.TryGetValue(id, out PlayerLock playerLock))
+                {
+                    RememberPreviousOwner(id, playerLock.Player);
+                }
                 return playerLocksById.Remove(id);
             }
+        }
+
+        /// <summary>
+        /// True if the session held the lock of the id until it was revoked or taken over at most <paramref name="withinMs" /> ms ago.
+        /// </summary>
+        public bool WasOwnerWithin(NitroxId id, SessionId sessionId, long withinMs)
+        {
+            lock (playerLocksById)
+            {
+                return previousOwnersById.TryGetValue(id, out (SessionId Session, long Tick) previous) &&
+                       previous.Session == sessionId &&
+                       TickCount() - previous.Tick <= withinMs;
+            }
+        }
+
+        /// <summary>
+        /// Called when the current owner proved to be up to date: what the previous owner still has in flight is older from then on.
+        /// </summary>
+        public void ForgetPreviousOwner(NitroxId id)
+        {
+            lock (playerLocksById)
+            {
+                previousOwnersById.Remove(id);
+            }
+        }
+
+        private void RememberPreviousOwner(NitroxId id, Player previousOwner)
+        {
+            long now = TickCount();
+            if (previousOwnersById.Count >= MAX_REMEMBERED_PREVIOUS_OWNERS)
+            {
+                List<NitroxId> expired = [];
+                foreach (KeyValuePair<NitroxId, (SessionId Session, long Tick)> entry in previousOwnersById)
+                {
+                    if (now - entry.Value.Tick > FORGET_PREVIOUS_OWNER_AFTER_MS)
+                    {
+                        expired.Add(entry.Key);
+                    }
+                }
+                foreach (NitroxId expiredId in expired)
+                {
+                    previousOwnersById.Remove(expiredId);
+                }
+            }
+            previousOwnersById[id] = (previousOwner.SessionId, now);
         }
 
         public Player? GetPlayerForLock(NitroxId id)

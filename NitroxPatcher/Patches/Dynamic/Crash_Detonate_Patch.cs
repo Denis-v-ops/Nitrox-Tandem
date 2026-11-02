@@ -15,6 +15,7 @@ namespace NitroxPatcher.Patches.Dynamic;
 /// dealer), so each other player in range gets the same damage, which their own game applies.
 /// M4: the same for vehicles whose lock another player holds (the partner's Seamoth, Prawn suit or Cyclops): only the lock
 /// holder's game changes a vehicle's health, and COOP D4's relay needs a dealer, which the blast doesn't pass.
+/// M5: the same for creatures another player simulates; only their simulating game changes their health (CreatureHealthManager).
 /// </summary>
 public sealed partial class Crash_Detonate_Patch : NitroxPatch, IDynamicPatch
 {
@@ -22,12 +23,18 @@ public sealed partial class Crash_Detonate_Patch : NitroxPatch, IDynamicPatch
 
     private static readonly HashSet<LiveMixin> blastedVehicles = [];
 
-    public static void Prefix(Crash __instance)
+    public static void Prefix(Crash __instance, out bool __state)
     {
+        __state = false;
         if (!__instance.TryGetNitroxId(out NitroxId crashId) || !Resolve<SimulationOwnership>().HasAnyLockType(crashId))
         {
             return;
         }
+
+        // MULTINAUGHTICA_SPEC M5: the blast (DamageSystem.RadiusDamage, no dealer) happens in this game only, so its damage on a
+        // creature another player simulates is sent there (CreatureHealthManager), like the local player's hits
+        Resolve<CreatureHealthManager>().LocalAttackCount++;
+        __state = true;
 
         Vector3 center = __instance.transform.position;
         foreach (RemotePlayer remotePlayer in Resolve<PlayerManager>().GetAll())
@@ -44,6 +51,14 @@ public sealed partial class Crash_Detonate_Patch : NitroxPatch, IDynamicPatch
         }
 
         RelayBlastOnOthersVehicles(__instance, crashId, center);
+    }
+
+    public static void Finalizer(bool __state)
+    {
+        if (__state)
+        {
+            Resolve<CreatureHealthManager>().LocalAttackCount--;
+        }
     }
 
     /// <summary>

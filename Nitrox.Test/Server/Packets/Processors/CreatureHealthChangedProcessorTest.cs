@@ -38,6 +38,20 @@ public class CreatureHealthChangedProcessorTest
     }
 
     [TestMethod]
+    public void IsReportFromSimulatingPlayer_PreviousOwnerRightAfterHandOver_ReturnsTrue()
+    {
+        // MULTINAUGHTICA_SPEC M5 (ported from MultiNaughtica): the report the previous simulating player's throttle held back past the hand-over
+        // still carries its last hits
+        CreatureHealthChangedProcessor.IsReportFromSimulatingPlayer(new CreatureHealthChanged(new NitroxId(), 2500f), CreatePlayer(2, 2), CreatePlayer(1, 1), senderWasRecentOwner: true).Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void IsReportFromSimulatingPlayer_PreviousOwnerWithInvalidHealth_ReturnsFalse()
+    {
+        CreatureHealthChangedProcessor.IsReportFromSimulatingPlayer(new CreatureHealthChanged(new NitroxId(), 0f), CreatePlayer(2, 2), CreatePlayer(1, 1), senderWasRecentOwner: true).Should().BeFalse();
+    }
+
+    [TestMethod]
     [DataRow(0f)]
     [DataRow(-1f)]
     [DataRow(float.NaN)]
