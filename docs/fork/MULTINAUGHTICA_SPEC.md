@@ -332,7 +332,10 @@ decides whether it bites; check before building, and age the server clock in the
 - **Open:** a failed save only hides the indicator. The players aren't told that it failed (the game's own
   `SaveFailedFormat` dialog would fit; not decided). There is no client switch for it (§2 principle 8; it's the game's
   own indicator). It isn't checked whether a canvas that switches off windowless hides the indicator (TESTING.md
-  windowless differences); the scenario reads the alpha.
+  windowless differences); the scenario reads the alpha. An indicator on an active object with its component disabled
+  counts as not running (its `Update` doesn't run), so the notice shows; the scenario checks `isActiveAndEnabled` the
+  same way. The server's own save right after it starts announces its start before the world has loaded, when no
+  player can have joined yet (harmless).
 - **Tests:** unit `ServerSaveIndicatorTest` (10). Each of these fails with its rule reverted: the 2 s minimum (2
   tests), the 60 s timeout, the start/end number match (2 tests), the "ran in the last 2 frames" check (2 tests). Three
   are guards. L2 `ServerSavingTest` (3), each failing with its line reverted: `save` sends start then end with the same

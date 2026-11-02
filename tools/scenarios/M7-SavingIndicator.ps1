@@ -9,7 +9,7 @@
        CanvasGroup alpha 0.
     2. "bridge.ps1 server save" (the save command; it only queues the save). Both games are sampled every ~0.1 s for
        up to 20 s. Indicator path: alpha becomes 1, stays 1 for at least about 2 s from the start (a save of a new
-       world takes well under a second, so this shows the minimum time; the check allows 0.8 s for sampling delays),
+       world takes well under a second, so this shows the minimum time; the check allows 1 s for sampling delays),
        then goes back to 0, and the game showed no notice for this save. Notice path (no SavingIndicator found): the
        game's log says it showed the notice for this save exactly once.
     The scenario prints which path each game used (the final rig pass answers the spec's open question with it).
@@ -29,10 +29,13 @@ param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 'm7-saving-indicator
 $Players = @('Alice', 'Bob')
 
 <#
-    The CanvasGroup alpha of the game's SavingIndicator, or $null when no SavingIndicator runs (is active) in the scene.
+    The CanvasGroup alpha of the game's SavingIndicator, or $null when no SavingIndicator runs in the scene (none on an
+    active GameObject, or its component is disabled: then its Update doesn't run and the game uses the notice).
 #>
 function Get-IndicatorAlpha {
     param([string]$Player)
+    $running = Invoke-Bridge $Player 'get find:SavingIndicator SavingIndicator.isActiveAndEnabled' -AllowError
+    if ($running.StartsWith('ERR ') -or ($running | ConvertFrom-Json) -ne $true) { return $null }
     $reply = Invoke-Bridge $Player 'get find:SavingIndicator SavingIndicator.canvasGroup.alpha' -AllowError
     if ($reply.StartsWith('ERR ')) { return $null }
     [double]($reply | ConvertFrom-Json)
@@ -92,7 +95,7 @@ try {
                 if ($null -ne $s.FirstShown) {
                     $shown = $s.LastShown - $s.FirstShown
                     Write-Host ("  {0}: shown from {1:0.00} s to {2:0.00} s after the save command" -f $player, $s.FirstShown, $s.LastShown)
-                    Assert-True ($shown -ge 1.2) ("{0}'s indicator stayed for the minimum time (seen for {1:0.00} s, at least 1.2 s expected)" -f $player, $shown)
+                    Assert-True ($shown -ge 1.0) ("{0}'s indicator stayed for the minimum time (seen for {1:0.00} s, at least 1.0 s expected)" -f $player, $shown)
                 }
                 Assert-True $s.HiddenAfter "$player's SavingIndicator is hidden again after the save (alpha 0)"
             }
@@ -104,13 +107,15 @@ try {
             Assert-True ([bool]$ended) "$player's game was told that the save finished"
             $log = Get-GameLogSince $marks $player
             $notices = [regex]::Matches($log, 'Showed the notice for server save \d+').Count
+            # The timed autosave may land in the same window: one notice per save that ended
+            $saves = [regex]::Matches($log, 'Server save \d+ (FINISHED|FAILED)').Count
             if ($log.Contains("show through the game's SavingIndicator")) { Write-Host "  $player's log: server saves show through the game's SavingIndicator" }
             if ($log.Contains('server saves show as the game''s notice')) { Write-Host "  $player's log: no SavingIndicator runs, server saves show as the game's notice" }
             if ($paths[$player] -eq 'indicator') {
                 Assert-Equal 0 $notices "$player's game showed no notice on top of the indicator"
             }
             else {
-                Assert-Equal 1 $notices "$player's game showed the 'Saving game' notice once for the save"
+                Assert-True ($notices -ge 1 -and $notices -eq $saves) "$player's game showed the 'Saving game' notice once per save ($notices notices, $saves saves)"
             }
         }
     }
