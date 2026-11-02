@@ -72,6 +72,30 @@ public sealed class FakePlayer : IDisposable
     /// </summary>
     public static async Task<FakePlayer> JoinAsync(string name, int port, TimeSpan? timeout = null)
     {
+        FakePlayer player = await ConnectAsync(name, port, timeout);
+        try
+        {
+            MultiplayerSessionReservation reservation = await player.ReserveAsync(timeout);
+            if (reservation.ReservationState != MultiplayerSessionReservationState.RESERVED)
+            {
+                throw new InvalidOperationException($"{name}'s reservation was rejected: {reservation.ReservationState} {reservation.RejectionReason}");
+            }
+            await player.CompleteJoinAsync(timeout);
+            return player;
+        }
+        catch
+        {
+            player.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     The first part of the join handshake: connects and gets the session policy (and with it the session id).
+    ///     Continue with <see cref="ReserveAsync" /> and <see cref="CompleteJoinAsync" />.
+    /// </summary>
+    public static async Task<FakePlayer> ConnectAsync(string name, int port, TimeSpan? timeout = null)
+    {
         TimeSpan wait = timeout ?? DefaultTimeout;
         FakePlayer player = new(name);
         try
@@ -83,18 +107,6 @@ public sealed class FakePlayer : IDisposable
             player.Send(new MultiplayerSessionPolicyRequest());
             MultiplayerSessionPolicy policy = await player.WaitForAsync<MultiplayerSessionPolicy>(timeout: wait);
             player.SessionId = policy.SessionId;
-
-            player.Send(new MultiplayerSessionReservationRequest(new PlayerSettings(new NitroxColor(1, 1, 1)), new AuthenticationContext(name, Optional.Empty)));
-            MultiplayerSessionReservation reservation = await player.WaitForAsync<MultiplayerSessionReservation>(timeout: wait);
-            if (reservation.ReservationState != MultiplayerSessionReservationState.RESERVED)
-            {
-                throw new InvalidOperationException($"{name}'s reservation was rejected: {reservation.ReservationState} {reservation.RejectionReason}");
-            }
-
-            player.Send(new PlayerJoiningMultiplayerSession());
-            player.InitialSync = await player.WaitForAsync<InitialPlayerSync>(timeout: wait);
-            // Without this the server keeps the join queue blocked until InitialSyncTimeout (JoiningManager)
-            player.Send(new PlayerSyncFinished());
             return player;
         }
         catch
@@ -102,6 +114,31 @@ public sealed class FakePlayer : IDisposable
             player.Dispose();
             throw;
         }
+    }
+
+    public void SendReservationRequest()
+    {
+        Send(new MultiplayerSessionReservationRequest(new PlayerSettings(new NitroxColor(1, 1, 1)), new AuthenticationContext(Name, Optional.Empty)));
+    }
+
+    /// <summary>
+    ///     Asks to reserve <see cref="Name" /> and returns the server's answer, whether accepted or not.
+    /// </summary>
+    public async Task<MultiplayerSessionReservation> ReserveAsync(TimeSpan? timeout = null)
+    {
+        SendReservationRequest();
+        return await WaitForAsync<MultiplayerSessionReservation>(timeout: timeout ?? DefaultTimeout);
+    }
+
+    /// <summary>
+    ///     The rest of the join handshake after the reservation: join queue, initial sync, sync finished.
+    /// </summary>
+    public async Task CompleteJoinAsync(TimeSpan? timeout = null)
+    {
+        Send(new PlayerJoiningMultiplayerSession());
+        InitialSync = await WaitForAsync<InitialPlayerSync>(timeout: timeout ?? DefaultTimeout);
+        // Without this the server keeps the join queue blocked until InitialSyncTimeout (JoiningManager)
+        Send(new PlayerSyncFinished());
     }
 
     public void Send(Packet packet)
@@ -179,6 +216,15 @@ public sealed class FakePlayer : IDisposable
     public void Dispose()
     {
         client.Stop();
+    }
+
+    /// <summary>
+    ///     Like a game that crashed: stops without telling the server, which keeps the session until the connection times
+    ///     out.
+    /// </summary>
+    public void Crash()
+    {
+        client.Stop(false);
     }
 
     public override string ToString() => $"FakePlayer {Name}";

@@ -352,8 +352,15 @@ internal sealed class WorldEntityManager
 
     public Task<int> LoadUnspawnedEntitiesAsync(NitroxInt3 batchId, bool suppressLogs)
     {
-        return batchRegistrationTasks.GetOrAdd(batchId, id => new Lazy<Task<int>>(() => LoadAndRegisterBatchInternalAsync(id, suppressLogs))).Value;
+        // A failed load is forgotten, so a later visit tries again; cached, it failed every visit to the batch
+        return BatchLoadTasks.GetOrStart(batchRegistrationTasks, batchId, id => LoadAndRegisterBatchInternalAsync(id, suppressLogs));
     }
+
+    /// <summary>
+    ///     The batches whose entities are generated and registered (restored ones included), for the save. A batch whose
+    ///     generation finished but whose entities aren't registered yet is left out.
+    /// </summary>
+    public List<NitroxInt3> GetGeneratedBatches() => BatchLoadTasks.ExceptUnfinished(batchEntitySpawner.SerializableParsedBatches, batchRegistrationTasks);
 
     private async Task<int> LoadAndRegisterBatchInternalAsync(NitroxInt3 batchId, bool suppressLogs)
     {

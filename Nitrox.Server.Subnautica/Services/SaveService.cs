@@ -98,20 +98,7 @@ internal sealed class SaveService(Func<WorldService> worldServiceProvider, ISave
             Directory.Delete(tempOutDir, true);
             logger.ZLogInformation($"World backed up");
 
-            // Prune old backups
-            FileInfo[] backups = Directory.EnumerateFiles(backupDir)
-                                          .Select(f => new FileInfo(f))
-                                          .Where(f => f is { Extension: ".zip" } info && info.Name.Contains("Backup - "))
-                                          .OrderBy(f => File.GetCreationTime(f.FullName))
-                                          .ToArray();
-            if (backups.Length > options.Value.MaxBackups)
-            {
-                int numBackupsToDelete = backups.Length - Math.Max(1, options.Value.MaxBackups);
-                for (int i = 0; i < numBackupsToDelete; i++)
-                {
-                    backups[i].Delete();
-                }
-            }
+            PruneBackups(backupDir, options.Value.MaxBackups);
         }
         catch (Exception ex)
         {
@@ -119,6 +106,27 @@ internal sealed class SaveService(Func<WorldService> worldServiceProvider, ISave
             if (Directory.Exists(tempOutDir))
             {
                 Directory.Delete(tempOutDir, true); // Delete the outZip folder that is sometimes left
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Deletes the oldest rolling backups beyond <paramref name="maxBackups" />. Only looks at the files directly in
+    ///     <paramref name="backupDir" />, so the start backups in its subfolder stay (<see cref="ServerStartBackups" />).
+    /// </summary>
+    internal static void PruneBackups(string backupDir, int maxBackups)
+    {
+        FileInfo[] backups = Directory.EnumerateFiles(backupDir)
+                                      .Select(f => new FileInfo(f))
+                                      .Where(f => f is { Extension: ".zip" } info && info.Name.Contains("Backup - "))
+                                      .OrderBy(f => File.GetCreationTime(f.FullName))
+                                      .ToArray();
+        if (backups.Length > maxBackups)
+        {
+            int numBackupsToDelete = backups.Length - Math.Max(1, maxBackups);
+            for (int i = 0; i < numBackupsToDelete; i++)
+            {
+                backups[i].Delete();
             }
         }
     }

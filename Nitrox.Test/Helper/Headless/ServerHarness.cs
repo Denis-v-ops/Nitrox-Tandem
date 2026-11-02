@@ -28,8 +28,10 @@ namespace Nitrox.Test.Helper.Headless;
 /// </remarks>
 internal sealed class ServerHarness : IAsyncDisposable
 {
+    private readonly string[] extraArgs;
     private readonly List<FakePlayer> players = [];
     private IHost? host;
+    private Task? pendingStart;
 
     /// <summary>
     ///     Temporary data directory (saves, logs). Deleted on dispose unless the environment variable
@@ -55,18 +57,23 @@ internal sealed class ServerHarness : IAsyncDisposable
     public EntityRegistry EntityRegistry => Get<EntityRegistry>();
     public WorldEntityManager WorldEntityManager => Get<WorldEntityManager>();
 
-    private ServerHarness(string saveName)
+    private ServerHarness(string saveName, string[] extraArgs)
     {
         SaveName = saveName;
+        this.extraArgs = extraArgs;
         DataPath = Path.Combine(Path.GetTempPath(), "nitrox-l2", $"{saveName}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(DataPath);
         Port = GetFreeUdpPort();
     }
 
     /// <param name="saveName">Only used to name the save and the temp folder, the save is always new.</param>
-    public static async Task<ServerHarness> StartAsync(string saveName = "L2")
+    /// <param name="extraArgs">
+    ///     Server command line arguments after the harness's own, so they override them (e.g.
+    ///     <c>--GameServer:MaxBackups 2</c>). Used again at every restart.
+    /// </param>
+    public static async Task<ServerHarness> StartAsync(string saveName = "L2", string[]? extraArgs = null)
     {
-        ServerHarness harness = new(saveName);
+        ServerHarness harness = new(saveName, extraArgs ?? []);
         try
         {
             await harness.StartHostAsync();
@@ -92,6 +99,46 @@ internal sealed class ServerHarness : IAsyncDisposable
             players.Add(player);
         }
         return player;
+    }
+
+    /// <summary>
+    ///     A new <see cref="FakePlayer" /> that only connected and got the session policy; the test does the rest of the
+    ///     handshake. Disposed with the harness.
+    /// </summary>
+    public async Task<FakePlayer> ConnectAsync(string playerName)
+    {
+        FakePlayer player = await FakePlayer.ConnectAsync(playerName, Port);
+        lock (players)
+        {
+            players.Add(player);
+        }
+        return player;
+    }
+
+    /// <summary>
+    ///     Like <see cref="RestartAsync" />, but the new server doesn't load its world until <paramref name="worldLoadGate" />
+    ///     completes, as if loading took that long. Returns while the server starts; the world loads and the start
+    ///     finishes later (<see cref="WaitForStartAsync" />).
+    /// </summary>
+    public async Task RestartHoldingWorldLoadAsync(Task worldLoadGate)
+    {
+        await SaveAsync();
+        await DisconnectPlayersAsync();
+        await StopHostAsync();
+        await StartHostAsync(worldLoadGate);
+    }
+
+    /// <summary>
+    ///     Waits until the start begun by <see cref="RestartHoldingWorldLoadAsync" /> has finished.
+    /// </summary>
+    public async Task WaitForStartAsync()
+    {
+        if (pendingStart == null)
+        {
+            return;
+        }
+        await pendingStart.WaitAsync(FakePlayer.DefaultTimeout);
+        pendingStart = null;
     }
 
     /// <summary>
@@ -166,6 +213,19 @@ internal sealed class ServerHarness : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         DisconnectPlayers();
+        if (pendingStart != null)
+        {
+            try
+            {
+                await pendingStart.WaitAsync(FakePlayer.DefaultTimeout);
+            }
+            catch (Exception ex)
+            {
+                // A start whose world load was held and never released; stop it anyway
+                Console.WriteLine($"[L2] Server '{SaveName}' didn't finish starting: {ex.Message}");
+            }
+            pendingStart = null;
+        }
         await StopHostAsync();
         if (Environment.GetEnvironmentVariable("NITROX_L2_KEEP") == null)
         {
@@ -180,7 +240,11 @@ internal sealed class ServerHarness : IAsyncDisposable
         }
     }
 
-    private async Task StartHostAsync()
+    /// <param name="worldLoadGate">
+    ///     Null: waits until the server has started. Otherwise the world load waits for it, and this returns once the
+    ///     server accepts connections.
+    /// </param>
+    private async Task StartHostAsync(Task? worldLoadGate = null)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         string[] args =
@@ -192,17 +256,57 @@ internal sealed class ServerHarness : IAsyncDisposable
             $"--{SubnauticaServerOptions.CONFIG_SECTION_PATH}:{nameof(SubnauticaServerOptions.PortForward)}", "false",
             $"--{SubnauticaServerOptions.CONFIG_SECTION_PATH}:{nameof(SubnauticaServerOptions.LanDiscovery)}", "false",
             $"--{SubnauticaServerOptions.CONFIG_SECTION_PATH}:{nameof(SubnauticaServerOptions.AutoSave)}", "false",
-            $"--{SubnauticaServerOptions.CONFIG_SECTION_PATH}:{nameof(SubnauticaServerOptions.MaxBackups)}", "0"
+            $"--{SubnauticaServerOptions.CONFIG_SECTION_PATH}:{nameof(SubnauticaServerOptions.MaxBackups)}", "0",
+            ..extraArgs
         ];
         ServerStartOptions startOptions = Program.ParseStartOptions(args);
         // Separate stopwatch: the server stops the one it gets once started
         HostApplicationBuilder builder = Program.CreateHostBuilder(args, startOptions, Stopwatch.StartNew(), interactive: false);
         // Debug output of a whole server is mostly batch spawning noise; the full log is in LogsPath anyway.
         builder.Logging.SetMinimumLevel(LogLevel.Information);
+        if (worldLoadGate != null)
+        {
+            HoldWorldLoad(builder.Services, worldLoadGate);
+        }
         host = builder.Build();
-        await host.StartAsync();
+        Task start = host.StartAsync();
+        if (worldLoadGate != null)
+        {
+            // The network service starts within moments; a FakePlayer that connects earlier keeps trying for 5 s (LiteNetLib)
+            pendingStart = start;
+            Console.WriteLine($"[L2] Server '{SaveName}' starting on UDP {Port}, its world load is held");
+            return;
+        }
+        await start;
         LastStartupTime = stopwatch.Elapsed;
         Console.WriteLine($"[L2] Server '{SaveName}' started in {LastStartupTime.TotalSeconds:0.00} s on UDP {Port}, data in {DataPath}");
+    }
+
+    /// <summary>
+    ///     Makes the host start <see cref="WorldService" /> (which loads the world) only once <paramref name="gate" />
+    ///     completes. The other services start as usual, so the network accepts players meanwhile, as it does while a
+    ///     big world loads.
+    /// </summary>
+    private static void HoldWorldLoad(IServiceCollection services, Task gate)
+    {
+        // AddHostedSingletonService<WorldService> adds the singleton and right after it the hosted service resolving it
+        int index = services.ToList().FindIndex(descriptor => descriptor.ServiceType == typeof(WorldService));
+        if (index < 0 || index + 1 >= services.Count || services[index + 1].ServiceType != typeof(IHostedService))
+        {
+            throw new InvalidOperationException($"Can't find the hosted service registration of {nameof(WorldService)}");
+        }
+        services[index + 1] = ServiceDescriptor.Singleton<IHostedService>(provider => new GatedHostedService(provider.GetRequiredService<WorldService>(), gate));
+    }
+
+    private sealed class GatedHostedService(IHostedService inner, Task gate) : IHostedService
+    {
+        public async Task StartAsync(CancellationToken cancellationToken)
+        {
+            await gate.WaitAsync(cancellationToken);
+            await inner.StartAsync(cancellationToken);
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken) => inner.StopAsync(cancellationToken);
     }
 
     private async Task StopHostAsync()

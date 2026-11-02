@@ -22,79 +22,134 @@ public sealed class NtpSyncer
     /// </remarks>
     private const float TIMEOUT_INTERVAL = 5000;
 
+    private readonly object roundLock = new();
     private ILogger<NtpSyncer> logger = NullLogger<NtpSyncer>.Instance;
-    private LiteNetLibNtp ntp;
+    private LiteNetLibNtp? ntp;
 
     private Timer? timer;
 
+    /// <summary>
+    ///     Whether the last round (<see cref="Setup" />, <see cref="RequestNtpService" />) is over.
+    /// </summary>
     public bool IsComplete { get; private set; }
+
+    /// <summary>
+    ///     Whether a round is set up and not over yet: it holds a socket.
+    /// </summary>
+    public bool IsRunning => ntp != null && !IsComplete;
+
     public bool OnlineMode { get; private set; }
     public TimeSpan CorrectionOffset { get; private set; }
     private Action<bool, TimeSpan>? DisposeCallback { get; set; }
 
+    /// <summary>
+    ///     The socket of the current round, for tests.
+    /// </summary>
+    internal NetManager? CurrentNetManager => ntp?.NetManager;
+
+    /// <summary>
+    ///     Prepares a new round of requests (one socket). A round still running is stopped first: each round used to open a
+    ///     new socket that nothing closed once a first round had completed.
+    /// </summary>
     public void Setup(Action<bool, TimeSpan>? finishCallback = null, ILogger<NtpSyncer>? optionalLogger = null)
     {
-        if (optionalLogger != null)
+        (LiteNetLibNtp? oldNtp, Timer? oldTimer) previous;
+        lock (roundLock)
         {
-            logger = optionalLogger;
+            previous = DetachRound();
+            if (optionalLogger != null)
+            {
+                logger = optionalLogger;
+            }
+            DisposeCallback = finishCallback;
+            IsComplete = false;
+
+            LiteNetLibNtp roundNtp = new(TreatPacket);
+            ntp = roundNtp;
+            timer = new(TIMEOUT_INTERVAL) { AutoReset = false };
+            timer.Elapsed += delegate
+            {
+                // The timer of a round that was replaced meanwhile must not touch the new round
+                if (ntp != roundNtp)
+                {
+                    return;
+                }
+                roundNtp.ClearNtpRequests();
+                RequestNtpService();
+            };
         }
-        DisposeCallback = finishCallback;
-
-        ntp = new(TreatPacket);
-
-        timer = new(TIMEOUT_INTERVAL) { AutoReset = false };
-        timer.Elapsed += delegate
-        {
-            ntp.ClearNtpRequests();
-            RequestNtpService();
-        };
+        StopRound(previous);
     }
 
     public void RequestNtpService()
     {
-        if (timer == null)
+        LiteNetLibNtp? roundNtp = ntp;
+        Timer? roundTimer = timer;
+        if (roundNtp == null || roundTimer == null)
         {
             return;
         }
 
         try
         {
-            if (ntp.CreateNextNtpRequest() == null)
+            if (roundNtp.CreateNextNtpRequest() == null)
             {
                 Complete();
                 return;
             }
-            timer.Start();
-            ntp.TriggerUpdate();
+            roundTimer.Start();
+            roundNtp.TriggerUpdate();
         }
         catch (Exception ex)
         {
-            logger.LogError($"An error occurred during NTP sync sequence with '{ntp.LatestUsedService}', retrying with another one... ({ex.GetType()}: {ex.Message})");
-            timer.Stop();
+            logger.LogError($"An error occurred during NTP sync sequence with '{roundNtp.LatestUsedService}', retrying with another one... ({ex.GetType()}: {ex.Message})");
+            roundTimer.Stop();
             RequestNtpService();
         }
     }
 
     public void Complete()
     {
-        if (IsComplete)
+        Action<bool, TimeSpan>? callback;
+        (LiteNetLibNtp? oldNtp, Timer? oldTimer) round;
+        lock (roundLock)
         {
-            return;
+            if (IsComplete)
+            {
+                return;
+            }
+            IsComplete = true;
+            round = DetachRound();
+            callback = DisposeCallback;
+            DisposeCallback = null;
         }
-        IsComplete = true;
-
-        timer?.Close();
-        timer = null;
-        ntp.Dispose();
+        StopRound(round);
         try
         {
-            DisposeCallback?.Invoke(OnlineMode, CorrectionOffset);
+            callback?.Invoke(OnlineMode, CorrectionOffset);
         }
         catch (Exception ex)
         {
             Log.Error(ex);
         }
-        DisposeCallback = null;
+    }
+
+    private (LiteNetLibNtp? oldNtp, Timer? oldTimer) DetachRound()
+    {
+        (LiteNetLibNtp? oldNtp, Timer? oldTimer) round = (ntp, timer);
+        ntp = null;
+        timer = null;
+        return round;
+    }
+
+    /// <summary>
+    ///     Closes the timer and the socket of a round. Outside the lock: stopping the socket waits for its threads, which may
+    ///     be waiting for the lock in <see cref="Complete" />.
+    /// </summary>
+    private static void StopRound((LiteNetLibNtp? oldNtp, Timer? oldTimer) round)
+    {
+        round.oldTimer?.Close();
+        round.oldNtp?.Dispose();
     }
 
     private void TreatPacket(NtpPacket? ntpPacket)
@@ -110,7 +165,7 @@ public sealed class NtpSyncer
         }
         else
         {
-            logger.LogError($"NTP request error at {ntp.LatestUsedService}, retrying with another service...");
+            logger.LogError($"NTP request error at {ntp?.LatestUsedService}, retrying with another service...");
             RequestNtpService();
         }
     }
@@ -138,6 +193,8 @@ public sealed class NtpSyncer
             get => latestUsedService ?? "no-service";
             private set => latestUsedService = value;
         }
+
+        public NetManager NetManager => netManager;
 
         public LiteNetLibNtp(EventBasedNetListener.OnNtpResponseEvent ntpEvent)
         {
