@@ -45,10 +45,11 @@ internal sealed record StoryGateDefinition(StoryGateKind Kind, StoryGateRule Rul
 internal static class StoryGateRules
 {
     /// <summary>
-    ///     The Aurora's drive core room, around the 11 radiation leaks. Measured in game (windowless, 2026-11-02): see the
-    ///     G4 section of COOP_FEATURES_SPEC for the leak positions; the box adds a few meters on every side.
+    ///     The Aurora's drive core room: the 11 radiation leaks lie within x 849.9..881.5, y -16.0..2.7, z -7.7..18.9
+    ///     (read in game through the dev bridge, 2026-11-02); the box adds 6 m on every side. The game has no volume or
+    ///     biome of its own for the room (it reports "crashedShip" all over the wreck), and the walls weren't measured.
     /// </summary>
-    public static readonly StoryGateArea DriveCoreRoom = new("drive core room", new NitroxVector3(-1, -1, -1), new NitroxVector3(1, 1, 1));
+    public static readonly StoryGateArea DriveCoreRoom = new("drive core room", new NitroxVector3(844, -22, -14), new NitroxVector3(888, 9, 25));
 
     private static readonly TimeSpan clickTimeout = TimeSpan.FromMinutes(2);
 

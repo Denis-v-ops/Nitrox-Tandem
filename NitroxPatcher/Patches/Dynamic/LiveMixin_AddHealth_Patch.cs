@@ -75,9 +75,12 @@ public sealed partial class LiveMixin_AddHealth_Patch : NitroxPatch, IDynamicPat
     /// </summary>
     private static bool HoldsLastRadiationLeak(LiveMixin liveMixin, float healthBack)
     {
+        if (!liveMixin.TryGetComponent(out RadiationLeak leak))
+        {
+            return false;
+        }
         StoryGates storyGates = Resolve<StoryGates>();
-        if (storyGates.IsPassing(StoryGateKind.DRIVE_CORE) || Resolve<LiveMixinManager>().IsRemoteHealthChanging ||
-            !liveMixin.TryGetComponent(out RadiationLeak leak) || !IsLastLeak(leak))
+        if (storyGates.IsPassing(StoryGateKind.DRIVE_CORE) || Resolve<LiveMixinManager>().IsRemoteHealthChanging || !IsLastLeak(leak))
         {
             return false;
         }
