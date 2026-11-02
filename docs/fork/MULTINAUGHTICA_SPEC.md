@@ -213,6 +213,82 @@ Game-rig scenarios run once at the end, after all nine are implemented ("Testing
 - **Crash fish blast next to the partner's vehicle** passes no attacker, so COOP D4's relay misses it: send
   `CreatureAttackedVehicle` from our `Crash_Detonate_Patch` with the falloff we already compute for bodies.
 
+**Findings (2026-11-02):** implemented on `fix/m4-creature-attacks`, not verified in game (scenario
+`tools/scenarios/M4-CreatureAttacks.ps1` written, not run). No save format change; three new packets (all three
+programs must run the same build). No metadata tags used.
+- **Reaper grab: held, fixed.** The Reaper is in `AI.syncedCreatureWhitelist`, so every game's copy is aggressive and
+  `ReaperMeleeAttack.OnTouch` grabs with that game's copy only (`game:ReaperMeleeAttack.cs`). New `ReaperGrabVehicle` /
+  `ReaperReleaseVehicle`, sent to the players who see the Reaper (and the vehicle); the others grab with the packet
+  suppressed and replace the game's 8–13 s timer with a 20 s fallback. Who does what: the pilot's game (vehicle lock)
+  moves its vehicle to its Reaper's mouth (`ReaperLeviathan.Update`; a Prawn suit gets `cinematicMode` as in single
+  player) and applies the grip's 15 per second (`DamageVehicle` passes no dealer, so the other games drop it in
+  `LiveMixin_TakeDamage_Patch`: no double damage, and their `ReaperLeviathan_DamageVehicle_Patch` isn't needed); the
+  other games stop the vehicle's movement replicator while it is held (existing patch). A release always comes: the
+  grabbing game's timer or electrical/poison damage in any game sends it; a destroyed vehicle is let go by each game's
+  own `Update`; a killed Reaper is disabled by `Creature.OnKill` and lets go in `OnDisable` wherever the death arrives
+  (S4); a game that left or unloaded the Reaper sends nothing (`OnDisable`, `isActiveAndEnabled` false there,
+  *unverified in game*) and the others' 20 s fallback lets go. Every release cancels a leftover timer.
+- **S15a, Crabsquid EMP: held; the "Player tag" question can't be answered from code, guarded.** `EMPAttack` is a
+  creature action, so `CastEMPBlast` runs only in the simulating game. New `EmpFired` (to the players who see the
+  creature): their copy casts the same blast, which disables that game's vehicles, held tool and Cyclops
+  (`game:EMPBlast.OnTouch`). Overlapping hits don't extend the disable (`DisableElectronicsForTime` takes the max).
+  The partner's body (a copy of the player's `body` child, `LocalPlayer.CreateBodyPrototype`) has our rigidbody and a
+  trigger collider on the Useable layer, which `OnTouch` lets through (`game:OnTouch.cs`), so blasts do touch it.
+  Whether the copy carries the `Player` tag is asset data, not read. `EMPBlast_OnTouch_Patch` skips other players'
+  bodies: if tagged, the blast would disable `Inventory.main`'s held tool, the local player's, when only the partner was
+  in range; if not, the body has no `EnergyInterface`/`EnergyMixin` and skipping changes nothing. The scenario reports
+  the tag. The partner sees no wind-up (animation, sound) before the blast; cosmetic, left out.
+- **S15d, Bleeder: held, by reading the code.** `AttachAndSuck.OnCollisionEnter` is a physics callback that runs on
+  every copy. A copy another game simulates still swims (`RemotelyControlled` drives its `SwimBehaviour`, its rigidbody
+  stays non-kinematic) with its collider on, so it collides with the local player and writes the contact (target
+  occupied, which also spared that player from every other Bleeder in that game); the attack itself (`Evaluate`,
+  `StartPerform`, `Update` behind `active`) runs only where it is simulated. The partner's body collider is a trigger,
+  so no copy ever attaches to a body. Ported their claim (`BleederClaims`, `BleederClaimRules`, the two `AttachAndSuck`
+  patches, two `OnLockLost` lines in `SimulationOwnership`): the victim's game takes the exclusive lock; refused, it
+  detaches; granted, the attack must start within 5 s; on detach the lock goes back to transient after 0.5 s (later
+  while the Propulsion Cannon holds it); a lost lock detaches. Adapted: only contacts with the local player
+  (`targetLiveMixin == Player.main.liveMixin`) claim; a non-simulating copy drops any other contact. Whitelist:
+  `TechType.Bleeder` added; Spinefish and Shuttlebug really were listed twice (a `HashSet`, so harmless), removed. Not
+  taken: their other three whitelist entries, `Bleeder_OnHit_Patch` (needs M5's `CreatureHealthManager`).
+- **Crash fish disappear: held, fixed. Transform hypothesis: held, measured headless.** `CrashHome_OnDestroy_Patch`
+  (the `EntityDestroyed` on unload) is deleted; a fish that dies is still sent by `LiveMixin_Kill_Patch`. Their client
+  part taken: the gate (`CrashHomeMetadataGate`, 20 s grace) before the 20 minute timer is started and sent and before a
+  fish is made; no second fish for a home that has one (`CrashHome_Spawn_Patch` sets the number back to -1 and sends
+  it); `CrashEntitySpawner` destroys an object it can't place and replaces a second fish object of a home. Transform:
+  the maker's game sends the fish with `ToWorldDto` (world position) and the home as parent; in a session the server
+  never sets `Transform.Parent` (`EntityRegistry.AddToParent` only links the entities), but the loader
+  (`WorldService`) hangs every child under its parent without converting, and BinaryPack sends `NitroxTransform.Parent`
+  with the entity. In the L2 test the fish was 134 m from its home after a restart, in another cell, and the client
+  (which places it at `Transform.Position`) received it there. Fix: the loader leaves the transform of a crash fish of a
+  `CrashHome` unparented; no saved value changes. **Their load-time save normalisation (`CrashHomeStates`): left out.**
+  It rewrites existing saves' metadata (homes at -1 without a fish set to 0, homes with a fish and a timer set to -1,
+  `CrashHomeMetadata` removed from non-home entities) and deletes surplus fish entities. The client part already heals
+  both home states in play (an empty home at -1 starts the game's 20 minute timer; a fish with a timer is set back to -1
+  when the timer runs out), and the stray metadata comes from regenerated batches (M3's open point), not from this item.
+  Open: a fish that moved after a restart on an older build saved a local position (the wrong parent turned position
+  updates into local ones), which this fix reads as a world position, so that fish would appear near the world origin;
+  rare, since older builds deleted the fish whenever its area unloaded. Not reproduced.
+- **AI packet on every update: held.** `Creature.ChooseBestAction` (`game:Creature.cs`) returns null with no enabled
+  action, or when none was running and none evaluates above 0; `BroadcastNewAction` then threw on `GetType()` (only
+  for the four synced leviathans; the others never send). Now changes only plus a refresh every 5 s
+  (`CreatureActionBroadcastRules`), and "no action" is sent as an empty name, which clears the action on the other games
+  (they then stop it, as `Creature.UpdateBehaviour` does). A game that receives another game's action forgets what it
+  sent, so it sends at once when the lock comes back.
+- **Crash blast on the partner's vehicle: held, fixed.** `DamageSystem.RadiusDamage` passes no dealer, so D4's relay
+  (needs a dealer) never sent it. `Crash_Detonate_Patch` now finds the vehicles in the radius the way `RadiusDamage`
+  does (`OverlapSphereIntoSharedBuffer`, nearest `LiveMixin` above each collider, vehicles and Cyclops) and sends
+  `CreatureAttackedVehicle` for those whose lock it doesn't hold, with the same falloff; the server passes it to the
+  vehicle's lock holder only (D4).
+- **Tests.** L2 `CreatureAttackGapsTest`: `CrashFish_StaysAtItsHomeThroughARestart` (fails without the loader fix:
+  134 m off on the server, and in the packet the partner's game gets), `WorldBleeder_IsSimulated_AndItsVictimTakesItExclusively`
+  (fails without the whitelist line: nobody gets the lock), `EmpBlastAndReaperGrab_ReachThePlayersWhoSeeTheCreature`
+  (fails without the three server processors: a far player gets them). Unit (pure helpers, new code, so "fails without
+  the fix" doesn't apply): `CreatureActionBroadcastRulesTest`, `BleederClaimRulesTest` and `CrashHomeRulesTest` (the
+  last two ported). Client-only lines covered by the scenario only: the deleted `OnDestroy` send, the grab/release and
+  EMP replays, the body guard, the crash blast on vehicles.
+- Shared files touched: `SimulationOwnership.cs` (2 lines), `WorldService.cs` (loader), `CreatureAggroHelpers.ps1` and
+  `D4-ThreatParity.ps1` (D4's Seamoth helpers moved to the shared file unchanged, for M4's scenario).
+
 ## M5: Damage from both players adds up (M–L)
 
 FIX_SPEC S4's "Later" item. Their creature health is upstream
@@ -375,3 +451,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 |---|---|---|---|
 | 2026-11-02 | — | Spec created from the review of MultiNaughtica `99428c8` (base upstream `7815b4e4`) against `coop` @ `ddf06755`. Decisions recorded above. Game-rig tests deferred to one pass after M1–M9 are implemented (rigs in use) | Code review only, nothing built or run. Re-read in our code: Cyclops `isDestroyed` at health 0, `Battery_charge_set_Patch` Prefix, radiation `Max()`, Sea Emperor baby parent check. Everything else is *hypothesis (review)* |
 | 2026-11-02 | M3 | Implemented, not verified in game: start backups in `backups/server-starts/` (last 5); reservations wait for the world and the join re-checks the saved player; a reservation that never joined frees its name; a stale session with the same name and IP is kicked; only finished batches are recorded and failed batch loads are retried; one NTP socket per round, closed at its end; Debug `entitycount` | L2 (headless): `JoinSafetyTest` (5, each fails with its line reverted), `ServerStart_OnAnExistingSave_BacksItUpFirst` (fails without the start hook), `GeneratedBatch_StaysRecordedAcrossRestarts` (guard: fails if restored batches aren't marked done). Unit: `ServerStartBackupsTest` (zip and pruning, real files; the rolling-pruning test is a guard), `BatchLoadTasksTest` (running/failed batches not listed, failed loads retried: fail with the old behaviour), `NtpSyncerTest` (2, fail with the old round handling). Scenario written, not run |
+| 2026-11-02 | M4 | Implemented, not verified in game: the Reaper's grab and release are replayed in every game that sees it (20 s fallback; the pilot's game applies the grip); the Crabsquid's EMP is replayed at each game's copy and skips other players' bodies; the victim's game takes a Bleeder's exclusive lock and world bleeders are simulated (whitelist, duplicates removed); crash fish are no longer deleted when their area unloads, the holder waits for the home's saved state and makes no second fish, and the loader keeps a fish's world position; creature actions are sent on change plus every 5 s, null included; a crash fish blast hurts the partner's vehicle. Their `CrashHomeStates` save normalisation left out | L2 `CreatureAttackGapsTest` (3, each fails with its fix reverted: loader, whitelist line, server processors). Unit `CreatureActionBroadcastRulesTest`, `BleederClaimRulesTest`, `CrashHomeRulesTest` (pure helpers). Scenario written, not run |

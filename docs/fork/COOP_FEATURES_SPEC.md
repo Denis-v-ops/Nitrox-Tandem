@@ -1005,6 +1005,8 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   the creature-lock check removed). In game: the vehicle cases fail without the fix (first run: 0 damage A→B and B→A,
   forced contact included) and pass with it; each lock direction once. On the fixed build, `D4-ThreatParity.ps1`
   passes in full (95 checks) and `S14-CreatureAggro.ps1` (its helpers moved) passes all 11 cases.
+- **Later, [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M4** (2026-11-02, not verified in game): a crash fish blast
+  next to the partner's vehicle is sent the same way, and a Reaper's grab of a vehicle shows in both games.
 - **Not run:** the Lava lizard's and Warper's ranged attacks (from code), Prawn suit and Cyclops bites (same code path
   as the Seamoth; whether any non-leviathan bites a Cyclops, `canBiteCyclops`, wasn't read), the Ampeel's shock on a
   partner's vehicle (no dealer, so not relayed; by reasoning the pilot's game shocks it locally, like the player
@@ -1439,6 +1441,8 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   (`EntitySpawnedByClient`); the other game gets it as an entity. Needed before the Lost River.
 - **Bleeders (S, H):** not in `SimulationWhitelist.cs`, so nobody simulates them and they do nothing. Add
   `TechType.Bleeder` to the movement whitelist; check the attach behaviour with D4's scenario.
+  Implemented in [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M4 (2026-11-02, with the attach as FIX_SPEC S15d; not
+  verified in game).
 
 #### B2: Building and crafting without loss or dupes (S–M, done 2026-11-02)
 - **Non-empty storage (S, done):** when a module's constructed amount reached 0, the server removed the entity and its
