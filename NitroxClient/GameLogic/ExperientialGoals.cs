@@ -87,11 +87,12 @@ public static class ExperientialGoals
     }
 
     /// <summary>
-    ///     True if a PDA the partner found in the world should reach this game's PDA log without its voice line (D5).
+    ///     True if a log the partner found in the world should reach this game's PDA (its log or, for survivor PDAs, the
+    ///     databank) without its voice line (D5).
     /// </summary>
     public static bool FoundArrivesSilently(bool found, StoryGoalExecuted.EventType type, bool partnerDiscoveriesSilent)
     {
-        return partnerDiscoveriesSilent && found && type == StoryGoalExecuted.EventType.PDA;
+        return partnerDiscoveriesSilent && found && type is StoryGoalExecuted.EventType.PDA or StoryGoalExecuted.EventType.ENCYCLOPEDIA;
     }
 
     /// <summary>

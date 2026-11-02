@@ -39,7 +39,9 @@ public sealed partial class StoryGoal_Execute_Patch : NitroxPatch, IDynamicPatch
                 }
                 break;
         }
-        Resolve<IPacketSender>().Send(new StoryGoalExecuted(key, goalType.ToDto()));
+        // COOP_FEATURES_SPEC D5: a found survivor PDA is an Encyclopedia goal; the partner adds it without the voice log.
+        bool found = StoryHandTarget_OnHandClick_Patch.FoundKeys.Remove(key);
+        Resolve<IPacketSender>().Send(new StoryGoalExecuted(key, goalType.ToDto(), found: found));
     }
 
     /// <summary>

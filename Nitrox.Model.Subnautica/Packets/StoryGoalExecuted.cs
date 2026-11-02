@@ -17,8 +17,8 @@ public class StoryGoalExecuted : Packet
     public bool Experiential { get; }
 
     /// <summary>
-    ///     A PDA found in the world (<c>StoryHandTarget</c>, COOP_FEATURES_SPEC D5): the partner's game adds the log entry
-    ///     without the voice line.
+    ///     A log found in the world (<c>StoryHandTarget</c>, COOP_FEATURES_SPEC D5; survivor PDAs are Encyclopedia goals):
+    ///     the partner's game adds the entry without the voice line.
     /// </summary>
     public bool Found { get; }
 

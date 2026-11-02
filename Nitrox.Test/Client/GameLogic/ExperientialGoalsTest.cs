@@ -78,7 +78,8 @@ public class ExperientialGoalsTest
         ExperientialGoals.FoundArrivesSilently(true, StoryGoalExecuted.EventType.PDA, true).Should().BeTrue();
         ExperientialGoals.FoundArrivesSilently(true, StoryGoalExecuted.EventType.PDA, false).Should().BeFalse();
         ExperientialGoals.FoundArrivesSilently(false, StoryGoalExecuted.EventType.PDA, true).Should().BeFalse();
-        ExperientialGoals.FoundArrivesSilently(true, StoryGoalExecuted.EventType.ENCYCLOPEDIA, true).Should().BeFalse();
+        ExperientialGoals.FoundArrivesSilently(true, StoryGoalExecuted.EventType.ENCYCLOPEDIA, true).Should().BeTrue("survivor PDAs are Encyclopedia goals");
+        ExperientialGoals.FoundArrivesSilently(true, StoryGoalExecuted.EventType.RADIO, true).Should().BeFalse();
     }
 
     [TestMethod]

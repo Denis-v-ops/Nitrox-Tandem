@@ -16,7 +16,7 @@ internal sealed class StoryGoalExecutedClientProcessor(LocalPlayer localPlayer) 
         // Before the initial sync, CoopSettings holds the defaults (false), so this falls back to today's behaviour.
         bool partnerDiscoveriesSilent = localPlayer.CoopSettings is { PartnerDiscoveriesSilent: true };
         bool silent = ExperientialGoals.CompletesSilently(packet.Key, packet.Type, partnerDiscoveriesSilent, ExperientialGoals.Keys);
-        // D5: a PDA the partner found in the world waits in this game's PDA log without its voice line.
+        // D5: a log the partner found in the world waits in this game's PDA without its voice line.
         bool foundSilently = !silent && ExperientialGoals.FoundArrivesSilently(packet.Found, packet.Type, partnerDiscoveriesSilent);
 
         // A silent goal stays in this game's schedule: if this player was there too, their own tracker already
@@ -39,10 +39,19 @@ internal sealed class StoryGoalExecutedClientProcessor(LocalPlayer localPlayer) 
             }
             else if (foundSilently)
             {
-                // StoryGoal.Execute for a PDA goal with PDALog.Add's playSound off: no voice line or subtitles, the entry
-                // is added now with the log notification.
+                // StoryGoal.Execute without the sound: OnGoalComplete, then the entry. PDALog.Add with playSound off adds
+                // the log entry with its notification. For an Encyclopedia goal (survivor PDAs) Execute calls
+                // PDAEncyclopedia.AddAndPlaySound, which queues the voice log and, through Add's verbose, shows a popup
+                // that plays it too; instead a quiet Add plus the databank's "new" marker (what verbose adds besides the popup).
                 StoryGoalManager.main.OnGoalComplete(packet.Key);
-                PDALog.Add(packet.Key, false);
+                if (packet.Type == StoryGoalExecuted.EventType.PDA)
+                {
+                    PDALog.Add(packet.Key, false);
+                }
+                else if (PDAEncyclopedia.Add(packet.Key, false) != null)
+                {
+                    NotificationManager.main.Add(NotificationManager.Group.Encyclopedia, packet.Key, 3f);
+                }
                 Log.Info($"[D5] Log {packet.Key} the partner found added without its voice line");
             }
             else

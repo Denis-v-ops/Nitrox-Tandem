@@ -81,16 +81,22 @@ public class OwnFirstsRejoinTest
         FakePlayer alice = await server.JoinAsync("Alice");
         FakePlayer bob = await server.JoinAsync("Bob");
 
-        alice.Send(new StoryGoalExecuted("LifepodCrashZone2", StoryGoalExecuted.EventType.PDA, 100f, found: true));
-        StoryGoalExecuted relayed = await bob.WaitForAsync<StoryGoalExecuted>(p => p.Key == "LifepodCrashZone2");
+        // What Alice's game sends when she picks up the survivor PDA at Lifepod 3 (an Encyclopedia goal): the goal from
+        // StoryGoal_Execute_Patch, then the databank entry from PDAEncyclopedia_Add_Patch. And a found PDA-type log.
+        alice.Send(new StoryGoalExecuted("Lifepod3", StoryGoalExecuted.EventType.ENCYCLOPEDIA, found: true));
+        alice.Send(new PDAEncyclopediaEntryAdd("Lifepod3", true));
+        alice.Send(new StoryGoalExecuted("FoundPdaLog", StoryGoalExecuted.EventType.PDA, 100f, found: true));
+        StoryGoalExecuted relayed = await bob.WaitForAsync<StoryGoalExecuted>(p => p.Key == "Lifepod3");
         relayed.Found.Should().BeTrue();
         relayed.Experiential.Should().BeFalse();
+        (await bob.WaitForAsync<StoryGoalExecuted>(p => p.Key == "FoundPdaLog")).Found.Should().BeTrue();
         Heard(server.Get<PlayerManager>(), "Alice").Should().BeEmpty("a found log isn't a biome or location line");
 
         bob.Dispose();
         await ServerHarness.WaitUntilAsync(() => server.Get<PlayerManager>().GetConnectedPlayers().All(p => p.Name != "Bob"), "Bob is offline");
         FakePlayer bobAgain = await server.JoinAsync("Bob");
-        LogKeys(bobAgain).Should().Contain("LifepodCrashZone2", "found logs wait in everyone's PDA log");
+        bobAgain.InitialSync.PDAData.EncyclopediaEntries.Should().Contain("Lifepod3", "found logs wait in everyone's databank");
+        LogKeys(bobAgain).Should().Contain("FoundPdaLog", "and in everyone's PDA log");
     }
 
     private static IEnumerable<string> Heard(PlayerManager playerManager, string name)
