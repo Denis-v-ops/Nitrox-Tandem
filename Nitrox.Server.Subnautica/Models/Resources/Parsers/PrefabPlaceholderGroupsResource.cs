@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using Nitrox.Model.DataStructures.Unity;
 using Nitrox.Server.Subnautica.Models.Factories;
 using Nitrox.Server.Subnautica.Models.GameLogic.Entities;
+using Nitrox.Server.Subnautica.Models.GameLogic.Entities.Spawning;
 using Nitrox.Server.Subnautica.Models.Helper;
 using Nitrox.Server.Subnautica.Models.Resources.AddressablesTools.Catalog;
 using Nitrox.Server.Subnautica.Models.Resources.Core;
@@ -26,9 +27,12 @@ internal sealed class PrefabPlaceholderGroupsResource(SubnauticaAssetsManager as
     ///         the cache is rebuilt
     ///     </para>
     /// </summary>
-    private const int CACHE_VERSION = 4;
+    private const int CACHE_VERSION = 5;
 
-    private const string CACHE_FILENAME = "PrefabPlaceholdersGroupAssetsCache.json";
+    /// <remarks>
+    ///     Named after the version so that servers of different builds on one PC don't keep rebuilding each other's cache.
+    /// </remarks>
+    private const string CACHE_FILENAME = "PrefabPlaceholdersGroupAssetsCache.v5.json";
 
     private readonly SubnauticaAssetsManager assetsManager = assetsManager;
     private readonly XorRandom random = randomFactory.GetUnityLikeRandom();
@@ -78,6 +82,11 @@ internal sealed class PrefabPlaceholderGroupsResource(SubnauticaAssetsManager as
         assetsManager.Dispose();
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    ///     Completes once the groups are loaded (from the cache or the game files).
+    /// </summary>
+    public Task WaitUntilLoadedAsync() => resourceLoadFinished.Task;
 
     public void PickRandomClassIdIfRequired(ref string classId)
     {
@@ -371,6 +380,7 @@ internal sealed class PrefabPlaceholderGroupsResource(SubnauticaAssetsManager as
         List<AssetTypeValueField> prefabPlaceholdersOnGroup = prefabPlaceholdersGroupScript["prefabPlaceholders"].Children;
 
         IPrefabAsset[] prefabPlaceholders = new IPrefabAsset[prefabPlaceholdersOnGroup.Count];
+        NitroxTransform?[] placeholderParentTransforms = new NitroxTransform?[prefabPlaceholdersOnGroup.Count];
 
         AssetTypeValueField rootGameObjectField = amInst.GetBaseField(assetFileInst, rootGameObjectInfo);
         string rootGameObjectName = rootGameObjectField["m_Name"].AsString;
@@ -392,9 +402,14 @@ internal sealed class PrefabPlaceholderGroupsResource(SubnauticaAssetsManager as
             }
             asset.Transform = transform;
             prefabPlaceholders[index] = asset;
+            // Entity slots already got their parent's offset in GetTransformFromGameObject
+            if (!isEntitySlotAsset)
+            {
+                placeholderParentTransforms[index] = PlaceholderTransforms.ComposeParentChain(amInst.GetParentChainUpToRoot(assetFileInst, gameObjectField, rootGameObjectField));
+            }
         }
 
-        PrefabPlaceholdersGroupAsset prefabPlaceholdersGroup = new(classId, prefabPlaceholders);
+        PrefabPlaceholdersGroupAsset prefabPlaceholdersGroup = new(classId, prefabPlaceholders, null, placeholderParentTransforms);
         NitroxTransform groupTransform = amInst.GetTransformFromGameObject(assetFileInst, rootGameObjectField, rootGameObjectName, false);
         prefabPlaceholdersGroup.Transform = groupTransform;
 

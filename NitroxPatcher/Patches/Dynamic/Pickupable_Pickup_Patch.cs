@@ -9,7 +9,13 @@ public sealed partial class Pickupable_Pickup_Patch : NitroxPatch, IDynamicPatch
 
     public static void Prefix(Pickupable __instance)
     {
-        Resolve<Items>().PickedUpByPlayer(__instance.gameObject, __instance.GetTechType());
+        Items items = Resolve<Items>();
+        // A machine creating an item in its container, announced by ItemContainers.BroadcastItemAdd instead
+        if (items.MachineProducingCount > 0)
+        {
+            return;
+        }
+        items.PickedUpByPlayer(__instance.gameObject, __instance.GetTechType());
     }
 }
 

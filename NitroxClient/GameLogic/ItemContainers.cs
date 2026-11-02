@@ -48,6 +48,13 @@ public class ItemContainers
             return;
         }
 
+        // A new item created by the machine itself (FiltrationMachine.Spawn), it has no id yet
+        if (items.MachineProducingCount > 0)
+        {
+            items.ProducedInContainer(pickupable.gameObject, ownerId);
+            return;
+        }
+
         if (!pickupable.TryGetIdOrWarn(out NitroxId itemId))
         {
             return;
@@ -90,10 +97,34 @@ public class ItemContainers
         ItemsContainer container = opContainer.Value;
         Pickupable pickupable = item.RequireComponent<Pickupable>();
 
-        using (PacketSuppressor<EntityReparented>.Suppress())
+        AddFromRemote(container, pickupable, owner.Value);
+        Log.Debug($"Received: Added item {pickupable.GetTechType()} to container {owner.Value.GetFullHierarchyPath()}");
+    }
+
+    /// <summary>
+    ///     Puts an item into the local copy of a container because the server or another player says it is in there.
+    ///     Sends nothing.
+    /// </summary>
+    /// <remarks>
+    ///     <c>new InventoryItem(pickupable)</c> calls <see cref="Pickupable.SetInventoryItem" />, which force-removes the item
+    ///     from the container it was in before (decompiled game 83031), e.g. this game's copy of the other player's inventory.
+    ///     That removal runs the old container's listeners, and some of them send packets (<c>Equipment_RemoveItem_Patch</c>
+    ///     sends <see cref="EntityDestroyed" /> for an item that leaves a charger or a module slot). The player who moved the
+    ///     item already told the server, so everything the add or the removal would send is suppressed here.
+    ///     <see cref="ItemsContainer.UnsafeAdd" /> doesn't check for room. The server has already accepted the add, so refusing
+    ///     it would only desync this game; a full container is logged instead (FIX_SPEC S7).
+    /// </remarks>
+    public static InventoryItem AddFromRemote(ItemsContainer container, Pickupable pickupable, GameObject owner)
+    {
+        using (PacketSuppressor<EntityReparented, EntityDestroyed, EntityMetadataUpdate, EntitySpawnedByClient, PlayerQuickSlotsBindingChanged>.Suppress())
         {
-            container.UnsafeAdd(new InventoryItem(pickupable));
-            Log.Debug($"Received: Added item {pickupable.GetTechType()} to container {owner.Value.GetFullHierarchyPath()}");
+            InventoryItem inventoryItem = new(pickupable);
+            if (!container.HasRoomFor(pickupable))
+            {
+                Log.Warn($"Container {owner.GetFullHierarchyPath()} has no room for {pickupable.GetTechType()} ({(pickupable.TryGetNitroxId(out NitroxId id) ? id.ToString() : "no id")}) but the server put it there; adding it anyway ({container.count} items already)");
+            }
+            container.UnsafeAdd(inventoryItem);
+            return inventoryItem;
         }
     }
 

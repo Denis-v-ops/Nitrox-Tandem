@@ -76,12 +76,11 @@ public class GhostCellEntryTest
     ///     Same as <see cref="ItemReparentedIntoContainer_IsNotResentAsWorldEntityOfItsOldCell" />, across a restart.
     /// </summary>
     /// <remarks>
-    ///     Fails today (found with this harness, 2026-11-02): on load, <c>WorldService</c> registers every
-    ///     <see cref="WorldEntity" /> record that isn't a global root in a cell (<c>SetWorldEntities</c>), parented ones
-    ///     included. The item still is a <see cref="WorldEntity" /> (only its parent changed), so it's back in its old cell.
+    ///     Found with this harness (2026-11-02): on load, <c>WorldService</c> registered every <see cref="WorldEntity" />
+    ///     record that isn't a global root in a cell, parented ones included. The item still is a <see cref="WorldEntity" />
+    ///     (only its parent changed), so it was back in its old cell. Fixed by <c>WorldEntityManager.BelongsInCell</c>.
     /// </remarks>
     [TestMethod]
-    [Ignore("Known bug: WorldService.SetWorldEntities puts parented world entities back into cells on load. See FIX_SPEC Log 2026-11-02 L2.")]
     public async Task ItemReparentedIntoContainer_IsNotResentAsWorldEntityAfterRestart()
     {
         FakePlayer alice = await server.JoinAsync("Alice");

@@ -19,7 +19,9 @@ $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     or with -NoLaunch uses the games that are already running. Opens game windows on this PC.
 #>
 function Start-ScenarioGames {
-    param([string[]]$Players = @('Alice', 'Bob'), [string]$SaveName = 'bridge-scenario', [switch]$NoLaunch, [switch]$KeepSave)
+    param([string[]]$Players = @('Alice', 'Bob'), [string]$SaveName = 'bridge-scenario', [switch]$NoLaunch, [switch]$KeepSave,
+        # Save folder or zip (e.g. tools\fixtures\s7-machine-base) to start from instead of a new world. Ignored with -KeepSave.
+        [string]$Fixture)
     if (-not $NoLaunch) {
         $savesDir = (Get-ItemProperty -Path 'HKCU:\SOFTWARE\Nitrox' -Name 'SavesFolderDir' -ErrorAction SilentlyContinue).SavesFolderDir
         if (-not $savesDir) { $savesDir = Join-Path $env:APPDATA 'Nitrox\saves' }
@@ -29,7 +31,9 @@ function Start-ScenarioGames {
             Write-Host "Removing the previous scenario world $saveDir"
             Remove-Item -Recurse -Force $saveDir
         }
-        & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -SaveName $SaveName -Players $Players -NoBuild -WaitForJoin
+        $fixtureArgs = @{}
+        if ($Fixture -and -not $KeepSave) { $fixtureArgs['Fixture'] = $Fixture }
+        & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -SaveName $SaveName -Players $Players -NoBuild -WaitForJoin @fixtureArgs
         if ($LASTEXITCODE -ne 0) { throw 'dual-client.ps1 failed: the games did not join' }
     }
     foreach ($player in $Players) {

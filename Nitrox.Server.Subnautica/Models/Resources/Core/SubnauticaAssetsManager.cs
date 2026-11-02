@@ -120,6 +120,27 @@ internal sealed class SubnauticaAssetsManager : AssetsManager, IDisposable
         return new(transformField["m_LocalPosition"].ToNitroxVector3(), transformField["m_LocalRotation"].ToNitroxQuaternion(), transformField["m_LocalScale"].ToNitroxVector3());
     }
 
+    /// <summary>
+    ///     The local transforms of a GameObject's ancestors, from its direct parent up to (not including) the root
+    ///     GameObject. Empty when the parent is the root (or the GameObject isn't under it).
+    /// </summary>
+    public List<NitroxTransform> GetParentChainUpToRoot(AssetsFileInstance assetFileInst, AssetTypeValueField gameObject, AssetTypeValueField rootGameObject)
+    {
+        long rootTransformPathId = rootGameObject["m_Component"]["Array"][0]["component"]["m_PathID"].AsLong;
+        AssetTypeValueField transformField = GetExtAsset(assetFileInst, gameObject["m_Component"]["Array"][0]["component"]).baseField;
+
+        List<NitroxTransform> chain = [];
+        AssetTypeValueField fatherPtr = transformField["m_Father"];
+        while (fatherPtr["m_PathID"].AsLong != 0 && fatherPtr["m_PathID"].AsLong != rootTransformPathId)
+        {
+            AssetTypeValueField fatherField = GetExtAsset(assetFileInst, fatherPtr).baseField;
+            chain.Add(new(fatherField["m_LocalPosition"].ToNitroxVector3(), fatherField["m_LocalRotation"].ToNitroxQuaternion(), fatherField["m_LocalScale"].ToNitroxVector3()));
+            fatherPtr = fatherField["m_Father"];
+        }
+
+        return fatherPtr["m_PathID"].AsLong == rootTransformPathId ? chain : [];
+    }
+
     private new void SetMonoTempGenerator(IMonoBehaviourTemplateGenerator? generator)
     {
         monoTempGenerator = (ThreadSafeMonoCecilTempGenerator)generator;

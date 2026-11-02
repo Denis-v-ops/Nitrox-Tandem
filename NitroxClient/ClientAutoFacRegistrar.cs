@@ -7,6 +7,7 @@ using NitroxClient.Communication.MultiplayerSession;
 using NitroxClient.Communication.NetworkingLayer.LiteNetLib;
 using NitroxClient.Debuggers;
 using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.Bases;
 using NitroxClient.GameLogic.FMOD;
 using NitroxClient.GameLogic.HUD;
 using NitroxClient.GameLogic.InitialSync.Abstract;
@@ -96,6 +97,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<Items>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<EquipmentSlots>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<ItemContainers>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<BaseModuleSimulation>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Cyclops>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Rockets>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<MobileVehicleBay>().InstancePerLifetimeScope();

@@ -333,6 +333,15 @@ internal class WorldService : IHostedService
 
             // TODO: hacky code - see WorldEntityManager for more information.
             List<WorldEntity> worldEntities = entityRegistry.GetEntities<WorldEntity>();
+            // Loading linked every child straight to its parent; placeholder children may sit under an intermediate object
+            foreach (WorldEntity worldEntity in worldEntities)
+            {
+                if (worldEntity is PrefabPlaceholderEntity or PlaceholderGroupWorldEntity && worldEntity.ParentId != null &&
+                    entityRegistry.TryGetEntityById(worldEntity.ParentId, out PlaceholderGroupWorldEntity? group))
+                {
+                    await batchEntitySpawner.LinkToParentTransformAsync(worldEntity, group);
+                }
+            }
             worldEntityManager.globalRootEntitiesById = entityRegistry.GetEntities<GlobalRootEntity>().ToDictionary(entity => entity.Id);
             worldEntityManager.SetWorldEntities(worldEntities.Where(entity => entity is not GlobalRootEntity));
 

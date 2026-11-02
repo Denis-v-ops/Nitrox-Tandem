@@ -92,8 +92,6 @@ public class InventoryItemEntitySpawner(EntityMetadataManager entityMetadataMana
         Pickupable pickupable = gameObject.RequireComponent<Pickupable>();
         pickupable.Initialize();
 
-        InventoryItem inventoryItem = new(pickupable);
-
         // Items eventually get "secured" once a player gets into a SubRoot (or for other reasons) so we need to force this state by default
         // so that player don't risk their whole inventory if they reconnect in the water.
         pickupable.destroyOnDeath = false;
@@ -106,14 +104,8 @@ public class InventoryItemEntitySpawner(EntityMetadataManager entityMetadataMana
             planter.Subscribe(false);
         }
 
-        using (PacketSuppressor<PlayerQuickSlotsBindingChanged>.Suppress())
-        using (PacketSuppressor<EntityReparented>.Suppress())
-        using (PacketSuppressor<EntityMetadataUpdate>.Suppress())
-        using (PacketSuppressor<EntitySpawnedByClient>.Suppress())
-        {
-            container.UnsafeAdd(inventoryItem);
-            Log.Debug($"Received: Added item {pickupable.GetTechType()} ({entity.Id}) to container {parentObject.GetFullHierarchyPath()}");
-        }
+        InventoryItem inventoryItem = ItemContainers.AddFromRemote(container, pickupable, parentObject);
+        Log.Debug($"Received: Added item {pickupable.GetTechType()} ({entity.Id}) to container {parentObject.GetFullHierarchyPath()}");
 
         if (isPlanter)
         {
