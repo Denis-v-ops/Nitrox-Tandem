@@ -63,6 +63,8 @@
     "Nitrox_OutOfDateClient": "Deine Nitrox Installation ist nicht mehr aktuell. Server: {serverVersion}, Deine: {localVersion}.",
     "Nitrox_OutOfDateServer": "Der Server läuft mit einer älteren Version von Nitrox. Fragen Sie den Administrator den Server zu aktualisieren oder stufe deine Nitrox Installation herab. Server: {serverVersion}, Deine: {localVersion}.",
     "Nitrox_PartnerSignalLabel": "{PLAYER} · {DEPTH} m tief",
+    "Nitrox_PartnerSignalLastContactMinutes": "{PLAYER} · letzter Kontakt vor {AGE} min",
+    "Nitrox_PartnerSignalLastContactSeconds": "{PLAYER} · letzter Kontakt vor {AGE} s",
     "Nitrox_Ping_ComeHere": "{0}: Komm her",
     "Nitrox_Ping_Danger": "{0}: Gefahr! {1}",
     "Nitrox_Ping_Look": "{0}: Schau mal! {1}",
