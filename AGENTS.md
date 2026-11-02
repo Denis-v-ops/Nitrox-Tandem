@@ -196,16 +196,21 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
 - **Transpilers:** use `NitroxPatcher/PatternMatching` (`InstructionsPattern`, `.Transform`, `.InsertAfterMarker`). Every
   transpiler must be registered with its IL instruction delta in
   `Nitrox.Test/Patcher/Patches/PatchesTranspilerTest.cs`, or the test fails.
-- Game source isn't in the repo (never commit it). **A decompiled copy of `Assembly-CSharp.dll` (game 83031) is at
-  `F:\nitrox\game-src\83031\`**, one `.cs` file per type (namespaced types in subfolders, e.g. `Story\StoryGoalManager.cs`),
-  so `grep -rn` it before reading anything else. Regenerate it after a game update (ilspycmd 11.2 is installed as a
-  global dotnet tool; `dotnet tool install --global ilspycmd` otherwise), into a new folder named after the version:
-  ```bash
-  ilspycmd -p -o 'F:\nitrox\game-src\<version>' -r 'F:\Spiele\SteamLibrary\steamapps\common\Subnautica\Subnautica_Data\Managed' 'F:\Spiele\SteamLibrary\steamapps\common\Subnautica\Subnautica_Data\Managed\Assembly-CSharp.dll'
-  ```
-  One type at a time: `ilspycmd -t <FullTypeName> <path>\Assembly-CSharp.dll`. In a GUI: ILSpy or dnSpyEx. Values that
-  live in assets (story goal keys, teleport locations) aren't in the code: read them at runtime with the dev bridge
-  (`get find:PrecursorDisableGunTerminal PrecursorDisableGunTerminal.gunDeactivate.key`).
+- **Game source: read the decompiled C#, it's already on this PC.** It lives *outside* the repo because it's the game's
+  code, so **never commit or paste large parts of it**:
+  - `F:\nitrox\game-src\83031\` holds `Assembly-CSharp` (1,979 files, e.g. `Player.cs`, `StoryGoalCustomEventHandler.cs`).
+  - `F:\nitrox\game-src\83031-firstpass\` holds `Assembly-CSharp-firstpass` (UWE utilities, 1,269 files).
+  - The folder name is the game version from `plastic_status.ignore`.
+  - Search it like normal code: `rg -n "void OnHandClick" F:\nitrox\game-src\83031`.
+  - After a Subnautica update, run `tools\decompile-game.ps1`. It needs `ilspycmd`, which is installed
+    (`dotnet tool install --global ilspycmd`); call it from PowerShell, because Git Bash doesn't have `~/.dotnet/tools`
+    on PATH. Then update the paths here.
+  - One-off lookups: `ilspycmd -t <FullTypeName> <...>\Subnautica_Data\Managed\Assembly-CSharp.dll`. GUI: ILSpy or
+    dnSpyEx (also the debugger, see §4).
+  - Values that live in assets (story goal keys, teleport locations) aren't in the code: read them at runtime with
+    the dev bridge (`tools\bridge.ps1 Alice get find:PrecursorDisableGunTerminal PrecursorDisableGunTerminal.gunDeactivate.key`).
+  - Decompiled code can be subtly off (e.g. compiler-generated state machines, field initialisers). For anything
+    timing-critical, confirm in the IL or in game.
   **Never guess game behaviour.** Upstream's CONTRIBUTING warns that AI-written Nitrox code goes wrong
   mostly because of wrong assumptions about game internals. Mark unverified assumptions as such.
 
