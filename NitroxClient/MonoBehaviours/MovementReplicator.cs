@@ -122,9 +122,10 @@ public abstract class MovementReplicator : MonoBehaviour
         Snapshot previous = buffer[buffer.Count - 2];
         Snapshot latest = buffer.Last;
         float deltaTime = latest.SentTime - previous.SentTime;
-        float age = RealTime - latest.SentTime;
+        // Clamped: on two PCs the clocks can differ by more than the network latency
+        float age = Mathf.Max(0f, RealTime - latest.SentTime);
         // Old snapshots: the owner stopped sending because the object stopped moving
-        if (deltaTime <= 0f || age < 0f || age > SNAPSHOT_EXPIRATION_TIME)
+        if (deltaTime <= 0f || age > SNAPSHOT_EXPIRATION_TIME)
         {
             return;
         }
@@ -144,6 +145,8 @@ public abstract class MovementReplicator : MonoBehaviour
         rigidbody.rotation = transform.rotation;
         rigidbody.velocity = velocity;
         rigidbody.angularVelocity = angularVelocity;
+        // Destroy waits for the end of the frame: this Update mustn't put the delayed pose back meanwhile
+        enabled = false;
     }
 
     public void Start()
