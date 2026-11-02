@@ -39,6 +39,7 @@ internal sealed class RescueService(
     WorldEntityManager worldEntityManager,
     EntitySimulation entitySimulation,
     IOptions<SubnauticaServerOptions> options,
+    IHostApplicationLifetime lifetime,
     ILogger<RescueService> logger) : BackgroundService, ISessionCleaner
 {
     public const string FIRST_AID_KIT_TECH_TYPE = "FirstAidKit";
@@ -53,6 +54,7 @@ internal sealed class RescueService(
     private readonly WorldEntityManager worldEntityManager = worldEntityManager;
     private readonly EntitySimulation entitySimulation = entitySimulation;
     private readonly IOptions<SubnauticaServerOptions> options = options;
+    private readonly IHostApplicationLifetime lifetime = lifetime;
     private readonly ILogger<RescueService> logger = logger;
     private readonly Lock gate = new();
     private double? lastTick;
@@ -231,7 +233,12 @@ internal sealed class RescueService(
 
     public async Task OnEventAsync(ISessionCleaner.Args args)
     {
-        // The leaver's own window pauses (Tick). If nobody who is up stays, the others' windows end.
+        // The leaver's own window pauses (Tick). If nobody who is up stays, the others' windows end, but not while the
+        // server shuts down: then everyone leaves, in any order, and a downed player must come back down after the restart.
+        if (lifetime.ApplicationStopping.IsCancellationRequested)
+        {
+            return;
+        }
         List<Player> expired = [];
         lock (gate)
         {

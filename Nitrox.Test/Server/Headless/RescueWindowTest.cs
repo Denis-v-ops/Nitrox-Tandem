@@ -17,7 +17,7 @@ namespace Nitrox.Test.Server.Headless;
 ///     COOP_FEATURES_SPEC T1: the server owns the rescue window (L2, real server and protocol). It grants a window or
 ///     refuses it, lets it run out, accepts revives only from a partner who can reach a downed player, uses up the kit,
 ///     shrinks the window on repeat downs until the player rests, and keeps the window (paused) while the player is
-///     offline and across a restart. Without the processors the default one would only relay the packets.
+///     offline and across a restart (tested with the downed player leaving first). Without the processors the default one would only relay the packets.
 /// </summary>
 [TestClass]
 [TestCategory("L2")]
