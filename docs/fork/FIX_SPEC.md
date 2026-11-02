@@ -713,8 +713,8 @@ applied.
 - **Negative control** (client patches reverted, 6 cases): the vanilla control passes; A→B, B→A, Biter and Crash fish
   get no damage even with the forced contact; and Bob's own game bites him in the double-bite case. 7 checks fail.
 
-**Not verified:** Crabsnake, Ampeel, Warper, Mesmer, Lava lizard, River prowler, Crabsquid and Bleeder in game; network
-latency; a player dying from a relayed bite; vehicles (their path is unchanged).
+**Not verified:** network latency; a player dying from a relayed bite. The creatures S14 didn't run and bites on
+vehicles were covered later by COOP_FEATURES_SPEC D4 (vehicle bites fixed there; the gaps it found are S15).
 
 **Risks (fear factor and balance):**
 - The partner is now exactly as exposed as the simulating player, which is vanilla danger for both players, not double.
