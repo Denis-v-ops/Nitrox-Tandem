@@ -368,7 +368,7 @@ internal static class BridgeReflection
         }
     }
 
-    public static string ToJson(object? value, int maxDepth = 3) => BridgeJson.Serialize(value, Adapt, maxDepth);
+    public static string ToJson(object? value, int maxDepth = 6) => BridgeJson.Serialize(value, Adapt, maxDepth);
 
     /// <summary>
     ///     A component's own fields (not Unity's), for <c>entity</c> and <c>get &lt;id&gt; Component</c>.

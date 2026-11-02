@@ -35,6 +35,10 @@ param(
     [int]$TimeoutSeconds = 60,
     # diff: metres two positions may differ before it is reported.
     [double]$Tolerance = 1.0,
+    # diff: the same for creatures (game vs game only), vehicles, subs, players and loose physics objects, which keep moving.
+    [double]$MoverTolerance = 15.0,
+    # diff: also show issues on the known-noise list ($KnownNoise below).
+    [switch]$All,
     # diff: only these games (default: every running game bridge).
     [string[]]$Players,
     # diff: issue kinds not to report (GHOST, MISSING, TECHTYPE, PARENT, POSITION, METADATA).
@@ -146,6 +150,28 @@ function Get-BridgeEntities {
     [pscustomobject]@{ Name = $Name; Player = $player; Entities = $entities }
 }
 
+<#
+    Differences that are representation quirks, not desyncs. Each entry: Kind, a regex on "<TechType> <Detail>", and why.
+    Keep this list short and explain every entry; when in doubt, report.
+#>
+$script:KnownNoise = @(
+    @{ Kind = 'TECHTYPE'; Pattern = '^EscapePod server: SmallStorage$'; Why = "The pod's locker carries the pod's TechTag in game; the server records SmallStorage" },
+    @{ Kind = 'POSITION'; Pattern = '\(PrefabPlaceholderEntity\)$'; Why = 'Real but tracked separately (FIX_SPEC log 2026-11-02): some nested placeholders have a bogus server LocalPosition, so the server puts them in the wrong cell. The game places them right.' }
+)
+
+function Test-KnownNoise {
+    param($Issue)
+    foreach ($noise in $script:KnownNoise) {
+        if ($Issue.Kind -eq $noise.Kind -and "$($Issue.TechType) $($Issue.Detail)" -match $noise.Pattern) { return $true }
+    }
+    $false
+}
+
+function Format-Vector {
+    param([double[]]$V)
+    '(' + (($V | ForEach-Object { $_.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture) }) -join ', ') + ')'
+}
+
 function Get-Distance {
     param([double[]]$A, [double[]]$B)
     [math]::Sqrt([math]::Pow($A[0] - $B[0], 2) + [math]::Pow($A[1] - $B[1], 2) + [math]::Pow($A[2] - $B[2], 2))
@@ -165,11 +191,12 @@ function Get-RunningGameBridges {
       MISSING   the server has a child (inventory item, battery, module, ...) of an entity the game has loaded, the game doesn't
       TECHTYPE  different tech types
       PARENT    container owner / parent entity differs (items in a container use the container owner, like the server)
-      POSITION  more than -Tolerance metres apart (server position is where it last heard the entity was)
+      POSITION  more than -Tolerance metres apart (-MoverTolerance for things that move by themselves; creatures only
+                game vs game, the server's creature positions are stale by design)
       METADATA  persistent state (metadata) differs; the game's side is extracted live, so it can be newer than the server's
 #>
 function Compare-BridgeEntities {
-    param([string[]]$Players, [double]$Tolerance = 1.0)
+    param([string[]]$Players, [double]$Tolerance = 1.0, [double]$MoverTolerance = 15.0)
     if (-not $Players) { $Players = @(Get-RunningGameBridges) }
     if (-not $Players) { throw 'No running game bridges found.' }
 
@@ -197,14 +224,18 @@ function Compare-BridgeEntities {
             if ($entity.TechType -ne 'None' -and $record.TechType -ne 'None' -and $entity.TechType -ne $record.TechType) {
                 Add-Issue 'TECHTYPE' $game.Name $entity.Id $entity.TechType "server: $($record.TechType)"
             }
-            $compareParent = $entity.ParentKind -eq 'container' -or $record.Kind -eq 'InventoryItemEntity' -or ($entity.ParentKind -eq 'ancestor' -and $record.ParentId -ne '-')
+            # An ancestor can only match if the server's parent is loaded as an entity in this game (placeholders and cell roots aren't).
+            $compareParent = $entity.ParentKind -eq 'container' -or $record.Kind -eq 'InventoryItemEntity' -or
+                ($entity.ParentKind -eq 'ancestor' -and $record.ParentId -ne '-' -and $game.Entities.ContainsKey($record.ParentId))
             if ($compareParent -and $entity.ParentId -ne $record.ParentId) {
                 Add-Issue 'PARENT' $game.Name $entity.Id $entity.TechType "game: $($entity.ParentId) [$($entity.ParentKind)], server: $($record.ParentId) ($($record.Kind))"
             }
-            if ($entity.ParentKind -ne 'container' -and $entity.Position -and $record.Position) {
+            # Creatures: the server only hears their position now and then, so it is stale by design. Games are compared below.
+            if ($entity.ParentKind -ne 'container' -and $entity.Position -and $record.Position -and $entity.Kind -notlike '*creature*') {
                 $distance = Get-Distance $entity.Position $record.Position
-                if ($distance -gt $Tolerance) {
-                    Add-Issue 'POSITION' $game.Name $entity.Id $entity.TechType ("{0:0.0} m apart (game {1}, server {2})" -f $distance, ($entity.Position -join ','), ($record.Position -join ','))
+                $limit = if ($entity.Kind -like '*mover*') { $MoverTolerance } else { $Tolerance }
+                if ($distance -gt $limit) {
+                    Add-Issue 'POSITION' $game.Name $entity.Id $entity.TechType ("{0} m apart: game {1}, server {2} ({3})" -f $distance.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture), (Format-Vector $entity.Position), (Format-Vector $record.Position), $record.Kind)
                 }
             }
             if ($entity.Metadata -ne '-' -and $record.Metadata -ne '-' -and $entity.Metadata -ne $record.Metadata) {
@@ -236,9 +267,12 @@ function Compare-BridgeEntities {
                 }
                 if ($entity.ParentKind -ne 'container' -and $other.ParentKind -ne 'container' -and $entity.Position -and $other.Position) {
                     $distance = Get-Distance $entity.Position $other.Position
-                    if ($distance -gt $Tolerance) { Add-Issue 'POSITION' $where $entity.Id $entity.TechType ("{0:0.0} m apart" -f $distance) }
+                    $limit = if ($entity.Kind -match 'mover|creature' -or $other.Kind -match 'mover|creature') { $MoverTolerance } else { $Tolerance }
+                    if ($distance -gt $limit) {
+                        Add-Issue 'POSITION' $where $entity.Id $entity.TechType ("{0} m apart: {1} {2}, {3} {4}" -f $distance.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture), $a.Name, (Format-Vector $entity.Position), $b.Name, (Format-Vector $other.Position))
+                    }
                 }
-                if ($entity.Metadata -ne $other.Metadata) { Add-Issue 'METADATA' $where $entity.Id $entity.TechType "$($a.Name): $($entity.Metadata)  $($b.Name): $($other.Metadata)" }
+                if ($entity.Metadata -ne '-' -and $other.Metadata -ne '-' -and $entity.Metadata -ne $other.Metadata) { Add-Issue 'METADATA' $where $entity.Id $entity.TechType "$($a.Name): $($entity.Metadata)  $($b.Name): $($other.Metadata)" }
             }
         }
     }
@@ -264,12 +298,15 @@ if ($MyInvocation.InvocationName -ne '.') {
             exit 0
         }
         'diff' {
-            $issues = @(Compare-BridgeEntities -Players $Players -Tolerance $Tolerance | Where-Object { $Ignore -notcontains $_.Kind })
+            $issues = @(Compare-BridgeEntities -Players $Players -Tolerance $Tolerance -MoverTolerance $MoverTolerance | Where-Object { $Ignore -notcontains $_.Kind })
+            $noise = @($issues | Where-Object { Test-KnownNoise $_ })
+            if (-not $All) { $issues = @($issues | Where-Object { -not (Test-KnownNoise $_) }) }
             foreach ($group in ($issues | Group-Object Kind | Sort-Object Name)) {
                 Write-Host ("{0}: {1}" -f $group.Name, $group.Count)
                 $group.Group | Select-Object -First $MaxPerKind | ForEach-Object { Write-Host ("  [{0}] {1} {2}: {3}" -f $_.Where, $_.Id, $_.TechType, $_.Detail) }
                 if ($group.Count -gt $MaxPerKind) { Write-Host "  ... $($group.Count - $MaxPerKind) more" }
             }
+            if ($noise.Count -gt 0 -and -not $All) { Write-Host "($($noise.Count) known-noise issues hidden, -All shows them)" }
             if ($issues.Count -eq 0) { Write-Host 'diff: no mismatches'; exit 0 }
             exit 1
         }

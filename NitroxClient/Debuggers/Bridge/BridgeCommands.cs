@@ -14,6 +14,7 @@ using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Abstract;
 using NitroxClient.GameLogic.Helper;
+using NitroxClient.GameLogic.PlayerLogic;
 using NitroxClient.GameLogic.Spawning.Metadata;
 using NitroxClient.MonoBehaviours;
 using UnityEngine;
@@ -212,7 +213,7 @@ internal static class BridgeCommands
                                               .Where(component => component)
                                               .Select(component => IsGameLogic(component) ? BridgeReflection.DescribeComponent(component, !allFields) : (object)component.GetType().Name)
                                               .ToList();
-        return BridgeReflection.ToJson(description, allFields ? 4 : 3);
+        return BridgeReflection.ToJson(description, allFields ? 6 : 5);
     }
 
     private static object Find(Type type, int max)
@@ -316,10 +317,33 @@ internal static class BridgeCommands
                 parentKind = parentId == null ? "-" : "ancestor";
             }
             Vector3 position = gameObject.transform.position;
-            builder.AppendLine(BridgeText.EntityDumpLine(pair.Key.ToString(), CraftData.GetTechType(gameObject).ToString(), gameObject.activeInHierarchy ? "active" : "inactive", parentId, parentKind,
+            string kind = gameObject.activeInHierarchy ? "active" : "inactive";
+            if (gameObject.GetComponent<Creature>())
+            {
+                kind += ",creature";
+            }
+            else if (IsMover(gameObject))
+            {
+                kind += ",mover";
+            }
+            builder.AppendLine(BridgeText.EntityDumpLine(pair.Key.ToString(), CraftData.GetTechType(gameObject).ToString(), kind, parentId, parentKind,
                                                          [position.x, position.y, position.z], ExtractMetadata(gameObject)));
         }
         return builder.ToString();
+    }
+
+    /// <summary>
+    ///     Things besides creatures whose position legitimately changes all the time (the server only hears it now and
+    ///     then): vehicles, subs, players and loose physics objects.
+    /// </summary>
+    private static bool IsMover(GameObject gameObject)
+    {
+        if (gameObject.GetComponent<Vehicle>() || gameObject.GetComponent<SubRoot>() || gameObject.GetComponent<Player>() ||
+            gameObject.GetComponent<RemotePlayerIdentifier>())
+        {
+            return true;
+        }
+        return gameObject.TryGetComponent(out Rigidbody rigidbody) && !rigidbody.isKinematic;
     }
 
     private static string? GetContainerOwnerId(GameObject gameObject)
