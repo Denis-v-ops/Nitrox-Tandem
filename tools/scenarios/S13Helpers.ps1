@@ -233,6 +233,7 @@ public static class S13Analysis
         List<double> residual = new List<double>();
         List<double> instant = new List<double>();
         int moving = 0, stalls = 0, jumps = 0, reversals = 0;
+        List<string> notes = new List<string>();
         double stepErrSq = 0, ownerPath = 0, ownerTime = 0, maxStepErr = 0;
         for (int k = 0; k < idx.Count; k++)
         {
@@ -256,8 +257,15 @@ public static class S13Analysis
             double err = step - expected;
             stepErrSq += err * err;
             maxStepErr = Math.Max(maxStepErr, Math.Abs(err));
-            if (step < 0.25 * expected) { stalls++; }
-            if (step > 2 * expected + 0.01) { jumps++; }
+            bool stall = step < 0.25 * expected;
+            bool jump = step > 2 * expected + 0.01;
+            if (stall) { stalls++; }
+            if (jump) { jumps++; }
+            if ((stall || jump) && notes.Count < 12)
+            {
+                notes.Add(string.Format(CultureInfo.InvariantCulture, "{0}@{1:0}ms(step {2:0.000}/{3:0.000} buf {4} lat {5:0.000} dt {6:0.0})", stall ? "stall" : "jump", tr[i] - from, step, expected,
+                    observer.Rows[i][observer.Col("buf")], observer.Rows[i][observer.Col("maxLat")], tr[i] - tr[i - 1]));
+            }
             double dot = (r[0] - rPrev[0]) * (o[0] - oPrev[0]) + (r[1] - rPrev[1]) * (o[1] - oPrev[1]) + (r[2] - rPrev[2]) * (o[2] - oPrev[2]);
             if (dot < 0) { reversals++; }
         }
@@ -273,6 +281,7 @@ public static class S13Analysis
         result["reverseFrames"] = reversals;
         result["stepErrRms"] = moving > 0 ? R(Math.Sqrt(stepErrSq / moving), 4) : 0;
         result["stepErrMax"] = R(maxStepErr, 4);
+        result["firstStallsJumps"] = string.Join(" ", notes);
         return result;
     }
 
