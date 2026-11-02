@@ -1537,17 +1537,61 @@ sets ever reaches them.
     rejoin starts empty. Negative controls: without the replay call both tests fail; with the reveal kept, the first
     fails. **Not verified in game:** the rejoin itself (B rejoins, A's body stands and holds the tool). The packets are
     the ones the game already applies live.
-- **R2b: Arm states (M).** Sync `using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump` and
-  `diving` (`game:ArmsController.cs:255-261,454-577`) as new `AnimChangeType` values, sent on change from a watcher like
-  `UnderwaterStateTracker`. The partner then visibly scans, builds, welds, cuts, opens the PDA, swims at the surface
-  (#2281) and jumps. No new packet; `PacketsSerializableTest` covers it.
-  - (H) Also call `ArmsController.Reconfigure(tool)` on the partner's body when a tool is drawn or put away, for aim and
-    the two-handed grip.
+- **R2b: Arm states (M)** — done 2026-11-02 (branch `feat/2-r2b-arm-states`). Sync `using_tool`, `using_tool_alt`,
+  `using_builder`, `using_pda`, `on_surface`, `jump` and `diving` (`game:ArmsController.cs:255-261,454-577`) as new
+  `AnimChangeType` values, sent on change from a watcher like `UnderwaterStateTracker`. The partner then visibly scans,
+  builds, welds, cuts, opens the PDA, swims at the surface (#2281) and jumps. No new packet; `PacketsSerializableTest`
+  covers it.
+  - Also call `ArmsController.Reconfigure(tool)` on the partner's body when a tool is drawn or put away, for aim and
+    the two-handed grip (done; the aim checked windowless, the grip not, see below).
   - **A0 probe (2026-11-02, windowless, `animator` on both games):** with the PDA open, A's own animator has
     `using_pda` true, B's copy false. With the scanner or builder drawn, A has `holding_tool` true, B false;
     `holding_scanner`/`holding_builder` and `using_tool_first` do reach B (held-item packet). `using_tool` stayed false
     on A's *own* animator in the samples taken while A scanned a fish (the scan completed), so check the sender side of
     `using_tool` windowed before relying on it (H). Add `holding_tool` to R2b's list.
+  - **What was built:**
+    - Nine new `AnimChangeType` values: the seven above plus `holding_tool` and `diving_land` (written next to `diving`
+      by the same `UpdateDiving`). `ArmStates` maps each to its animator parameter.
+    - **Sender:** `ArmStateTracker` reads the local player's own arms animator in `LateUpdate`, i.e. whatever the game
+      wrote there (`ArmsController.Update`, `ConditionRules`, the PDA), instead of recomputing the game's conditions.
+      `ArmStateWatch` (pure) sends every state once after loading, then on change. An "off" is sent only after the value
+      has been off for 0.15 s: a click tool sets `using_tool` for one frame (`GUIHand.usedToolThisFrame` is set on the
+      button's down frame only, `game:GUIHand.cs:185,299`), so an on and an off would often reach the partner in the
+      same frame and their animator would never see the on, and a flickering value would cost a packet per frame.
+    - **Receiver:** `RemotePlayer.SetArmState(parameter, value)` is the **single entry point** for arm writes on the
+      partner's body: the synced states and the held-item processor's `holding_<tool>` and `using_tool_first`. The
+      `if (!InCinematic)` of #2859 and T1's downed-pose lock go there. A change of `holding_tool` or a `holding_<tool>`
+      calls `ArmsController.Reconfigure` with the tool plugged into the hand (none while `holding_tool` is off, which
+      the sender's game already turns off while the PDA is open).
+    - **Server:** keeps the latest state per type for late joiners (R2a's map), except the infection reveal and the fall
+      states `jump`, `diving` and `diving_land` (`AnimChangeTypeExtensions.IsReplayedToLateJoiners`). The join
+      payload's pose (`PlayerContext.Animation`) is now the underwater state only; before, it was whichever type came
+      last.
+  - **Findings (from code unless said):**
+    - `jump` is not a trigger: `ArmsController.Update` sets it every frame to `Player.GetPlayFallingAnimation()`, true
+      while the player has been falling out of water for 0.45 s (`game:Player.cs:1642-1653,1660-1667`). Synced as a plain state.
+    - `using_builder` has no writer in the game: `ArmsController.SetUsingBuilder` has no caller. Building shows as
+      `using_tool` (`BuilderTool.GetUsedToolThisFrame` returns `isConstructing`). Synced anyway; it stays off.
+    - `Reconfigure` is safe on the partner's body once `ArmsController.Start` has run (checked: the method touches the
+      body's own IK, aimers and bleeder target, which `ArmsController_Update_Patch` already uses every frame). Its
+      no-tool branch reads the *local* player's PDA (`Start` takes the local player), like the existing world-target
+      reconfigure in that patch. The patch's world-target path calls `Reconfigure(null)`, which would drop a tool's IK
+      if a vehicle or chair change came while a tool was out (tools are put away there; not handled).
+    - Windowless (seen): opening the PDA puts the held tool away (`PDA.Open` → `Inventory.ReturnHeld`), so
+      `holding_tool` and `holding_<tool>` go off on both sides. The scanner and builder have no hand IK targets; what
+      `Reconfigure` changes for them is the right arm's aim (`rightAim.shouldAim`), which now matches on both sides.
+      `using_tool` can't be produced on the sender windowless (`GUIHand.GetUsingTool` needs
+      `AvatarInputHandler.IsEnabled()`, false without a locked cursor).
+  - **Verified:** L1 `ArmStatesTest` (initial send, on-change, the off delay with a one-frame click and a flicker, the
+    replay predicate). L2 `PartnerArmStatesReplayTest`: a late joiner gets the PDA, surface and holding states and not
+    the fall; fails on the old processor. **L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks)**: PDA, scanner and
+    builder drawn (with the arm aim), surface, a 40 m fall into the sea (`jump` and `diving` seen on B's copy), and a
+    rejoin of B with the PDA open at the surface. Tool use (`using_tool`, `using_tool_alt`, `using_builder`) was driven
+    on A's own animator with her `ArmsController` off, since the game never sets it windowless. Negative control: on
+    unfixed `coop`, 12 of 33 checks fail (no rejoin). **Not verified:** a real tool click or weld through input, how the
+    poses look (bones don't move windowless), a fall onto land (`diving_land`), the two-handed grip of a tool that has
+    hand IK targets, and a late joiner arriving while the partner has a tool out (the replay sends `holding_tool` before
+    the held item; `SetArmState` recomputes the arms on either, from code). Needs a windowed run.
 - **R2c: Tool effects (M–L).** Each tool plays its beam or sparks only for the local user (`game:BuilderTool.cs:362`,
   `Welder.cs:61`, `LaserCutter.cs:100`, `ScannerTool.cs:146`, the Seaglide propeller `Seaglide.cs:110-117`). Play them on
   the partner's body when R2b's `using_tool` turns on. Scanner, builder and welder first; the laser cutter beam also
@@ -1730,6 +1774,23 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   `_Medium_Tall` world entity with a NitroxId (from the batch), so `Fires.cs`'s `fire.transform.parent` lookup finds an
   id; no server-side creation is needed. What's left for B4: whether dousing them is relayed, persisted on the server
   and kept after a restart (headless first: `FireDoused` / `EntityDestroyed` for these world entities).
+- **Done (2026-11-02): nothing to fix, it already works.** Dousing an Aurora fire goes through the same path as a
+  Cyclops fire: `Fire_Douse_Patch` → `Fires.OnDouse` sends `FireDoused` with the parent's id (health 0 once it's out);
+  the server's `FireDousedProcessor` removes the entity from the registry and its cell and relays the packet; the
+  partner's `Fires.Douse` calls `Fire.Extinguished`, which destroys the fire's parent 4 s later
+  (`game:Fire.cs`, `Extinguished`). The fires come from the batch files, and the server saves which batches it has
+  parsed (`WorldData.ParsedBatchCells`), so a removed fire isn't generated again on load; a late joiner only gets what
+  the registry still has. Single player most likely behaves the same way, since the parent is destroyed (inferred from the code, not tested in single player). No new metadata, no
+  save-format tag used.
+- **Tests:** L2 `AuroraFireTest` with the real batch (fire class ids from `prefabs.db`): partner gets the packet,
+  server drops the record, a late joiner and a rejoin after a restart don't get it, the untouched fires stay; fails if
+  the server doesn't destroy the entity. Windowless `B4-AuroraFiresStayOut.ps1` PASS (12 checks): after
+  `/aurora explode`, Alice douses a cargo-room fire (five small `Fire.Douse` calls as the extinguisher does per frame,
+  then one that puts it out); it's gone in both games and on the server, and after a restart it stays out for both
+  while the other 32 burn. On unchanged `coop`, so there is no failing negative control.
+- **Not covered:** a half-doused fire's health isn't stored on the server, so after a restart or rejoin it is full
+  again (whether these fires regrow anyway, `Fire.fireGrowRate`, wasn't read); the real extinguisher's aiming wasn't
+  driven, only `Fire.Douse`.
 
 #### B5: Wild fruit regrowth (S, probe first)
 - **Today (H):** `FruitPlant_Update_Patch.cs:22-26` waits for a lock; planters get one, wild plants may not. Check which
@@ -1813,3 +1874,6 @@ prices, "keeping it scary").
 | 2026-11-02 | T3 | Done: Give on the partner hand-target opens the transfer screen with the partner's inventory copy; the copy refuses removals and turns an add into `ItemGiveRequest`; the server checks the pair, ownership, item kind and equipment, reparents and tells everyone; room checked on the giver's copy; en/de strings; README row | Headless: L2 `ItemGiveTest` (2 tests, fail without the processor). Windowless: `T3-HandItemsOver.ps1` PASS (37 checks); without the T3 code 21 fail. Full test suite green. Not checked windowed, no-room refusal code-read |
 | 2026-11-02 | D2 | Done: each game decides its own interference (deeper than `SignalInterferenceDepth`, or a biome starting with `LostRiver`/`ILZ`/`InactiveLavaZone`/`Lava`/`ALZ`/`Precursor`/`Prison` or containing `cave`, case-insensitive; relayed by a deployed beacon within 150 m or a powered scanner room within its scan range) and sends it on `PlayerStats`; when either player is in interference the faint marker stays at the last contact (`origin` on a static object), flickers and reads "last contact 42 s / 2 min" (en, de); up close and with Always nothing changes; the server resets `Interfered` on join and leave and replays the partners' stats to a joining player; the partner marker is found by its `signal_<name>` object, never a carried beacon's ping. README row | L1 `SignalInterferenceRulesTest`, `PartnerSignalRulesTest`; L2 `DeepCutsLineTest` (fails without the server changes); L3 windowless `D2-DeepCutsLine.ps1` PASS (34 checks: 400 m, beacon, pocketed beacon, 50 m, Jellyshroom Cave, Alice deep, Always); unfixed `coop` FAIL (18 checks expected on the final script; 20 on an earlier revision). Marker selection: L1, D2 scenario re-run PASS. Not verified: scanner room in game, windowed look, thrown beacon, two languages, F2 scenario not re-run, joining while the partner carries a beacon |
 | 2026-11-02 | D5b | Done: `HeardGoals` per player from the game's own flagged execute (`StoryGoalExecuted.Experiential`); the join payload leaves out lines another player heard and the joiner hasn't (`OwnFirsts`), the trackers keep them and pending delayed ones are skipped; old saves stay shared. Found logs resolved: a `Found` flag from `StoryHandTarget`; survivor PDAs turned out to be Encyclopedia goals, the partner gets the databank entry without the voice log. Limit: a player's own delayed line pending at a rejoin needs a new visit. README row | L1 `ExperientialGoalsTest`, `OwnFirstsTest`; L2 `OwnFirstsRejoinTest` (fails without the server change); L3 windowless `D5b-OwnFirstsAfterRejoin.ps1` PASS (21 checks), 5 fail on the code before D5b. Delayed lines, location goals, windowed not run |
+| 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
+| 2026-11-02 | R2b | Done: nine arm states as `AnimChangeType` values (`using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump`, `diving`, `diving_land`, `holding_tool`), sent from the local arms animator on change (off after 0.15 s); every arm write on the partner's body through `RemotePlayer.SetArmState` (single entry point for #2859 and T1), which also calls `ArmsController.Reconfigure` on a tool change; server replays them to late joiners except the fall states; join payload pose is the underwater state only. Findings: `jump` is a per-frame state, not a trigger; `using_builder` has no writer in the game; opening the PDA puts the tool away. README row | L1 `ArmStatesTest`; L2 `PartnerArmStatesReplayTest` (fails on the old processor); L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks, incl. a rejoin; tool use driven on the sender's animator); unfixed `coop` FAIL (12 checks). Not verified: real tool input, the look of the poses, a fall onto land (windowed) |
+| 2026-11-02 | B4 | Done, no code change: dousing an Aurora fire already reaches the partner, the server and late joiners and stays out after a restart (Cyclops fire path: `FireDoused` with the parent id, server destroys the batch entity, parsed batches are saved) | L2 `AuroraFireTest` (fails without the server destroy); windowless `B4-AuroraFiresStayOut.ps1` PASS (12 checks) on unchanged `coop`, so no failing negative control. Not covered: half-doused health after a restart, the real extinguisher aim |
