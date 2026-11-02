@@ -302,6 +302,44 @@ decides whether it bites; check before building, and age the server clock in the
 - **Tests:** L2, a `save` sends start and end to every player; windowless, the indicator's `CanvasGroup` alpha is 1
   during a save on both games and 0 after; negative control without the Postfix.
 
+**Findings (2026-11-02):**
+- *Held:* `SavingIndicator.Update` sets `canvasGroup.alpha` from `SaveLoadManager.main.isSaving`, and the text is
+  `Language.main.Get("SavingGame")` (`game:SavingIndicator.cs`). *Held:* a Nitrox game never saves locally. The only
+  game code that saves is `IngameMenu.SaveGameAsync` (`game:IngameMenu.cs`, from the save button and the permadeath
+  branch of `QuitGameAsync`), and `isSaving` is set only in `SaveLoadManager`'s save coroutines. Nitrox hides the save
+  button (`IngameMenu_OnSelect_Patch`) and skips the permadeath save (`IngameMenu_QuitGameAsync_Patch`).
+- *Held (theirs):* the timed autosave (`AutoSaveService`), the `save` command (`SaveCommand`) and the save when the last
+  player leaves (`IHibernate` sleep) all go through `SaveService`'s queue, which runs one save at a time. The server also
+  saves once right after it starts, because it starts asleep (`HibernateService.StartingAsync`).
+- *Still open (H):* whether a `SavingIndicator` instance runs in the play scene. No game code references the type. The
+  pause-menu save sets `isSaving`, and `SavingIndicator` is the only code that shows it, which suggests one does
+  (unverified). The scene bundles are compressed and weren't searched. Both paths are built, and the scenario prints
+  which one each game used.
+- **Built.** `SaveService` sends `ServerSaving(number, STARTED)` to every connected player before it writes the world,
+  then `FINISHED` or `FAILED` once the world and the `ISaveState` files (bans, config) are written. A failed or cancelled
+  save also sends its end, and a packet that can't be sent is only logged. The post-save command and the backup run
+  after the end. The packet has no server processor: a copy a game sends is dropped (`DefaultServerPacketProcessor`
+  blacklist), so it is never relayed or stored. On the client, `ServerSaveIndicator` (pure rules, one per session) shows
+  a save from its start for at least 2 s, until its end, at most 60 s if the end never arrives. It ignores an end without
+  its start (a player who joined during the save), and a new start replaces the running one. `SavingIndicator_Update_Patch`
+  (Postfix) sets alpha 1 while it shows. The path is chosen at the start: if a `SavingIndicator.Update` ran in the last
+  2 frames, the indicator path is used. Otherwise, in the world, the game's notice shows `ErrorMessage.AddMessage(
+  Language.main.Get(SavingIndicator.savingGameMessage))` once per save. While the player still loads, nothing is shown;
+  the indicator picks the save up if it starts running before the save ends. The path is logged once per session.
+- **Left out of theirs:** their own ring and Arial text (§2 principle 1), their harness console command, their packet
+  test (`PacketsSerializableTest` round-trips every packet). **No new strings** (the game's `SavingGame` key), and no
+  `ProtoInclude` tags used.
+- **Open:** a failed save only hides the indicator. The players aren't told that it failed (the game's own
+  `SaveFailedFormat` dialog would fit; not decided). There is no client switch for it (§2 principle 8; it's the game's
+  own indicator). It isn't checked whether a canvas that switches off windowless hides the indicator (TESTING.md
+  windowless differences); the scenario reads the alpha.
+- **Tests:** unit `ServerSaveIndicatorTest` (10). Each of these fails with its rule reverted: the 2 s minimum (2
+  tests), the 60 s timeout, the start/end number match (2 tests), the "ran in the last 2 frames" check (2 tests). Three
+  are guards. L2 `ServerSavingTest` (3), each failing with its line reverted: `save` sends start then end with the same
+  number to both players (no announcements), a failed save (a folder where the serializer writes `Version.tmp`) still
+  sends `FAILED` and the next save `FINISHED` (end sent only on success), and a game's copy isn't relayed (blacklist
+  line). Scenario `tools/scenarios/M7-SavingIndicator.ps1`, written, not run.
+
 ## M8: Crafting from base and Cyclops lockers (M–L)
 
 - **What players get (their design):** the Fabricator, the Modification Station, the moonpool upgrade console's
@@ -428,3 +466,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | 2026-11-02 | — | Spec created from the review of MultiNaughtica `99428c8` (base upstream `7815b4e4`) against `coop` @ `ddf06755`. Decisions recorded above. Game-rig tests deferred to one pass after M1–M9 are implemented (rigs in use) | Code review only, nothing built or run. Re-read in our code: Cyclops `isDestroyed` at health 0, `Battery_charge_set_Patch` Prefix, radiation `Max()`, Sea Emperor baby parent check. Everything else is *hypothesis (review)* |
 | 2026-11-02 | M3 | Implemented, not verified in game: start backups in `backups/server-starts/` (last 5); reservations wait for the world and the join re-checks the saved player; a reservation that never joined frees its name; a stale session with the same name and IP is kicked; only finished batches are recorded and failed batch loads are retried; one NTP socket per round, closed at its end; Debug `entitycount` | L2 (headless): `JoinSafetyTest` (5, each fails with its line reverted), `ServerStart_OnAnExistingSave_BacksItUpFirst` (fails without the start hook), `GeneratedBatch_StaysRecordedAcrossRestarts` (guard: fails if restored batches aren't marked done). Unit: `ServerStartBackupsTest` (zip and pruning, real files; the rolling-pruning test is a guard), `BatchLoadTasksTest` (running/failed batches not listed, failed loads retried: fail with the old behaviour), `NtpSyncerTest` (2, fail with the old round handling). Scenario written, not run |
 | 2026-11-02 | M1 | Implemented, not verified in game: a Cyclops at 0 HP isn't sent as destroyed until it explodes, a watchdog ends a countdown whose player left, the beacon comes from the game whose countdown fired; battery charge sent after the change and when empty; the partner takes the old power cell out before installing the new one; a building resync respawns a base or module the game lost; a deconstructed loose constructable leaves its cell and lock; vehicle lights drain on the lock holder only, the thermal reactor skips while another player pilots; un-started build bots skip the launch setter; undocking announced at `OnUndockingStart`, the lock given back after a refused click | Unit (each fails with its line reverted): `CyclopsDestructionRulesTest` (old `\|\| health <= 0`), `BatteryChargeRulesTest` (old floor-only rule), `BuildingResyncPairingTest` (pairing with null), `BuildingManagerDeconstructTest` (old `RemoveEntity`, no revoke), `ConstructorBuildBot_launch_set_PatchTest` (prefix always true). L2 `CyclopsDyingPersistsTest`: a server-contract guard, passes without the fix. Not tested headless: power-cell swap, lights, thermal reactor, undocking, watchdog, beacon (scenario only, or not covered). Scenario written, not run |
+| 2026-11-02 | M7 | Implemented, not verified in game: the server tells every player when a save starts and ends (finished or failed); the game's own `SavingIndicator` shows it (Postfix on `Update`) for at least 2 s, at most 60 s without an end; where no indicator runs in the play scene, the game's notice shows `SavingGame` once per save. A game's copy of the packet is dropped. No new strings, no `ProtoInclude` tags | Unit `ServerSaveIndicatorTest` (10; 7 fail with their rule reverted, 3 guards). L2 `ServerSavingTest` (3, each fails with its line reverted). Scenario written, not run |
