@@ -155,6 +155,7 @@ namespace NitroxClient.GameLogic
             {
                 if (movementReplicator)
                 {
+                    movementReplicator.HandOverMotion();
                     Object.Destroy(movementReplicator);
                 }
                 MovementBroadcaster.RegisterWatched(gameObject, entityId);
