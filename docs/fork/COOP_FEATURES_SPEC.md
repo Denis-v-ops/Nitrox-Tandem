@@ -649,7 +649,7 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - Not checked: windowed (the reticle text and the bubbles heard); the hand target while a tool that overrides the
     hand is held (`PlayerTool.DoesOverrideHand`: no target, so no sharing then); a partner in a vehicle or the Cyclops.
 
-### T3: Hand items over
+### T3: Hand items over — done 2026-11-02 (branch `feat/2-t3-hand-items`)
 - **Today:**
   - The partner's inventory already exists on both sides: `InventoryItemEntity` children of the `PlayerEntity`, mirrored
     into `RemotePlayer.Inventory` (`RemotePlayer.cs:96-98`).
@@ -673,6 +673,46 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
     clients get the reparent, `SaveLoadRoundTrip`.
   - L3: give one item; both inventories are right; relog.
 - **Size:** S (one-step) to M (with a capacity check on the receiving client).
+- **Done (2026-11-02), size S:**
+  - **Give** (`GiveItemAction`, priority -10, so buddy breathing wins when both apply; not offered while the partner is
+    down): pressing interact on the partner sets the local copy of their inventory as the used storage and opens the
+    PDA on the inventory tab, with the partner's body as the PDA's target (`BaseBioReactor.OnUse` does the same). Verified
+    in game code: `PDA.Open` puts the held item away itself (`Inventory.ReturnHeld`) and closes when the target is
+    gone; its range is raised to 3 m (`activeSqrDistance`). `uGUI_InventoryTab.OnClosePDA` clears the used storage.
+    The panel is titled "Give to *name*" (the container's label, translated by the tab).
+  - **How the add is intercepted:** the copy's `isAllowedToAdd`/`isAllowedToRemove` delegates. The game asks
+    `AllowedToAdd(item, verbose: false)` to offer the click action (`Inventory.GetAllItemActions` → `Switch`) and
+    `AllowedToAdd(item, verbose: true)` when it moves it (`IItemsContainer.AddItem`, from a click or a drag:
+    `Inventory.AddOrSwap`, `uGUI_ItemsContainer.OnDrop`). Verbose false answers whether the item can be given; verbose
+    true sends `ItemGiveRequest(item, target)` and returns false, so `AddItem` stops before it takes the item out of the
+    source and nothing moves. `isAllowedToRemove` is false. Nitrox's own adds and removes on the copy (`UnsafeAdd`,
+    `RemoveItem(forced: true)`) skip both delegates. The copy has no error sound, so the refusal is silent.
+  - **Server** `ItemGiveRequestProcessor`: `PartnerInteractions.Check` (no downed player on either side, 4 m), then the
+    item must be an `InventoryItemEntity` whose parent is the giver and not in the giver's `EquippedItems` (equipped
+    items stay `InventoryItemEntity` children of the player; the slots are in `Player.EquippedItems`). It reparents
+    the item to the target's player entity and sends `EntityReparented` to everyone. The giver's game moves the item
+    into its copy of the target's inventory (`AddFromRemote` force-removes it from the local inventory), the target's
+    game into its own. A refused request is only logged: nothing moved anywhere, so nothing needs undoing.
+  - **Capacity: on the giver's game.** The server has no item sizes. `ItemsContainer.HasRoomFor` packs by tech type
+    groups, not by position, so the copy gives the same answer as the partner's own inventory when it holds the same
+    items. It also holds what the partner wears (only `PlayerMetadata` changes on equip), so the check errs on "no room".
+    A race (the partner picks something up while the request travels) falls back to S7's warn-and-`UnsafeAdd`: an
+    overfull inventory, no loss, no dupe. M (asking the receiving game first) wasn't needed for that.
+  - Items given: same id, never destroyed or respawned; a tool's battery moves with the tool (server: child of the
+    tool; game: child GameObject). Equipped items and items not in the inventory get "Take it off first" / nothing;
+    no room: "*name* has no room for that" (en, de).
+  - Tests: L2 `ItemGiveTest` (both games get the reparent, the battery rides along, a late joiner and a restart see the
+    item under the receiver; refused: equipped, the partner's own item, a world item, an unknown item, out of range,
+    self, unknown session, either player down); both tests fail without the processor (the default one only relays
+    the request). Windowless `tools/scenarios/T3-HandItemsOver.ps1` PASS (37 checks): the hold opens the screen, a click
+    and a drag move titanium and a flashlight with its battery, the equipped tank and taking an item back are refused,
+    a restart keeps them with the receiver, no desync. Without the T3 code 21 of 37 fail (the moves happen only in the
+    giver's game, the equipped tank included).
+  - Not checked: windowed (the panel, its title and the messages on screen); a real mouse click and drag (the bridge
+    calls the same game methods); the no-room refusal in game (code-read); a give while either player is in a vehicle
+    or the Cyclops; Give isn't reachable while a tool that overrides the hand is held (as T2). The quick-slot binding
+    of a given item isn't resent (`AddFromRemote` suppresses it): the giver's stale binding and the receiver's
+    auto-binding are dropped at the next join. A refused give tells the giver nothing.
 
 ### T4: Cyclops crew roles — done 2026-11-02 (branch `feat/1-t4-cyclops-crew`)
 - **The game doesn't block it:**
@@ -1662,3 +1702,4 @@ prices, "keeping it scary").
 | 2026-11-02 | G0 | Done: story gates (`StoryGateService`/`StoryGateState`/`StoryGateRules`, packets `StoryGateReady`/`Status`/`Start`, `StoryGateKind` with room for G1–G3), roster from `StoryGatePlayers` or every saved player, locked while a roster player is offline, readies cleared on timeout, area exit and disconnect, option off starts at once, admin `storygate status`/`release <kind>`; game-side `StoryGates` hold-and-resume API for G1–G3; Sunbeam radio lock (`RadioSunbeam4` stays queued while held); en/de texts; README co-op rows | L1 `StoryGateStateTest`, `StoryGatesTest`; L2 `StoryGateTest` (6 tests, all fail without `StoryGateReadyProcessor`); windowless `G4-DriveCoreTogether.ps1` radio part (lock across a quit and rejoin) PASS, fails without the radio hook. Full suite green |
 | 2026-11-02 | G4 | Done: the heal that would seal the Aurora's last leak (`LiveMixin.AddHealth`) waits until every roster player is in the drive core room (box from the leaks' measured positions plus 6 m), then seals for both; remote health syncs never held. Goal key `AuroraRadiationFixed` (read in game) | Windowless `G4-DriveCoreTogether.ps1` PASS (24 checks); negative control with the coop hooks: 9 checks fail. L2 drive core presence test. Real welder button and the on-screen message not driven; room walls not measured (H) |
 | 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
+| 2026-11-02 | T3 | Done: Give on the partner hand-target opens the transfer screen with the partner's inventory copy; the copy refuses removals and turns an add into `ItemGiveRequest`; the server checks the pair, ownership, item kind and equipment, reparents and tells everyone; room checked on the giver's copy; en/de strings; README row | Headless: L2 `ItemGiveTest` (2 tests, fail without the processor). Windowless: `T3-HandItemsOver.ps1` PASS (37 checks); without the T3 code 21 fail. Full test suite green. Not checked windowed, no-room refusal code-read |
