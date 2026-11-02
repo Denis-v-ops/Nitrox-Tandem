@@ -165,6 +165,7 @@ public static class BuildUtils
                 // As MapRooms can be built as the first piece of a base, we need to make sure that they receive a new id if they're not in a base
                 NitroxId nitroxId = constructableBase.GetComponentInParent<Base>(true) ? id : id.Increment();
                 NitroxEntity.SetNewId(mapRoomFunctionality.gameObject, nitroxId);
+                MapRoomCameras.ApplyDefault(mapRoomFunctionality);
                 moduleObject = mapRoomFunctionality.gameObject;
                 return true;
             }

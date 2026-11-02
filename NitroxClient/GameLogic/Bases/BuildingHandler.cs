@@ -181,6 +181,21 @@ public partial class BuildingHandler : MonoBehaviour
             NitroxId moonpoolId = placeBase.FormerGhostId.Increment();
             baseGhost.targetBase.gameObject.EnsureComponent<MoonpoolManager>().RegisterMoonpool(absoluteCell, moonpoolId);
         }
+        // Specific case : just a scanner room built as a base, same id as the builder gives it (BuildUtils.TryTransferIdFromGhostToModule)
+        else if (constructableBase.techType == TechType.BaseMapRoom)
+        {
+            // A new base, so its only scanner room
+            MapRoomFunctionality mapRoomFunctionality = baseGhost.targetBase.GetComponentInChildren<MapRoomFunctionality>(true);
+            if (mapRoomFunctionality)
+            {
+                NitroxEntity.SetNewId(mapRoomFunctionality.gameObject, placeBase.FormerGhostId.Increment());
+                MapRoomCameras.ApplyDefault(mapRoomFunctionality);
+            }
+            else
+            {
+                Log.Error($"Couldn't find the MapRoomFunctionality of scanner room base {placeBase.FormerGhostId}");
+            }
+        }
 
         // It's very important that the tracker starts at 0 here because otherwise, it'd be
         // misevaluated to -1 if the local client was to start editing this base

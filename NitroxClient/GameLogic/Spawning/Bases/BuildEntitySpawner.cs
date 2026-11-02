@@ -19,11 +19,13 @@ namespace NitroxClient.GameLogic.Spawning.Bases;
 public class BuildEntitySpawner : EntitySpawner<BuildEntity>
 {
     private readonly Entities entities;
+    private readonly EntityMetadataManager entityMetadataManager;
     private readonly BaseLeakEntitySpawner baseLeakEntitySpawner;
 
-    public BuildEntitySpawner(Entities entities, BaseLeakEntitySpawner baseLeakEntitySpawner)
+    public BuildEntitySpawner(Entities entities, EntityMetadataManager entityMetadataManager, BaseLeakEntitySpawner baseLeakEntitySpawner)
     {
         this.entities = entities;
+        this.entityMetadataManager = entityMetadataManager;
         this.baseLeakEntitySpawner = baseLeakEntitySpawner;
     }
 
@@ -58,7 +60,7 @@ public class BuildEntitySpawner : EntitySpawner<BuildEntity>
             switch (childEntity)
             {
                 case MapRoomEntity mapRoomEntity:
-                    yield return InteriorPieceEntitySpawner.RestoreMapRoom(@base, mapRoomEntity);
+                    yield return InteriorPieceEntitySpawner.RestoreMapRoom(@base, mapRoomEntity, entities, entityMetadataManager);
                     break;
                 case BaseLeakEntity baseLeakEntity:
                     atLeastOneLeak = true;
