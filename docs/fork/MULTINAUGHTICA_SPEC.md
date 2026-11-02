@@ -144,6 +144,53 @@ Game-rig scenarios run once at the end, after all nine are implemented ("Testing
   early once done, so nothing stops it. One-shot retry.
 - Optional: their Debug `EntityCountCommand` as the repro tool for #2800 (FIX_SPEC verify-first list).
 
+**Findings (2026-11-02):** implemented on `fix/m3-join-save-safety`, not verified in game (scenario
+`tools/scenarios/M3-JoinSaveSafety.ps1` written, not run).
+- **Start backup: built.** Both other listers only look at files directly in `backups/`: the rolling pruning
+  (`SaveService.PruneBackups`, names with "Backup - ") and the launcher's restore list (`BackupRestoreViewModel.GetBackups`,
+  names starting with "Backup - "); the launcher's restore deletes only the save's top-level files. So the zips go to
+  `backups/server-starts/ServerStart - <time>.zip` (`ServerStartBackups`), made at the top of `WorldService.StartAsync`,
+  before `UpgradeSave` rewrites files. Not made for a new world or when `MaxBackups` is 0 (no backups wanted). A failed
+  backup is logged and the server starts. The "one-way save change" motivation holds for S1 (FIX_SPEC Phase 2); S5b
+  not checked.
+- **Join while the world loads: held, fixed.** `ServicesStartConcurrently` (`Program.cs`); `LiteNetLibServerService`
+  (registered in `AddPackets`, before `AddWorld`) listens at once; `ReservePlayerContext` decides "new" from
+  `allPlayersByName`, which only `WorldService` fills. The L2 test holds the world load and showed the server answering
+  RESERVED before the world was loaded, and the returning player joining with `FirstTimeConnecting` true. Fix: the
+  reservation processor awaits `WorldService.WaitForWorldLoadedAsync` (cancelled when the host stops, so a failed load
+  can't hang the shutdown); `PlayerManager.CreatePlayerData` re-checks at join and rebuilds a "new" reservation of a now
+  known name as the saved player (id, game mode, intro completed). A reservation before the load could also have made the
+  load throw on the duplicate name (`AddSavedPlayer`), and a new player's `PeerId` could collide with a saved one.
+- **Name "in use" after a drop before joining: held, fixed.** `PlayerManager.OnEventAsync` freed the name only for
+  joined players; a reservation's name stayed until restart.
+- **Dead session blocks rejoin: held, fixed.** Sessions are keyed by address and port, the name check refuses the second
+  session until the old one times out (30 s Release, 5 min Debug). The reservation processor now kicks another session
+  holding the same name from the same IP address (IPv4-mapped addresses normalised), removes it, and waits up to 3 s
+  for the name. Same address and same name is taken as the same person: on a public server that would let someone on
+  the same address push a player out; accepted for a two-player private server.
+- **Empty area: held, and wider.** `SerializableParsedBatches` listed every key, including running and failed batches.
+  Now only batches whose task finished (`BatchLoadTasks.ListGenerated`), and the save leaves out batches whose entities
+  aren't registered yet (`WorldEntityManager.GetGeneratedBatches`, read before the entities). Restored batches get
+  already-created tasks, or the filter would drop every restored batch at the first save. A failed task was cached in
+  **both** `BatchEntitySpawner.batchLoadTasks` and `WorldEntityManager.batchRegistrationTasks`; each is now forgotten on
+  failure (`BatchLoadTasks.GetOrStart`), so the next visit retries. Before, every later `CellVisibilityChanged` naming
+  that batch threw, and the player got no `SpawnEntities` reply for any cell of that packet. A real failing batch isn't
+  reachable headless; only unit tests cover the failure path. Open: generation picks prefabs with `XorRandom` from
+  `RandomFactory`, not the per-batch generator, so a batch generated twice isn't identical (their fork changed that;
+  not taken here). Open: if registration throws after a successful generation (no known cause), the batch stays
+  recorded, as before.
+- **NTP socket leak: held, wider than stated.** Client: `TimeManager.ProcessUpdate` calls `AttemptNtpSync` for every
+  `TimeChange` (every 60 s) while the game has no NTP correction and the server has one. Server: `TimeService` retries
+  every 60 s while offline. Each `Setup` opened a `NetManager` without closing the last, and after the first round
+  `Complete()` returned at once, so no later socket was closed and no later callback ran: the server's retry timer never
+  stopped, even after a success. Now `Setup` stops the previous round and starts a fresh one, `Complete()` ends each
+  round (sockets are stopped outside the lock: stopping waits for the socket's threads), and the client starts no round
+  while one is running.
+- **`EntityCountCommand`: taken** (Debug only, about 35 lines): `entitycount [filter]`.
+- Edits outside the item's files: `JoiningManager.cs` untouched; `NitroxClient/GameLogic/CorrectedTimeManager.cs` (one
+  guard). Test helpers: `FakePlayer.ConnectAsync`/`ReserveAsync`/`CompleteJoinAsync`/`Crash`,
+  `ServerHarness.ConnectAsync`/`RestartHoldingWorldLoadAsync`/extra server arguments.
+
 ## M4: Creature attack gaps (S–M)
 
 - **Reaper grab** shows in one game only. `ReaperGrabVehicle` / `ReaperReleaseVehicle` to players who can see it;
@@ -327,3 +374,4 @@ The game rigs are in use by other work, so this spec doesn't wait for them:
 | Date | Item | Change | Verified by |
 |---|---|---|---|
 | 2026-11-02 | — | Spec created from the review of MultiNaughtica `99428c8` (base upstream `7815b4e4`) against `coop` @ `ddf06755`. Decisions recorded above. Game-rig tests deferred to one pass after M1–M9 are implemented (rigs in use) | Code review only, nothing built or run. Re-read in our code: Cyclops `isDestroyed` at health 0, `Battery_charge_set_Patch` Prefix, radiation `Max()`, Sea Emperor baby parent check. Everything else is *hypothesis (review)* |
+| 2026-11-02 | M3 | Implemented, not verified in game: start backups in `backups/server-starts/` (last 5); reservations wait for the world and the join re-checks the saved player; a reservation that never joined frees its name; a stale session with the same name and IP is kicked; only finished batches are recorded and failed batch loads are retried; one NTP socket per round, closed at its end; Debug `entitycount` | L2 (headless): `JoinSafetyTest` (5, each fails with its line reverted), `ServerStart_OnAnExistingSave_BacksItUpFirst` (fails without the start hook), `GeneratedBatch_StaysRecordedAcrossRestarts` (guard: fails if restored batches aren't marked done). Unit: `ServerStartBackupsTest` (zip and pruning, real files; the rolling-pruning test is a guard), `BatchLoadTasksTest` (running/failed batches not listed, failed loads retried: fail with the old behaviour), `NtpSyncerTest` (2, fail with the old round handling). Scenario written, not run |

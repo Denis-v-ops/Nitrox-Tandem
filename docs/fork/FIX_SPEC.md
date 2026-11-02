@@ -40,7 +40,8 @@ symbol name.
 Rank is severity × likelihood for our run. **Execution order is different, cheapest safe wins first:**
 
 1. **Phase 0, baseline (before anything else):** S0.1 + S0.5 + S0.6 from TESTING.md. Verify the vehicle-movement
-   regression #2761 is fixed on master (fix #2864 merged 2026-09-06). Set up world backups.
+   regression #2761 is fixed on master (fix #2864 merged 2026-09-06). Set up world backups (done for every server
+   start: `backups/server-starts/`, see [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M3).
 2. **Phase 1, adopt batch + small builds:** S9 (#2899) → S5a (#2798) → S8 (#2809) → S4 (#2902, then #2867 with fix)
    → S3 (small build) → S7 step 1 (ghost cell entries; pure server logic, L1-testable). A playthrough can start on
    this build.
