@@ -55,7 +55,7 @@ we copy.
   - The dev PC has a German **QWERTZ** layout, and the Input System binds by physical key, so Nitrox's chat key `y` is
     sent as **`z`**. Escape, Enter, F-keys and typing through the clipboard work as usual.
   - **Mouse-look can't be automated:** neither absolute cursor moves nor relative `SendInput` turn the camera. So aiming
-    and driving (e.g. the #2761 vehicle check) need the S0.4 in-game runner, not UI automation.
+    and driving (e.g. the #2761 vehicle check) go through the dev bridge (below), not UI automation.
   - Both games run fullscreen on one monitor. `WScript.Shell.AppActivate(<pid>)` switches between them, and `PrintWindow`
     (with `PW_RENDERFULLCONTENT`) captures the background game's frame. So one instance can act while the other is
     observed.
@@ -69,8 +69,63 @@ we copy.
   Verified in game 2026-11-01 (`/report` from both players, F4).
 - Server scenario commands already exist: `warp`, `teleport`, `sunbeam`, `aurora`, `time`, `save`, `restart`, `query`
   (`Nitrox.Server.Subnautica/Models/Commands`).
-- Missing today: any in-game test runner, any way to pass scenario arguments through `instantlaunch`, a packet ring buffer
-  in the bug report.
+- **Dev bridge** (2026-11-02, replaces the S0.4 in-game runner): every Debug game and the Debug server can be driven
+  and inspected from the shell. See [the next section](#the-dev-bridge-driving-games-from-the-shell).
+- Missing today: any way to pass scenario arguments through `instantlaunch` (not needed with the bridge), a packet ring
+  buffer in the bug report.
+
+## The dev bridge: driving games from the shell
+
+**Debug builds only** (`#if DEBUG`; a Release build contains none of it). Each game opens a localhost-only TCP endpoint
+when it starts, named after its `--instantlaunch` player name (`pid<id>` otherwise); the server opens one named
+`server`. Ports are stable per name (21000 + hash) and written to `%APPDATA%\Nitrox\bridge\<name>.json`; the Nitrox
+logs show `Dev bridge for 'Alice' listening on 127.0.0.1:<port>`. Game commands run on the Unity main thread.
+
+```powershell
+tools\dual-client.ps1 -WaitForJoin                    # games + server (opens windows)
+tools\bridge.ps1 list                                  # running bridges
+tools\bridge.ps1 Alice help                            # all game commands
+tools\bridge.ps1 Alice state                           # position, sub, underwater, oxygen, health, inventory (ids, batteries)
+tools\bridge.ps1 Alice teleport 372.9 -72.7 1078.4     # like the warp console command, instant
+tools\bridge.ps1 Alice look 90 -10                     # yaw, pitch
+tools\bridge.ps1 Alice console item flashlight         # any Subnautica dev console command
+tools\bridge.ps1 Alice chat "/save"                    # chat; a /command runs as this player
+tools\bridge.ps1 Alice find PrecursorDisableGunTerminal          # loaded objects of a type, nearest first
+tools\bridge.ps1 Alice entity <nitroxId>                          # GameObject, components, simple fields, child entities
+tools\bridge.ps1 Bob get StoryGoalCustomEventHandler.main.gunDisabled
+tools\bridge.ps1 Bob set player Survival.food 50
+tools\bridge.ps1 Bob call <nitroxId> LiveMixin.Kill
+tools\bridge.ps1 Alice call Inventory.main.InternalDropItem <nitroxId> true   # ids convert to the parameter's component
+tools\bridge.ps1 Bob use <nitroxId>                    # OnHandClick as the local player (pick up, open, press)
+tools\bridge.ps1 Alice screenshot $env:TEMP\a.png
+tools\bridge.ps1 server query <nitroxId>               # any server console command, output returned (save, restart, warp, ...)
+tools\bridge.ps1 diff                                  # desync detector, see below
+```
+
+- **Targets:** `player`, a NitroxId, or `find:<ComponentType>` (the nearest loaded object with that component, for
+  scene objects without an id, e.g. `use find:PrecursorDisableGunTerminal PrecursorDisableGunTerminal`). Static paths
+  start with a type name (`Story.StoryGoalManager.main.completedGoals`); `member[3]` indexes a list. Private members
+  work (reflection with non-public flags). Values: numbers, `true`/`false`, `null`, enum names, `x,y,z`, ids.
+- **`diff`** fetches every game's loaded entities (id, tech type, position, parent or container owner, live-extracted
+  metadata) and the server's records, and prints mismatches: `GHOST` (game has an id the server doesn't), `MISSING`
+  (server has a child of a loaded entity, the game doesn't), `TECHTYPE`, `PARENT` (container contents included),
+  `POSITION` (beyond `-Tolerance`, default 1 m; `-MoverTolerance` 15 m for vehicles and loose physics objects;
+  creatures only game vs game), `METADATA` (numbers within 0.5 count as equal). Representation quirks are on a short,
+  commented `$KnownNoise` list in `bridge.ps1` (`-All` shows them). Takes about 3 s. Run it after every scenario step.
+- **Scenarios** are PowerShell scripts in `tools/scenarios/` over `ScenarioHelpers.ps1`: `Start-ScenarioGames` (fresh
+  world `bridge-scenario`, both games joined, no-oxygen and no-damage cheats on), `Step` (runs a block, then `diff`),
+  `Assert-*`, `Wait-Until`, `Assert-NoDiff -Ids` (no desync for the scenario's entities), `Complete-Scenario` (PASS/FAIL,
+  exit code, stops the games). `-NoLaunch` reuses running games, `-Keep` leaves them running. A run takes about 2 min.
+  ```powershell
+  tools\scenarios\S3-GunDisableSyncs.ps1
+  tools\scenarios\S8-EmptyToolNoDupe.ps1
+  ```
+- **Negative control:** for a new scenario, run it once with the fix removed (move the patch file out or check out the
+  pre-fix files, `dotnet build Nitrox.Launcher`, run, restore). It must FAIL there, or it doesn't test the fix.
+- **Gotchas:** teleporting does fire trigger volumes (the gun terminal opened). Things only load near a player:
+  teleport first, then `Wait-Until { find ... }`. Prefer the game's own entry points (`OnHandClick`, `EnergyMixin.Select`,
+  `Inventory.InternalDropItem`) over setting fields, so the Nitrox patches run as they would for a player. Read the
+  decompiled method first (AGENTS.md §5.3) to find them.
 
 ## The plan
 
@@ -85,6 +140,10 @@ we copy.
 A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passes (or L2, if that item has no L3 scenario).
 
 ### L3 in detail: the scenario runner (the key investment)
+**Built differently (2026-11-02):** the dev bridge above plus `tools/scenarios/*.ps1`. Scenarios run outside the game
+and act through the bridge, so they need no per-role arguments and no in-game result files. The original design below
+is kept for reference.
+
 1. **Auto-join:** reuse `instantlaunch` (above). Extend it to forward extra per-player arguments
    (`--nitrox-scenario`, `--nitrox-role`) into `StartMultiplayerAsync([...])`, and add a `--save-dir`/fixture option
    so the orchestrator can choose the world.
@@ -138,7 +197,7 @@ coming back) often show up only then.
 | S0.1 | `tools/dual-client.ps1`: Debug build + copy fixture save + `Nitrox.Launcher.exe instantlaunch --save <save> --players A B` (**done**) | hours (`instantlaunch` exists) | One-command dual-client runs |
 | S0.2 | Forward `--nitrox-scenario/--nitrox-role` through `instantlaunch`; clients quit on scenario end | small | Unattended runs |
 | S0.3 | `tools/Nitrox.Bot` (idle/follow/script + packet log) | 1–2 days | L2 |
-| S0.4 | Scenario runner + `run-scenario.ps1` + first scenario (S2 charger/scanner-room persistence) | 3–5 days | L3, the per-fix gate |
+| S0.4 | Scenario runner: built as the dev bridge (`tools/bridge.ps1`, `diff`) + `tools/scenarios/` with S3 and S8 (**done**) | 1 day | L3, the per-fix gate |
 | S0.5 | Save → load round-trip test helper (**done**) | small | L1 for persistence bugs |
 | S0.6 | `/report` bundle hotkey (**done**) + packet ring buffer (open) | 1 day | Playthrough-as-testing |
 | S0.7 | Save fixtures for S1–S10 | grows with use | Fast scenario setup |

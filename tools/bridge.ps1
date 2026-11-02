@@ -172,6 +172,25 @@ function Format-Vector {
     '(' + (($V | ForEach-Object { $_.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture) }) -join ', ') + ')'
 }
 
+<#
+    Metadata texts are equal if they only differ in numbers by less than 0.5 (battery charge, health and the like drift
+    a little between the moment a game and the server last wrote them).
+#>
+function Test-MetadataEqual {
+    param([string]$A, [string]$B)
+    if ($A -eq $B) { return $true }
+    $number = '-?\d+(\.\d+)?(E[-+]?\d+)?'
+    if (($A -replace $number, '#') -ne ($B -replace $number, '#')) { return $false }
+    $numbersA = [regex]::Matches($A, $number)
+    $numbersB = [regex]::Matches($B, $number)
+    for ($i = 0; $i -lt $numbersA.Count; $i++) {
+        $x = [double]::Parse($numbersA[$i].Value, [Globalization.CultureInfo]::InvariantCulture)
+        $y = [double]::Parse($numbersB[$i].Value, [Globalization.CultureInfo]::InvariantCulture)
+        if ([math]::Abs($x - $y) -ge 0.5) { return $false }
+    }
+    $true
+}
+
 function Get-Distance {
     param([double[]]$A, [double[]]$B)
     [math]::Sqrt([math]::Pow($A[0] - $B[0], 2) + [math]::Pow($A[1] - $B[1], 2) + [math]::Pow($A[2] - $B[2], 2))
@@ -193,7 +212,8 @@ function Get-RunningGameBridges {
       PARENT    container owner / parent entity differs (items in a container use the container owner, like the server)
       POSITION  more than -Tolerance metres apart (-MoverTolerance for things that move by themselves; creatures only
                 game vs game, the server's creature positions are stale by design)
-      METADATA  persistent state (metadata) differs; the game's side is extracted live, so it can be newer than the server's
+      METADATA  persistent state (metadata) differs (numbers by 0.5 or more); the game's side is extracted live, so it can be
+                newer than the server's
 #>
 function Compare-BridgeEntities {
     param([string[]]$Players, [double]$Tolerance = 1.0, [double]$MoverTolerance = 15.0)
@@ -238,7 +258,7 @@ function Compare-BridgeEntities {
                     Add-Issue 'POSITION' $game.Name $entity.Id $entity.TechType ("{0} m apart: game {1}, server {2} ({3})" -f $distance.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture), (Format-Vector $entity.Position), (Format-Vector $record.Position), $record.Kind)
                 }
             }
-            if ($entity.Metadata -ne '-' -and $record.Metadata -ne '-' -and $entity.Metadata -ne $record.Metadata) {
+            if ($entity.Metadata -ne '-' -and $record.Metadata -ne '-' -and -not (Test-MetadataEqual $entity.Metadata $record.Metadata)) {
                 Add-Issue 'METADATA' $game.Name $entity.Id $entity.TechType "game: $($entity.Metadata)  server: $($record.Metadata)"
             }
             # Children the server records under this entity but the game doesn't have. Other players' inventories aren't spawned in a game.
@@ -272,7 +292,7 @@ function Compare-BridgeEntities {
                         Add-Issue 'POSITION' $where $entity.Id $entity.TechType ("{0} m apart: {1} {2}, {3} {4}" -f $distance.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture), $a.Name, (Format-Vector $entity.Position), $b.Name, (Format-Vector $other.Position))
                     }
                 }
-                if ($entity.Metadata -ne '-' -and $other.Metadata -ne '-' -and $entity.Metadata -ne $other.Metadata) { Add-Issue 'METADATA' $where $entity.Id $entity.TechType "$($a.Name): $($entity.Metadata)  $($b.Name): $($other.Metadata)" }
+                if ($entity.Metadata -ne '-' -and $other.Metadata -ne '-' -and -not (Test-MetadataEqual $entity.Metadata $other.Metadata)) { Add-Issue 'METADATA' $where $entity.Id $entity.TechType "$($a.Name): $($entity.Metadata)  $($b.Name): $($other.Metadata)" }
             }
         }
     }

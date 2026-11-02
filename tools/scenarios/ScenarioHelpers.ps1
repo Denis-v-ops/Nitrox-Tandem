@@ -71,7 +71,9 @@ function Assert-True {
 
 function Assert-Equal {
     param($Expected, $Actual, [Parameter(Mandatory)][string]$Message)
-    Assert-True ("$Expected" -eq "$Actual") "$Message (expected '$Expected', got '$Actual')"
+    $shown = "$Actual"
+    if ($shown.Length -gt 200) { $shown = $shown.Substring(0, 200) + '...' }
+    Assert-True ("$Expected" -eq "$Actual") "$Message (expected '$Expected', got '$shown')"
 }
 
 <#

@@ -97,6 +97,12 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
   windows with computer use has quirks (QWERTZ keys, no mouse-look); see TESTING.md. By hand: launcher **Options → Allow
   multiple game instances** (Steam). See [docs/fork/TESTING.md](docs/fork/TESTING.md) for the automated test plan.
   Upstream has no CI for gameplay and the players don't do per-fix playtests, so **automated verification is your job**.
+- **Controlling the games from the shell (Debug builds):** the dev bridge. `tools\bridge.ps1 Alice state`,
+  `... teleport x y z`, `... console item flashlight`, `... get/set/call <id|Type.main> ...`, `... use <id>`,
+  `tools\bridge.ps1 server <server command>` (output returned), and `tools\bridge.ps1 diff` (desync detector: each game's
+  loaded entities vs the server's records and vs each other). Scenario scripts over it live in `tools/scenarios/`
+  (`S3-GunDisableSyncs.ps1`, `S8-EmptyToolNoDupe.ps1`, about 2 min each). Localhost only, absent from Release builds.
+  Details, diff kinds and gotchas: [TESTING.md](docs/fork/TESTING.md#the-dev-bridge-driving-games-from-the-shell).
 - **Persistence tests:** `Nitrox.Test/Helper/SaveLoadRoundTrip.cs` (`AssertSurvivesSaveAndLoad(entityTrees…)`) runs
   entities through the server's real save and load code. Use it for every "gone after restart" fix.
 - **Logs:** Nitrox (launcher, server, client) → `%APPDATA%\Nitrox\logs`. Game →
@@ -109,7 +115,8 @@ dotnet build Nitrox.Launcher -c Release -r win-x64          # what CI ships for 
   5 min so breakpoints don't disconnect you. Full steps:
   <https://subnauticanitrox.github.io/Documentation/docs/development/tutorials/debugging>.
 - **Server console commands** (`Nitrox.Server.Subnautica/Models/Commands`) help set up scenarios: `warp`, `teleport`, `time`,
-  `sunbeam`, `aurora`, `save`, `restart`, `query` (inspect an entity by id), plus `Debugging/` commands.
+  `sunbeam`, `aurora`, `save`, `restart`, `query` (inspect an entity by id), plus `Debugging/` commands. Run them from the
+  shell with `tools\bridge.ps1 server <command>` (Debug server; the output comes back).
 
 ## 5. Architecture map
 
@@ -189,11 +196,16 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
 - **Transpilers:** use `NitroxPatcher/PatternMatching` (`InstructionsPattern`, `.Transform`, `.InsertAfterMarker`). Every
   transpiler must be registered with its IL instruction delta in
   `Nitrox.Test/Patcher/Patches/PatchesTranspilerTest.cs`, or the test fails.
-- Game source isn't in the repo. To read Subnautica code, decompile
-  `F:\Spiele\SteamLibrary\steamapps\common\Subnautica\Subnautica_Data\Managed\Assembly-CSharp.dll`. A copy is also in
-  `Nitrox.Test/bin/Debug/net10.0/` after a build. From the CLI: `dotnet tool install --global ilspycmd`, then
-  `ilspycmd -t <FullTypeName> <path>\Assembly-CSharp.dll`. In a GUI: ILSpy or dnSpyEx. If no decompiler is available, a
-  reflection/`System.Reflection.Metadata` IL dump works too. That's how the story investigation for #2640 was done.
+- Game source isn't in the repo (never commit it). **A decompiled copy of `Assembly-CSharp.dll` (game 83031) is at
+  `F:\nitrox\game-src\83031\`**, one `.cs` file per type (namespaced types in subfolders, e.g. `Story\StoryGoalManager.cs`),
+  so `grep -rn` it before reading anything else. Regenerate it after a game update (ilspycmd 11.2 is installed as a
+  global dotnet tool; `dotnet tool install --global ilspycmd` otherwise), into a new folder named after the version:
+  ```bash
+  ilspycmd -p -o 'F:\nitrox\game-src\<version>' -r 'F:\Spiele\SteamLibrary\steamapps\common\Subnautica\Subnautica_Data\Managed' 'F:\Spiele\SteamLibrary\steamapps\common\Subnautica\Subnautica_Data\Managed\Assembly-CSharp.dll'
+  ```
+  One type at a time: `ilspycmd -t <FullTypeName> <path>\Assembly-CSharp.dll`. In a GUI: ILSpy or dnSpyEx. Values that
+  live in assets (story goal keys, teleport locations) aren't in the code: read them at runtime with the dev bridge
+  (`get find:PrecursorDisableGunTerminal PrecursorDisableGunTerminal.gunDeactivate.key`).
   **Never guess game behaviour.** Upstream's CONTRIBUTING warns that AI-written Nitrox code goes wrong
   mostly because of wrong assumptions about game internals. Mark unverified assumptions as such.
 
@@ -260,7 +272,8 @@ Subnautica.exe (Unity/Mono) ── NitroxPatcher (Harmony) ── NitroxClient (
 
 - One spec item or fix per branch. Keep diffs small and in the style of the surrounding code.
 - Before writing code that depends on game behaviour, read the decompiled game method. Say what you verified.
-- Done means: `dotnet build Nitrox.slnx` passes, `dotnet test` passes, the item's automated scenario passes (once the S0
-  rig exists), and there's a short note in the PR or commit saying what was verified and what wasn't.
+- Done means: `dotnet build Nitrox.slnx` passes, `dotnet test` passes, the item's scenario in `tools/scenarios/` passes
+  (write one if it's missing, and check it FAILS without the fix), and there's a short note in the PR or commit saying
+  what was verified and what wasn't.
 - Don't change the save format without an upgrade path, and don't edit the players' save in place.
 - Keep `docs/fork/FIX_SPEC.md` current: tick off items, record findings and decisions.

@@ -79,10 +79,13 @@ try {
         Invoke-Bridge $B "use $flashlightId Pickupable" | Out-Null
         $picked = Wait-Until { Get-InventoryItem $B -Id $flashlightId } -TimeoutSeconds 10
         Assert-True ([bool]$picked) "the flashlight is in $B's inventory"
-        Assert-Equal 'null' (Invoke-Bridge $B "get $flashlightId EnergyMixin.batterySlot.storedItem") "$B's flashlight has no battery"
-        Assert-True (-not ($picked | Where-Object { $_.battery })) "$B's inventory shows no battery in the flashlight"
         $server = Wait-Until { $r = Get-ServerRecord $flashlightId; if ($r.Record.ParentId -eq $bobPlayerId) { $r } } -TimeoutSeconds 10
         Assert-True ([bool]$server) "the server has the flashlight in $B's inventory"
+        # A duplicated battery is spawned after the pickup, so check once the server has caught up, not right away.
+        Start-Sleep -Seconds 2
+        $flashlightNow = Get-InventoryItem $B -Id $flashlightId
+        Assert-True (-not $flashlightNow.battery) "$B's flashlight has no battery (inventory: $($flashlightNow.battery | ConvertTo-Json -Compress))"
+        Assert-Equal 'null' (Invoke-Bridge $B "get $flashlightId EnergyMixin.batterySlot.storedItem") "$B's flashlight battery slot is empty"
         Assert-Equal 0 (Get-ServerRecord $flashlightId).Children.Count 'the server has no battery under the flashlight'
         Assert-Equal $batteriesBefore (Get-ServerBatteryCount) 'the server has as many batteries as before the pickup'
         Write-Host (Invoke-Bridge 'server' "query $flashlightId")
