@@ -108,6 +108,9 @@ public sealed partial class SubnauticaServerOptions
     [PropertyDescription("If true, a player hears the PDA's biome and location lines only when they get there themselves")]
     public bool PartnerDiscoveriesSilent { get; set; } = true;
 
+    [PropertyDescription("If true, the fabricators and modification stations of a base or Cyclops also use the items in its lockers, after the player's inventory")]
+    public bool CraftFromLockers { get; set; } = true;
+
     [OptionsValidator]
     public partial class Validator : IValidateOptions<SubnauticaServerOptions>;
 }

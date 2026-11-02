@@ -20,4 +20,7 @@ public class CoopSettings
 
     /// <summary>If true, a partner's biome and location PDA lines complete silently.</summary>
     public bool PartnerDiscoveriesSilent;
+
+    /// <summary>If true, crafting stations of a base or Cyclops also use the items in its lockers (MULTINAUGHTICA_SPEC M8).</summary>
+    public bool CraftFromLockers;
 }
