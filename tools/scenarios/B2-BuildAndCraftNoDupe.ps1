@@ -150,7 +150,7 @@ try {
                 $B = "call $($builder[$B]) BuilderTool.Construct $ghostId true false"
             })
             $calls++
-            $built = $calls % 10 -eq 0 -and (Test-IsBase $A $ghostId)
+            $built = ($replies[$A] -match 'No Constructable' -and $replies[$B] -match 'No Constructable') -or ($calls % 10 -eq 0 -and (Test-IsBase $A $ghostId))
         } while (-not $built -and (Get-Date) -lt $deadline)
         Write-Host "  $calls rounds; last replies: $A '$($replies[$A].Trim())', $B '$($replies[$B].Trim())'"
         foreach ($player in $A, $B) {
