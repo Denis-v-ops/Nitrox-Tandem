@@ -254,6 +254,10 @@ public class MyFeatureTest
 - **Waiting:** most packets get no reply. Wait for the broadcast the partner receives (`WaitForAsync`), or poll server
   state with `ServerHarness.WaitUntilAsync(() => ..., "reason")`. `AssertNotReceivedAsync` can only show that nothing came
   *yet*; prefer a reply that always comes (the `SpawnEntities` answering `CellVisibilityChanged` is sent even when empty).
+- **Setup traffic is traffic.** Every packet the setup causes (a `PickupItem` is answered by a `SpawnEntities` to the
+  partner) can still be in flight when the test calls `ClearReceived()` or asserts "never received". Wait for the
+  partner to receive the setup's broadcast before clearing, not just for the server state to change (server state is
+  updated before the broadcast goes out). Same for threads in L1 tests: join them before asserting on what they recorded.
 - **Sharing:** a server start costs about 0.6 s (first one in a run about 1.2 s), so one per class (`[ClassInitialize]`)
   or per test are both fine. With a shared server, call `server.DisconnectPlayersAsync()` in `[TestCleanup]` so the next
   test can use the same player names.

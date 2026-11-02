@@ -64,7 +64,10 @@ public class StoryGateTest
         alice.Send(new StoryGateReady(StoryGateKind.DISABLE_GUN, true));
         await bob.WaitForAsync<StoryGateStatus>(status => status.ReadyNames.Length == 1);
         bob.Send(new StoryGateReady(StoryGateKind.ROCKET_LAUNCH, true));
+        // The status goes to everyone, Bob included. Wait until it has reached him too, or it can arrive after the
+        // ClearReceived below and be taken for the answer to Alice leaving.
         await alice.WaitForAsync<StoryGateStatus>(status => status.Kind == StoryGateKind.ROCKET_LAUNCH);
+        await bob.WaitForAsync<StoryGateStatus>(status => status.Kind == StoryGateKind.ROCKET_LAUNCH);
         bob.ClearReceived();
 
         alice.Dispose();

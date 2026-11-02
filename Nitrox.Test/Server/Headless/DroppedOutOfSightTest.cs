@@ -27,7 +27,7 @@ public class DroppedOutOfSightTest
         FakePlayer bob = await server.JoinAsync("Bob");
 
         // Far away: Bob has no cells loaded
-        NitroxId farFlare = await PutFlareInAlicesInventoryAsync(server, alice);
+        NitroxId farFlare = await PutFlareInAlicesInventoryAsync(server, alice, bob);
         bob.ClearReceived();
         alice.Send(new EntitySpawnedByClient(Thrown(farFlare), true));
         await bob.WaitForAsync<EntityDestroyed>(packet => packet.Id == farFlare);
@@ -36,7 +36,7 @@ public class DroppedOutOfSightTest
         stored!.Transform.Position.Should().Be(throwPosition);
 
         // Near: Bob has the cell
-        NitroxId nearFlare = await PutFlareInAlicesInventoryAsync(server, alice);
+        NitroxId nearFlare = await PutFlareInAlicesInventoryAsync(server, alice, bob);
         AbsoluteEntityCell cell = Thrown(nearFlare).AbsoluteEntityCell;
         bob.Send(new CellVisibilityChanged(bob.SessionId, [cell], []));
         await bob.WaitForAsync<SpawnEntities>(packet => packet.SpawnedCells.Contains(cell));
@@ -47,11 +47,14 @@ public class DroppedOutOfSightTest
         await bob.AssertNotReceivedAsync<EntityDestroyed>(packet => packet.Id == nearFlare);
     }
 
-    private static async Task<NitroxId> PutFlareInAlicesInventoryAsync(ServerHarness server, FakePlayer alice)
+    private static async Task<NitroxId> PutFlareInAlicesInventoryAsync(ServerHarness server, FakePlayer alice, FakePlayer partner)
     {
         NitroxId id = new();
         alice.Send(new PickupItem(new InventoryItemEntity(id, "flare-class-id", new NitroxTechType("Flare"), null, alice.InitialSync.PlayerGameObjectId, [])));
         await ServerHarness.WaitUntilAsync(() => server.EntityRegistry.TryGetEntityById(id, out InventoryItemEntity _), "the flare is in Alice's inventory");
+        // The server stores the pickup first and only then tells the partner (a SpawnEntities carrying the flare). Wait for
+        // that, or it can arrive after the caller's ClearReceived and be mistaken for a spawn caused by the throw.
+        await partner.WaitForAsync<SpawnEntities>(packet => packet.Entities.Any(entity => entity.Id == id));
         return id;
     }
 
