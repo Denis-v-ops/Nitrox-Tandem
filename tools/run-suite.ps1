@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Runs every in-game scenario (tools\scenarios\S*.ps1) one after another on the current Debug build: the regression
+    Runs every in-game scenario (tools\scenarios\S*.ps1 and the co-op feature ones like B2-*.ps1, T2-*.ps1) one after another on the current Debug build: the regression
     pass after integrating fixes into coop (TESTING.md "Game-time budget"). Opens game windows for a long time, unless
     -Windowless.
 
@@ -33,9 +33,14 @@ $callerEnv = @{ Rig = $env:NITROX_RIG; Windowless = $env:NITROX_WINDOWLESS }
 $env:NITROX_RIG = "$Rig"
 $env:NITROX_WINDOWLESS = if ($Windowless) { '1' } else { '' }
 
-$scenarios = Get-ChildItem $scenarioDir -Filter 'S*.ps1' | Where-Object { $_.BaseName -notmatch 'Helpers$' } | ForEach-Object { $_.BaseName }
+# Fix scenarios (S<n>-…) and co-op feature scenarios (<item>-…, e.g. B2-, D5a-, T2-). A0-Probes is a probe run, not a check.
+$scenarios = Get-ChildItem $scenarioDir -Filter '*.ps1' |
+    Where-Object { $_.BaseName -match '^[A-Z]\d+[a-z]?-' -and $_.BaseName -notmatch 'Helpers$' -and $_.BaseName -notmatch '^A0-' } |
+    ForEach-Object { $_.BaseName }
 if ($Only) { $scenarios = $scenarios | Where-Object { $_ -in $Only } }
-$ordered = @($First | Where-Object { $_ -in $scenarios }) + @($scenarios | Where-Object { $_ -notin $First } | Sort-Object { [int]($_ -replace '^S(\d+).*', '$1') }, { $_ })
+# S scenarios by number, then the feature scenarios by name
+$ordered = @($First | Where-Object { $_ -in $scenarios }) + @($scenarios | Where-Object { $_ -notin $First } |
+    Sort-Object { if ($_ -match '^S(\d+)') { [int]$Matches[1] } else { [int]::MaxValue } }, { $_ })
 
 & (Join-Path $PSScriptRoot 'game-lock.ps1') -Acquire -Owner $Owner
 $results = New-Object System.Collections.ArrayList
