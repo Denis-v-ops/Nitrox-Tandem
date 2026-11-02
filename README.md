@@ -46,6 +46,7 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
 | **Creatures** | Aggressive creatures attack both players, not only the one whose game "simulates" them; crash fish explode for both | [#2781](https://github.com/SubnauticaNitrox/Nitrox/issues/2781) | In game + headless + negative control |
 | **Creatures** | A stalker that loses a tooth drops one tooth, not one in each player's game | new | In game + negative control |
 | **Creatures** | Creatures bite your Seamoth or Prawn suit even when your partner's game "simulates" them; before, a vehicle was safe from half the creatures around it | — | In game (Seamoth) + headless + negative control |
+| **Creatures** | Eggs in an alien containment no longer vanish when they hatch: each egg gives exactly one creature for both players, also in a tank split off by deconstructing part of a stacked one | [#2538](https://github.com/SubnauticaNitrox/Nitrox/issues/2538) | In game + headless + negative control |
 
 ### Co-op features
 

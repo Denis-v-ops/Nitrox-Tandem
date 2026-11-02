@@ -1412,8 +1412,8 @@ sets ever reaches them.
 
 ## 10. Pets & aquariums
 
-### P2: Containment eggs survive (#2538) + aquarium check (M)
-- **Likely cause of #2538 (H):**
+### P2: Containment eggs survive (#2538) + aquarium check (M) — done 2026-11-02 (branch `feat/3-p2-containment-eggs`)
+- **Likely cause of #2538 (H, answered below: the mechanism was different):**
   - Containment tanks are global entities, so their simulation lock goes to whoever joined first.
   - Birth, hatching and growing are gated on that lock (`WaterParkCreature_BornAsync_Patch.CanBeBorn`,
     `CreatureEgg_Hatch_Patch`, `WaterParkCreature_ManagedUpdate_Patch`).
@@ -1430,6 +1430,47 @@ sets ever reaches them.
   - L2: lock owner of the tank; handover on disconnect.
   - L3: an egg ripens (fast-hatch cheat, `game:CreatureEgg.cs:129`) while only the player without the lock is near; it must
     not be lost. Reverting the fix must bring the loss back. B sees the aquarium fish.
+
+**Done 2026-11-02** (branch `feat/3-p2-containment-eggs`):
+- **(H) answered: partly wrong.**
+  - Right: a tank (`InteriorPieceEntity`, a global root) gets its lock from whoever built it or joined first. Only that
+    game hatches, breeds and grows (`CanBeBorn`, `CreatureEgg_Hatch_Patch`). The lock moves to the partner on disconnect
+    (L2).
+  - Wrong: "the lock holder is away". Every game runs the egg's timer: `CreatureEgg.UpdateProgress` runs every second
+    through `InvokeRepeating`, and bases are always loaded. Seen windowless: with the holder 200 m away, the egg's
+    progress kept growing in step on both games.
+  - Wrong: "the server is never told". `CreatureEgg.Hatch` calls `liveMixin.Kill()`. Eggs have `destroyOnDeath` and
+    `broadcastKillOnDeath` (read in game), so `LiveMixin_Kill_Patch` sends `EntityDestroyed`.
+  - **Real cause:** a race between the games' once-a-second checks. If the game without the lock reaches progress 1
+    first, it destroys its egg without a creature, and its `EntityDestroyed` removes the egg from the server and from the
+    holder's game before the egg hatches there. No creature anywhere. This fits the reports: "one hatched, the other
+    despawned", and an egg vanishing while both players were at the base.
+  - **Second path:** deconstructing part of a stacked tank creates a new tank (`WaterParkDeconstructed`). Nobody claimed
+    its lock until the next restart, so every game counted as "without the lock" and its eggs were always lost.
+- **Fix:**
+  - `CreatureEgg_Hatch_Patch` is now a skipping Prefix. A game without the tank's lock skips `Hatch` and keeps the ripe
+    egg until the holder's `EntityDestroyed` and creature arrive. `UpdateProgress` keeps calling `Hatch` every second, so
+    if the lock comes to this game, the egg hatches here.
+  - `WaterParkDeconstructedProcessor` claims the split-off tank for the deconstructing player (`TryClaimBuildPieceAsync`,
+    as for a new piece).
+  - The S7 base-lock fallback (`BaseModuleSimulation`) wasn't needed: every tank now has its own holder whenever someone
+    is connected.
+- **Aquarium: verified, works today.** A puts a peeper in (`Inventory.AddOrSwap`). B's aquarium container holds it, and
+  B's track shows the swimming peeper model.
+- **Tests:**
+  - L2 `ContainmentTankLockTest`: the tank's lock goes to the first player and moves to the partner on disconnect; the
+    split-off tank gets a holder. The split test fails without the server fix.
+  - L3 windowless `P2-ContainmentEggs.ps1` on the new fixture `tools/fixtures/p2-containment-base` (a room with a tank and
+    an aquarium): PASS, 33 checks.
+  - **Negative control** with the pre-fix build: 12 of 33 checks fail. The egg is gone from the server and from both
+    games, and no cuddlefish exists.
+- **Not verified, or known trade-offs:**
+  - The split-off tank in game. Stacked tanks weren't built; the server half is covered by L2, and the game half is the
+    same "without the lock" path.
+  - A game without the lock no longer runs `KnownTech.Add`, so the "egg discovered" message may appear only on the
+    holder's game. The tech itself syncs through `KnownTech_NotifyAdd_Patch`. Not checked in game.
+  - Growing up (`WaterParkCreature_ManagedUpdate_Patch`) and breeding: unchanged. A game without the lock removes the baby
+    locally without broadcasting (no `Kill`), and the holder sends the swap. Not tested in game.
 
 ### P1: Cuddlefish follows and plays with both (M)
 - **Today:**
@@ -1662,3 +1703,4 @@ prices, "keeping it scary").
 | 2026-11-02 | G0 | Done: story gates (`StoryGateService`/`StoryGateState`/`StoryGateRules`, packets `StoryGateReady`/`Status`/`Start`, `StoryGateKind` with room for G1–G3), roster from `StoryGatePlayers` or every saved player, locked while a roster player is offline, readies cleared on timeout, area exit and disconnect, option off starts at once, admin `storygate status`/`release <kind>`; game-side `StoryGates` hold-and-resume API for G1–G3; Sunbeam radio lock (`RadioSunbeam4` stays queued while held); en/de texts; README co-op rows | L1 `StoryGateStateTest`, `StoryGatesTest`; L2 `StoryGateTest` (6 tests, all fail without `StoryGateReadyProcessor`); windowless `G4-DriveCoreTogether.ps1` radio part (lock across a quit and rejoin) PASS, fails without the radio hook. Full suite green |
 | 2026-11-02 | G4 | Done: the heal that would seal the Aurora's last leak (`LiveMixin.AddHealth`) waits until every roster player is in the drive core room (box from the leaks' measured positions plus 6 m), then seals for both; remote health syncs never held. Goal key `AuroraRadiationFixed` (read in game) | Windowless `G4-DriveCoreTogether.ps1` PASS (24 checks); negative control with the coop hooks: 9 checks fail. L2 drive core presence test. Real welder button and the on-screen message not driven; room walls not measured (H) |
 | 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
+| 2026-11-02 | P2 | Done: (H) partly wrong. The holder being away doesn't matter: every game runs the egg timer. The cause is a race. When the game without the tank's lock ripens the egg first, `Hatch` destroys it without a creature and `LiveMixin.Kill` broadcasts `EntityDestroyed` (eggs are `destroyOnDeath`), so the egg is gone everywhere. A tank split off by deconstruction also had no lock holder. Fix: games without the lock skip `Hatch` and keep the ripe egg; the server claims the split-off tank for the deconstructing player. Aquarium: works, the partner sees the fish. | L2 `ContainmentTankLockTest` (split test fails without the fix). Windowless `P2-ContainmentEggs.ps1` on the new fixture `p2-containment-base`: PASS (33 checks); negative control with the pre-fix build: 12 fail (egg gone everywhere, no creature). Build + tests: 388 pass, 13 skipped, 1 failure that also happens on `coop` without this branch (`DroppedOutOfSightTest`). Not in game: stacked-tank split, the "egg discovered" message for the partner. |
