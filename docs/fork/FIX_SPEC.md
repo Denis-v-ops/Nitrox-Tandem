@@ -984,12 +984,89 @@ Full or Medium (Minimal for the far simulator in case 5), as a windowed game at 
 - The hand-over moves the entity's own lock only, not its simulated children (`GetSimulatableChildren`, e.g. creatures
   riding a Reefback); `FillWithRemovedCells` moves those, the new paths don't. Not seen in game.
 
+### S16b/S16c: creatures where the partner sees them (done)
+
+Branch `fix/s16bc-creature-replication` (on top of the S16 probe branch).
+
+**Design:**
+- **Packet:** new `CreatureMovements` (pose, velocity, angular velocity per creature, plus the sender's
+  `TimeManager.RealTimeElapsed`), unreliable sequenced on the movement channel like `VehicleMovements`, at most 5
+  creatures per packet (about 370 bytes, under LiteNetLib's 508-byte starting MTU; L1 checks it). It replaces the
+  `SplineTransformUpdate` that was sent only from `SplineFollowing.GoTo` (patch removed).
+- **Rate** (`CreatureMovementPolicy`, pure and unit-tested), from the simulating game, for living creatures only (corpses
+  keep their own physics as before):
+  - leviathan class (cell level Far/VeryFar: Reaper, ghosts, Reefback, Sea Dragon) a partner may have loaded: every 0.1 s;
+  - other creatures within 30 m of a partner: every 0.2 s; within the partner's load range for their cell level: 0.5 s;
+  - nobody else in range, or resting: every 2 s if it moved (keeps the server's record and cell fresh, like the old
+    1–5 s `GoTo` packets did; the S16 hand-over runs off these too).
+  "May have it loaded" is the per-axis distance to the partner's body against a range per cell level (100/180/340/620
+  m, the game's ±64 m doubling per level plus a margin). A creature that just stopped is sent once more.
+- **Server** (`CreatureMovementsProcessor`): as `EntityTransformUpdatesProcessor`: only the lock holder's poses count,
+  the record and cell follow (S16c), each other player gets the poses of the creatures they can see, and the S16
+  hand-over runs.
+- **Watching game** (`RemotelyControlled.UpdateCreatureMovement`): dead reckoning instead of a buffered interpolation
+  like S13's `MovementReplicator`, which shows a replication delay behind: 0.13 s plus latency is 2–5 m at a Reaper's
+  15–25 m/s, more than the old mean error. The copy's target is the latest pose carried forward by its velocity and
+  angular velocity for the time since it was taken (at most 1 s); in `FixedUpdate` its body gets the creature's
+  velocity plus the error / 0.25 s (rotation / 0.2 s), so it keeps a real velocity for physics and
+  `AnimateByVelocity` (the swim animation; animator `speed` 1 on the watched Reaper). Teleport only beyond 15 m (a new
+  copy after a stale record, or one that slept). Its own movement can't fight it: `Locomotion` and `WorldForces` are
+  off while poses come in, the swim path idles; both are restored when this game takes over (or not, for a dead
+  creature). The pose's age is counted on the physics clock from the frame's start, so the catch-up steps after a long
+  frame don't overshoot (they did by 3.4 m with the wall clock, and by 2–3 m when a packet was handled after a hitch in
+  the same frame).
+
+**Before/after** (L3 `S16-LeviathanSync.ps1 -Strict`, windowless, Crash Zone Reaper and a Reefback; before = the S16
+probe's runs above, same code path for replication; after = runs 2, 4 and 5 on this branch; errors are what a player
+sees, without a time shift; a *snap* is a step beyond what the original moved meanwhile, over one or two frames):
+
+| Case | Before (S16 probe) | After |
+|---|---|---|
+| Reaper, both near, A simulates (60 s) | 2.6–3.1 m mean, max 7.3–17.8 m, about 6 snaps a minute up to 16.6 m | **0.32–0.37 m mean**, max 1.9–2.6 m outside frames over 100 ms (3.6 m including a forced 350 ms frame), **no snap** (largest step beyond the original 0.7 m) |
+| Reaper, B simulates, A watches | 2.7–4.3 m mean, max 8.3–26.7 m, 5–16 snaps a minute up to 10.7 m | **0.37–0.51 m mean**, max 2.0–2.3 m; once 5.1 m (below), **no snap** (0.9 m) |
+| Reaper, late arrival | spawned 1.7–34.2 m off, up to 36 m in the first 20 s | **spawned 0.6–1.5 m off** (0.5–1.1 s after arriving), 0.36–0.41 m mean, max 1.7–2.3 m, no snap |
+| Reaper, hand-over (S16) | lock in 0.5 s, step 0.09–0.16 m | lock in 0.5 s, step 0.12–0.47 m, keeps swimming |
+| Reefback, both near / late arrival | 0.8 m mean, max 5.8 m, a 5.7 m snap / spawned 1.3 m off | 0.05 m mean, max 0.6 m (a natural 362 ms frame included) / spawned 0.3 m off, 0.005 m mean |
+
+**Bandwidth** (counters `EntityPositionBroadcaster.CreaturePacketsSent`/`CreatureMovementsSent`, read in each
+measurement window): the simulating game sent 36–64 creature poses a second in 9–20 packets, about 2–5 KB/s of
+upload, while it simulated 41–158 moving entities (around the Reaper and the Reefback; 10 of those poses a second are the Reaper's).
+The server forwards only what the partner can see. The old `GoTo` packets (one per creature every 1–5 s) weren't measured.
+
+**Verification:**
+- L1 `CreatureMovementPolicyTest` (8): tiers, load ranges, resting and just-stopped creatures, period, and a full packet
+  fits the smallest MTU.
+- L2 `CreatureMovementsTest` (2): poses reach the partner who sees the creature with the sender's time, not a player 1
+  km away; the record follows and a late arrival spawns it at the latest pose (S16c); poses from a player without the
+  lock are ignored. `CreatureLeavesSimulatorTest` now moves the creature with `CreatureMovements`. **Negative control:**
+  without the server processor, 5 of these 6 tests fail.
+- L3 as in the table; the scenario now checks the snap (1.5 m), the max error outside frames over 100 ms and forces a
+  350 ms frame on the watching game in `ab`/`ba`, and prints the send rate. Run 1 (the wall-clock age, a natural 353 ms frame) and run 3 (age
+  from a packet handled mid-hitch) are the negative controls for the two clock fixes (snaps of 3.4 m and 2.2–3.0 m).
+- Regressions: `S14-CreatureAggro.ps1` and `D4-ThreatParity.ps1` (see the log row).
+
+**Seen, not fixed:** in the final run's `ba`, for about 1 s the copy stayed 4 m above the original (5.1 m apart, 0.09 m
+over the 5 m check), held by what is probably the seabed in the watching game: the simulating player was a few hundred
+metres away, where its game may lack terrain colliders (S16 case 5 saw that at 750 m). The copy can't follow through
+terrain it collides with. A 350 ms frame on the watching game still shows the creature where it was when that frame
+began, up to 5 m behind at the end of it (every object stands still during such a frame); the next frame catches up.
+
+**Not verified:** packet loss and latency (localhost; a lost pose is replaced by the next one 0.1–0.5 s later, and the
+copy keeps extrapolating for up to 1 s), two PCs (clock sync: an error in `RealTimeElapsed` shifts the copy by speed ×
+error), many players, a Reaper chasing or grabbing (`-Chase` not run; S14's Reaper case bit), walking creatures (Sea
+Treader, crabs; from code they take the same path), creatures in alien containment, windowed games.
+
+**Risks:**
+- Upload grows with the creatures near a partner: about 70 bytes per pose. A school of 30 fish within 30 m of a partner
+  is 150 poses a second (about 10 KB/s). The tier distances are guesses for "the partner can see it".
+- `Locomotion` is off on copies: anything in the game that reads it there (none found) would see it disabled.
+
 **Planned (not built):**
 
 | Item | What | Size |
 |---|---|---|
-| S16b Smooth creature replication | The simulating game also sends a spline creature's pose on a timer (every 0.25 s for leviathans, at least every 1 s for others), the watching game corrects a time-compensated error softly (position + velocity × measured latency, blended over about 0.5 s; teleport only beyond about 20 m) and applies the rotation. Removes the snaps and the 5 m drift; keeps the server record fresh, which also fixes the late-arrival spawn (S16c). Measure with this scenario's `ab`/`ba`/`arrive` cases; check bandwidth with many fish | M |
-| S16c Fresh spawn position | Covered by S16b's timer. Without it: the server could extrapolate the record along the last spline target when it spawns the creature for someone | S |
+| S16b Smooth creature replication | **Done** (above): poses every 0.1–2 s by tier, dead reckoning on the watching game | M |
+| S16c Fresh spawn position | **Done** with S16b: the record is at most one send period old | S |
 | S16d Shared void ghosts (#2461) | One game (the first player in the void, the lock holder) spawns them as entities (`EntitySpawnedByClient`, lock), the others get them as remote copies; `GhostLeviatanVoid.UpdateVoidBehaviour` and the spawner must consider every player in the void (nearest player as target and for the 180 m despawn, spawn count per group of players), and the despawn must be synced. Its bites on the partner then need S14's relay or the synced-creature path | M–L |
 | S16e Leash changes | `Creature.leashPosition` only comes from spawn metadata (`StayAtLeashPositionMetadata`, Reaper, Sea Dragon, Ghost); game code that moves it (e.g. `OnDrop`) isn't synced, and `EntitySwitchedCells` re-sends the metadata, which resets a moved leash (from code; probably why a leash also moved in the partner's game in run 4 didn't hold). Low impact | XS–S |
 | S16f Put to sleep without a packet | When `LargeWorldEntity_UpdateCell_Patch.EntityUpdated` deactivates an entity this game simulates (asleep cell), send its final pose (an `EntityTransformUpdates` with its position), so the server re-cells it and the S16 hand-over runs. Needs an in-game check (a stalker chasing the partner 60+ m from its simulator) | S |
