@@ -33,6 +33,7 @@ public class RemotePlayer : INitroxPlayer
     private readonly PlayerVitalsManager playerVitalsManager;
     private readonly FMODWhitelist fmodWhitelist;
     private List<IEquipmentVisibilityHandler> equipmentVisibilityHandlers = [];
+    private PlayerTool? armsConfiguredFor;
 
     public PlayerContext PlayerContext { get; }
     public GameObject? Body { get; private set; }
@@ -358,6 +359,8 @@ public class RemotePlayer : INitroxPlayer
         AnimationController.UpdatePlayerAnimations = true;
         AnimationController.Reset();
         ArmsController.SetWorldIKTarget(null, null);
+        // The animator reset cleared holding_tool, and the world-target reconfigure above drops the tool's IK
+        armsConfiguredFor = null;
     }
 
     public void Destroy()
@@ -379,6 +382,12 @@ public class RemotePlayer : INitroxPlayer
             case AnimChangeType.INFECTION_REVEAL:
                 AnimationController["player_infected"] = state != AnimChangeState.UNSET;
                 break;
+            default:
+                if (ArmStates.TryGetParameter(type, out string parameter))
+                {
+                    SetArmState(parameter, state == AnimChangeState.ON);
+                }
+                break;
         }
 
         // Rough estimation for different collider boxes in different animation stages
@@ -392,6 +401,49 @@ public class RemotePlayer : INitroxPlayer
             Collider.center = new Vector3(0f, -0.8f, 0f);
             Collider.height = 1.5f;
         }
+    }
+
+    /// <summary>
+    ///     <b>The one place that writes arm and hand states on this body</b> (COOP_FEATURES_SPEC R2b): the synced
+    ///     <see cref="ArmStates" /> (tool use, PDA, surface swimming, falls, <c>holding_tool</c>) and the held tool's
+    ///     <c>holding_&lt;tool&gt;</c> and <c>using_tool_first</c> flags. A lock that must hold the body's pose (a cinematic,
+    ///     upstream PR #2859; the downed pose, T1) goes here, as one check, not at each caller.
+    ///     <para />
+    ///     A change of <c>holding_tool</c> or of a <c>holding_&lt;tool&gt;</c> flag also points the arms and hands at the
+    ///     drawn tool (<see cref="ArmsController.Reconfigure" />), as <c>ArmsController.Update</c> does for the local player.
+    /// </summary>
+    public void SetArmState(string parameter, bool value)
+    {
+        AnimationController[parameter] = value;
+
+        if (parameter.StartsWith("holding_", System.StringComparison.Ordinal))
+        {
+            ReconfigureArms();
+        }
+    }
+
+    /// <summary>
+    ///     The game reconfigures the arms when the tool in hand changes, with no tool while the PDA is open
+    ///     (<c>game:ArmsController.cs:456-465</c>). The partner's <c>holding_tool</c> already says that (it is off while
+    ///     their PDA is open), and the drawn tool is the one plugged into the hand. <c>Reconfigure</c> needs
+    ///     <c>ArmsController.Start</c> (its IK and the PDA), which runs a frame after the body is made. Its no-tool branch
+    ///     reads the <i>local</i> player's PDA (<c>Start</c> takes the local player), as the world-target reconfigure in
+    ///     <c>ArmsController_Update_Patch</c> already does.
+    /// </summary>
+    private void ReconfigureArms()
+    {
+        if (!ArmsController || !ArmsController.ik)
+        {
+            return;
+        }
+
+        PlayerTool? tool = AnimationController["holding_tool"] && ItemAttachPoint ? ItemAttachPoint.GetComponentInChildren<PlayerTool>() : null;
+        if (tool == armsConfiguredFor)
+        {
+            return;
+        }
+        armsConfiguredFor = tool;
+        ArmsController.Reconfigure(tool);
     }
 
     /// <summary>
