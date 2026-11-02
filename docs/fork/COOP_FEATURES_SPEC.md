@@ -198,8 +198,8 @@ Sorted by wave. "Needed by" is when the players first meet it in the story.
 3. **Wave 3:** T1 with D3, B3, B1 warpers and bleeders (before the Lost River), B5, P2, P1.
 4. **Wave 4, before late game:** G1, G2, G3, R1b, R2c, T5, B6.
 
-R1b and T5 are the riskiest. Do them when everything else is stable. A2 decides whether R2b is built before #2859 or on
-top of it. Until T1 lands, the death penalty is plain vanilla, which fits principle 2.
+R1b and T5 are the riskiest. Do them when everything else is stable. A2 decided (2026-11-02): R2b is built before #2859,
+on its own (see R1b). Until T1 lands, the death penalty is plain vanilla, which fits principle 2.
 
 ### Wave 0 items
 
@@ -228,7 +228,7 @@ top of it. Until T1 lands, the death penalty is plain vanilla, which fits princi
 
 **A2: Trial merge of #2859 (XS).** Merge PR #2859 into a throwaway branch from `coop` without building, and list the
 conflicts with this spec's planned edits to `RemotePlayer`, `AnimationController` and the escape pod. Record the list
-in R1b.
+in R1b. **Done 2026-11-02:** no textual conflicts; the coupling and the decision are in R1b ("A2 trial merge").
 
 **New save-format tags:** `EntityMetadata` uses up to 94 (S1 = 92, S5b = 93, S10 = 94). This spec reserves **95**
 (`CuddlefishMetadata`, P1) and **96–99** for later features. Any new entity or metadata type needs a `SaveLoadRoundTrip` test.
@@ -808,15 +808,85 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
 - **Merge cautions:**
   - It builds on the closed #2642; check that its review points were addressed (per-pod state, per-frame logging,
     missing serializer/world-test entries).
-  - It **changes `EscapePodMetadata`**, a save-format change that needs a `SaveDataUpgrades` step.
-  - It conflicts with S9 in `EscapePodManager.cs`.
+  - It **changes `EscapePodMetadata`** (two new lists). The change is additive, so old saves load with empty lists, but
+    the lists are keyed wrongly (see the A2 notes below), so fix that before it ships.
+  - It touches `EscapePodManager.cs` next to S9, but the merge is textually clean (see the A2 notes below).
   - Its bed patch lets the game's own bed code run, which starts a **local time skip** (`game:Bed.cs:203`). Our clock is
     server-driven (`DayNightCycle_Update_Patch`): verify that, or keep our skip suppression. `SleepManager` waiting for
     everyone stays.
+- **A2 trial merge (2026-11-02, not built):** `pr-2859` (head `3bc00d9a`, base `eb4535fd`) merged into `coop` with
+  `--no-ff --no-commit`, then aborted.
+  - **Conflicts: none.** Only two of the 32 files were also changed on `coop` since the base, and both merged cleanly:
+    - `EscapePodManager.cs`: ours is S9 (`SetupIntroSequenceAsync`, `AddOrUpdateGlobalRootEntity`, new constructor
+      parameters); theirs is one line in `CreateNewEscapePodAsync` for the new `EscapePodMetadata` constructor.
+    - `InteriorPieceEntitySpawner.cs`: theirs is a blank line; ours is S2/S10 (`RestoreMapRoom`).
+    - Everything else is new files or files `coop` hasn't touched. `AnimationController.cs`, `AnimChangeType` and
+      `PlayerHeldItemChangedProcessor.cs` are **untouched**; `AnimationController` is reached only through
+      `RemotePlayer`. So the cost is design coupling, not merge work. Build and tests were not run; the compiler may
+      still find things.
+  - **#2642's review points:**
+    - per-frame logging: fixed (no `Log.` calls in the movement broadcaster, `RemotePlayer`'s update paths or the bed
+      positioner);
+    - the extra `BedEnterAnimation`/`BedExitAnimation` packets and the string session id: gone (beds use a lock per side
+      plus `PlayerCinematicControllerCall`);
+    - the "denied" message uses the existing `Nitrox_DenyOwnershipHand` key;
+    - serializer test: the new `Dictionary<string, bool>` and `List<SessionId>` fields are covered by the faker without
+      changes (not run);
+    - world/save test: **not addressed**. The PR's only test change is a flaky-test fix in `ThreadSafeSetTest`, although
+      its checklist says "Has tests";
+    - per-pod state: **only half fixed**. It is now a list per pod, but keyed by `SessionId` (see below).
+  - **Still open on #2859:** no review yet. The author's notes: direction changes while swimming look choppy, and Cyclops
+    movement stutters (may predate the PR). From #2642's six-player test, not retested: the intro cinematic wouldn't
+    let players interact, using a hatch blocks everyone in the pod, benches untested; unfixed there: bulkhead door,
+    purple tablet in hand, Cyclops moonpool.
+  - **New cautions, found by reading (H unless said):**
+    - **Hatch state is keyed by `SessionId`.** Session ids are connection indexes: they start at 1, are reused after 10
+      minutes and start over after a restart (`SessionId.cs`). After a rejoin or restart the flags belong to whoever
+      gets that number, and the ids pile up. The PR text says "player, not session specific", but the code is
+      session-specific. Key it on the persistent player identity instead.
+    - **It likely doesn't survive a save.** The server has JSON converters for `NitroxId`, `PeerId` and `TechType`, none
+      for `SessionId`, whose only public member is the get-only `IsPlayer`. A scratch test with a same-shaped struct
+      wrote `{"IsPlayer":true}` and read it back as 0 (checked with Newtonsoft only; the protobuf save path and the real
+      type were not run). Add a `SaveLoadRoundTrip` test for a populated `EscapePodMetadata`; it would catch this.
+    - **A dropped guard.** `MultiplayerCinematicController.CallStartCinematicMode` no longer checks whether the local
+      player is occupying the animator. Two players in one pod doing the ladder at once could clobber the shared pod
+      animator. The opposite failure (one hatch use blocks the whole pod) is also possible, because hatches and ladders
+      lock on the controller's parent entity id, while only beds get one lock per side. Test both in the pod.
+    - **Bed, side effects of running vanilla `EnterInUseMode`:** `DayNightCycle.SkipTime` sets `skipTimeMode`.
+      `DayNightCycle_deltaTime_Patch` means `_dayNightSpeed` doesn't drive the clock, so the skip is probably inert for
+      time, but `skipTimeMode` stays set on that client until the server time passes `skipModeEndTime` or the bed is
+      left, and `Bed.CanSleep` returns false meanwhile. The patch also calls `StopSleepScreen` right after vanilla's
+      `StartSleepScreen`. Verify the fade, and that the second player can still get into the other side.
+    - **Every cinematic controller under a Nitrox entity now goes through an exclusive lock round trip** to the server
+      before it starts, and a stale lock is released by the ownership-change processor if an end packet is lost.
+      A hatch or ladder press now waits for the server's answer (and shows "denied" if another player holds the lock).
+  - **Overlap with this spec's items** (no textual conflicts anywhere; "coupling" means they share state in
+    `RemotePlayer`). #2859 adds `InCinematicEntityId`/`InCinematic`, `SetInCinematic`/`ClearInCinematic`, an early
+    return in `UpdatePosition`, and `ResetStates` now calls `ClearInCinematic`, which sets
+    `AnimationController.UpdatePlayerAnimations = true`.
+
+    | Item | Coupling | Order |
+    |---|---|---|
+    | R2a | Light. Server-side replay and held item; the PR's cinematic poses go through the lock/bed initial sync, not `AnimChangeType`. | Any |
+    | R2b | Medium. No file overlap, but the PR writes `cinematics_enabled` and `using_tool_first` on the partner's animator. A `using_tool` watcher could fire mid-cinematic. | **Before**, with one `RemotePlayer` method for all arm-state writes, so one `if (!InCinematic)` can go in later |
+    | R2c | None (tool effects on the body). | After R2b, any |
+    | F1 | Light. Model, ping and name-tag code; the PR's hunks are in `UpdatePosition`/`SetVehicle`. | Any; same branch as the other `RemotePlayer` items |
+    | D1 | Light. Emitters on the partner's body. | Any |
+    | D6 | Light. Held tool and lights (`PlayerHeldItemChangedProcessor`), untouched. | Any |
+    | T1 | **Heavy.** The downed pose needs the same two things: skip `UpdatePosition`, keep `UpdatePlayerAnimations` off. `ClearInCinematic` would unfreeze a downed body. | T1 is wave 3, #2859 wave 4: give T1 its own flag that gates the same two spots, and make the animation switch a combined test (any lock set), not an assignment, so the two fold into one pose lock later |
+    | T5 | Light. `RemotePlayer.Attach` (now `RemotePlayer.cs:145`) is untouched; a hitched body must not count as in a cinematic. | After |
+    | R1b | This is #2859. | Wave 4, after the rekey and tests below |
+
+  - **Recommendation:** build **R2b first, on its own**, not on top of #2859. There is no textual conflict, #2859 has no
+    review and an unfinished save-format change, and R2b is two waves earlier. Keep R2b's writes in one method.
+    Before R1b: key the hatch state on player identity, add the save round-trip test, and run the pod test with both
+    players.
 - **Tests:**
   - L3: remote animation flags and seat position (within 0.3 m); sit/stand 20 times to catch the #2287 regression; lying
     down in the bed visible to the partner; gun terminal / ladder animations.
   - L2: any new packet fields.
+  - L1/L2: `SaveLoadRoundTrip` for `EscapePodMetadata` with both hatch lists filled, and one for a rejoin under a new
+    session id.
 
 ### R2: The partner's body reads right (from the basics sweep, §12.1)
 
@@ -1048,3 +1118,4 @@ prices, "keeping it scary").
 | 2026-11-02 | — | Spec created from design decisions + feasibility research (3 read-only investigations) | — |
 | 2026-11-02 | §2–§3, §8, T1, T2, F1, F2 | Fear and difficulty review: principles 2–4 and 6, analysis, price table, journey map, D1–D6, prices on T1/T2/F2, options table; second round of design decisions; README showcase rule (§13.1); basics sweep (§12.1) with R2 and the D4 update; gaps made items B1–B6 (§12); build-efficiency pass: wave 0 (A0 probe run, A1 shared plumbing, A2 #2859 trial merge), D5 split into D5a/D5b, shared partner hand-target (T2), D2 state on `PlayerStats`, shared branches per wave (§13) | Code and decompiled-game reads (cited inline) |
 | 2026-11-02 | D4, §12, §13.1 | D4 rebased on FIX_SPEC S14 (merged): what S14 fixed and tested, the creatures left, the probe extends S14's scenario. AGENTS.md Drillable note corrected; README "Planned co-op features" rewritten per §13.1 and S13/S14 added to its fix table | FIX_SPEC S13/S14 entries; `Drillable_ManagedUpdate_Patch.cs`, `PacketSuppressorPatch.cs` read |
+| 2026-11-02 | A2, R1b | Trial merge of #2859 into `coop` (not built): no conflicts, two overlapping files merge cleanly; its hatch state is keyed by session id and has no save test; coupling table per item; decision: build R2b before #2859 | `git merge --no-commit` of `pr-2859` (aborted); PR and #2642 review comments, decompiled `Bed.cs`/`DayNightCycle.cs` read; scratch Newtonsoft check of a `SessionId`-shaped struct |
