@@ -6,9 +6,8 @@ using Nitrox.Server.Subnautica.Models.Packets.Core;
 
 namespace Nitrox.Server.Subnautica.Models.Packets.Processors;
 
-internal sealed class EntityDestroyedPacketProcessor(PlayerManager playerManager, EntitySimulation entitySimulation, WorldEntityManager worldEntityManager) : IAuthPacketProcessor<EntityDestroyed>
+internal sealed class EntityDestroyedPacketProcessor(EntitySimulation entitySimulation, WorldEntityManager worldEntityManager) : IAuthPacketProcessor<EntityDestroyed>
 {
-    private readonly PlayerManager playerManager = playerManager;
     private readonly EntitySimulation entitySimulation = entitySimulation;
     private readonly WorldEntityManager worldEntityManager = worldEntityManager;
 
@@ -23,14 +22,10 @@ internal sealed class EntityDestroyedPacketProcessor(PlayerManager playerManager
                 worldEntityManager.MovePlayerChildrenToRoot(vehicleEntity);
             }
 
-            foreach (Player player in playerManager.GetConnectedPlayers())
-            {
-                bool isOtherPlayer = player != context.Sender;
-                if (isOtherPlayer && player.CanSee(entity))
-                {
-                    await context.SendAsync(packet, player.SessionId);
-                }
-            }
+            // Sent to every other player, not only to those who can see the entity: a scanner room keeps the resources of cells
+            // that aren't loaded anymore, and must forget the destroyed ones (#2046, #2151). The server can't tell which
+            // entities are tracked resources (that's a component on the game's prefab).
+            await context.SendToOthersAsync(packet);
         }
     }
 }

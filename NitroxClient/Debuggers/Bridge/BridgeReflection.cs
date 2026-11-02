@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.DevBridge;
+using NitroxClient.GameLogic.Helper;
 using NitroxClient.MonoBehaviours;
 using UnityEngine;
 
@@ -324,6 +325,21 @@ internal static class BridgeReflection
         if (type == typeof(GameObject))
         {
             return ResolveTarget(raw);
+        }
+        // Containers and their items aren't components; resolve them from their owner/item object like the game UI does
+        if (type == typeof(InventoryItem))
+        {
+            return ((Pickupable)GetComponentOn(ResolveTarget(raw), typeof(Pickupable))).inventoryItem ?? throw new ArgumentException($"'{raw}' is in no container");
+        }
+        if (type == typeof(Equipment))
+        {
+            Optional<Equipment> equipment = EquipmentHelper.FindEquipmentComponent(ResolveTarget(raw));
+            return equipment.HasValue ? equipment.Value : throw new ArgumentException($"'{raw}' has no Equipment");
+        }
+        if (type == typeof(ItemsContainer) || type == typeof(IItemsContainer))
+        {
+            Optional<ItemsContainer> container = InventoryContainerHelper.TryGetContainerByOwner(ResolveTarget(raw));
+            return container.HasValue ? container.Value : throw new ArgumentException($"'{raw}' has no ItemsContainer");
         }
         if (typeof(Component).IsAssignableFrom(type) || type.IsInterface)
         {

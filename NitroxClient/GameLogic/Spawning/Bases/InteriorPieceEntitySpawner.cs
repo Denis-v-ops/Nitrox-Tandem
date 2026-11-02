@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using NitroxClient.GameLogic.Bases;
 using NitroxClient.GameLogic.Spawning.Abstract;
 using NitroxClient.GameLogic.Spawning.Metadata;
 using NitroxClient.GameLogic.Spawning.WorldEntities;
@@ -9,6 +10,7 @@ using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Bases;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using UnityEngine;
 
 namespace NitroxClient.GameLogic.Spawning.Bases;
@@ -169,7 +171,11 @@ public class InteriorPieceEntitySpawner : EntitySpawner<InteriorPieceEntity>
         return interiorPiece;
     }
 
-    public static IEnumerator RestoreMapRoom(Base @base, MapRoomEntity mapRoomEntity)
+    /// <summary>
+    ///     Gives the scanner room its id, then restores what the server has for it: shared state and docked camera drones
+    ///     (<see cref="MapRoomMetadata" />) and the upgrade modules in its storage (#2696).
+    /// </summary>
+    public static IEnumerator RestoreMapRoom(Base @base, MapRoomEntity mapRoomEntity, Entities entities, EntityMetadataManager entityMetadataManager)
     {
         MapRoomFunctionality mapRoomFunctionality = @base.GetMapRoomFunctionalityForCell(mapRoomEntity.Cell.ToUnity());
         if (!mapRoomFunctionality)
@@ -178,5 +184,20 @@ public class InteriorPieceEntitySpawner : EntitySpawner<InteriorPieceEntity>
             yield break;
         }
         NitroxEntity.SetNewId(mapRoomFunctionality.gameObject, mapRoomEntity.Id);
+
+        if (mapRoomEntity.Metadata is MapRoomMetadata)
+        {
+            entityMetadataManager.ApplyMetadata(mapRoomFunctionality.gameObject, mapRoomEntity.Metadata);
+        }
+        else
+        {
+            // Freshly built (nothing changed yet) or saved before scanner rooms had metadata
+            MapRoomCameras.ApplyDefault(mapRoomFunctionality);
+        }
+
+        // A resync keeps the room (it's base geometry, not a module), so its items may still be in the container: replace them
+        List<Entity> upgrades = mapRoomEntity.ChildEntities.OfType<InventoryItemEntity>().ToList<Entity>();
+        entities.CleanupExistingEntities(upgrades);
+        yield return entities.SpawnBatchAsync(upgrades, true);
     }
 }

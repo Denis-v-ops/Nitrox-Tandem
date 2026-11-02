@@ -156,7 +156,9 @@ function Get-BridgeEntities {
 #>
 $script:KnownNoise = @(
     @{ Kind = 'TECHTYPE'; Pattern = '^EscapePod server: SmallStorage$'; Why = "The pod's locker carries the pod's TechTag in game; the server records SmallStorage" },
-    @{ Kind = 'POSITION'; Pattern = '\(PrefabPlaceholderEntity\)$'; Why = 'Real but tracked separately (FIX_SPEC log 2026-11-02): some nested placeholders have a bogus server LocalPosition, so the server puts them in the wrong cell. The game places them right.' }
+    @{ Kind = 'POSITION'; Pattern = '\(PrefabPlaceholderEntity\)$'; Why = 'Real but tracked separately (FIX_SPEC log 2026-11-02): some nested placeholders have a bogus server LocalPosition, so the server puts them in the wrong cell. The game places them right.' },
+    @{ Kind = 'POSITION'; Pattern = '\(MapRoomEntity\)$'; Why = 'The server records a scanner room by base cell only, its transform stays zero' },
+    @{ Kind = 'GHOST'; Pattern = '^MapRoomCamera not on the server \(active, parent - '; Why = 'Docked scanner room drones are stored in the room (MapRoomMetadata.DockedCameraIds, FIX_SPEC S2), not as entities of their own' }
 )
 
 function Test-KnownNoise {

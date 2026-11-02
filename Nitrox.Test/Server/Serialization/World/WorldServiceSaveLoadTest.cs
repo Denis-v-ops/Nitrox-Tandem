@@ -34,6 +34,39 @@ public class WorldServiceSaveLoadTest
     }
 
     [TestMethod]
+    public void ScannerRoomStateSurvivesSaveAndLoad()
+    {
+        // FIX_SPEC S2/S10: upgrades (InventoryItemEntity children), the shared scan target and the docked camera drones.
+        BuildEntity baseEntity = CreateBase();
+        ModuleEntity batteryCharger = AddModule(baseEntity, "BatteryCharger", new NitroxVector3(1, 2, 3));
+        AddEquipment(batteryCharger, "BatteryCharger1", "Battery", 42f);
+        NitroxId scannerRoomId = new();
+        NitroxId dockedCameraId = scannerRoomId.Increment().Increment();
+        MapRoomEntity scannerRoom = new(scannerRoomId, baseEntity.Id, new NitroxInt3(1, 0, 2))
+        {
+            Metadata = new MapRoomMetadata(new NitroxTechType("Titanium"), [dockedCameraId])
+        };
+        scannerRoom.ChildEntities.Add(new InventoryItemEntity(new NitroxId(), "scan-range-class-id", new NitroxTechType("MapRoomUpgradeScanRange"), null, scannerRoom.Id, []));
+        scannerRoom.ChildEntities.Add(new InventoryItemEntity(new NitroxId(), "scan-range-class-id", new NitroxTechType("MapRoomUpgradeScanRange"), null, scannerRoom.Id, []));
+        baseEntity.ChildEntities.Add(scannerRoom);
+        MapRoomEntity idleScannerRoom = new(new NitroxId(), baseEntity.Id, new NitroxInt3(3, 0, 2))
+        {
+            Metadata = new MapRoomMetadata(new NitroxTechType("None"), [])
+        };
+        baseEntity.ChildEntities.Add(idleScannerRoom);
+
+        EntityRegistry loaded = SaveLoadRoundTrip.AssertSurvivesSaveAndLoad(baseEntity);
+
+        loaded.TryGetEntityById(scannerRoomId, out MapRoomEntity loadedScannerRoom).Should().BeTrue();
+        loadedScannerRoom.ChildEntities.OfType<InventoryItemEntity>().Should().HaveCount(2);
+        MapRoomMetadata metadata = loadedScannerRoom.Metadata.Should().BeOfType<MapRoomMetadata>().Subject;
+        metadata.TypeToScan.Name.Should().Be("Titanium");
+        metadata.DockedCameraIds.Should().Equal(dockedCameraId);
+        loaded.TryGetEntityById(idleScannerRoom.Id, out MapRoomEntity loadedIdleRoom).Should().BeTrue();
+        ((MapRoomMetadata)loadedIdleRoom.Metadata).DockedCameraIds.Should().BeEmpty();
+    }
+
+    [TestMethod]
     public void CyclopsDamagePointsAndFiresSurviveSaveAndLoad()
     {
         // FIX_SPEC S1 (#2220, #2230): damage points and fires are entities under the Cyclops (PR #2881)

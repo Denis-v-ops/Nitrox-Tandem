@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NitroxClient.Communication;
 using NitroxClient.Communication.Abstract;
+using NitroxClient.GameLogic.Helper;
 using NitroxClient.GameLogic.Spawning;
 using NitroxClient.GameLogic.Spawning.Abstract;
 using NitroxClient.GameLogic.Spawning.Bases;
@@ -66,7 +67,7 @@ namespace NitroxClient.GameLogic
             entitySpawnersByType[typeof(SerializedWorldEntity)] = entitySpawnersByType[typeof(WorldEntity)];
             entitySpawnersByType[typeof(GlobalRootEntity)] = new GlobalRootEntitySpawner();
             entitySpawnersByType[typeof(BaseLeakEntity)] = new BaseLeakEntitySpawner(liveMixinManager);
-            entitySpawnersByType[typeof(BuildEntity)] = new BuildEntitySpawner(this, (BaseLeakEntitySpawner)entitySpawnersByType[typeof(BaseLeakEntity)]);
+            entitySpawnersByType[typeof(BuildEntity)] = new BuildEntitySpawner(this, entityMetadataManager, (BaseLeakEntitySpawner)entitySpawnersByType[typeof(BaseLeakEntity)]);
             entitySpawnersByType[typeof(RadiationLeakEntity)] = new RadiationLeakEntitySpawner(timeManager);
             entitySpawnersByType[typeof(ModuleEntity)] = new ModuleEntitySpawner(this);
             entitySpawnersByType[typeof(GhostEntity)] = new GhostEntitySpawner();
@@ -266,7 +267,14 @@ namespace NitroxClient.GameLogic
 
                 if (gameObject.HasValue)
                 {
+                    // A respawned world entity registers again in ResourceTracker.Start
+                    ResourceTrackerHelper.Forget(gameObject.Value);
                     DestroyObject(gameObject.Value);
+                }
+                else
+                {
+                    // E.g. a resource another player picked up, now respawned in their inventory
+                    ResourceTrackerHelper.Forget(entity.Id);
                 }
             }
         }
@@ -288,8 +296,12 @@ namespace NitroxClient.GameLogic
             }
             if (gameObject.TryGetComponent(out Pickupable pickupable))
             {
-                // Running this now means it won't get ran in OnDestroy() at the end of the frame, so no packets get sent
-                pickupable.SetInventoryItem(null);
+                // Running this now means it won't get ran in OnDestroy() at the end of the frame. The object is destroyed because
+                // of another player or the server, so removing it from an Equipment slot must not send an EntityDestroyed of its own.
+                using (PacketSuppressor<EntityDestroyed>.Suppress())
+                {
+                    pickupable.SetInventoryItem(null);
+                }
             }
 
             UnityEngine.Object.Destroy(gameObject);
