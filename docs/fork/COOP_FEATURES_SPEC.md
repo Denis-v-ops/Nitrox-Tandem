@@ -673,7 +673,8 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     puts on the partner's body is never played. A's game started `event:/player/breathing`; B's played nothing on A's
     body.
   - **Bubbles: heard, but not positional.** `event:/player/bubbles` reaches B as a 2D event instance
-    (`FMODEmitterController.PlayEventInstance`, volume by distance), every several seconds.
+    (`FMODEmitterController.PlayEventInstance`, volume by distance). Seen once on each body in about a minute;
+    the scripted 30 s window caught none, so the cadence is unknown.
   - **Pain: not synced** (confirmed). A played `event:/player/Pain_no_tank` and `event:/player/pain_no_tank_light`; B
     nothing. The paths can be read from the local emitters at startup: `painWithTank` `event:/player/Pain`,
     `painWithoutTank` `.../Pain_no_tank`, `painWithoutMask` `.../Pain_surface`, `painSmoke` `.../coughing` (all
@@ -831,6 +832,8 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - **Thrown flare: not synced in this run.** A's flare landed lit; 5 s later B still had it as A's inventory item,
     unlit, at A's position. The throw was started by calling `Flare.OnToolUseAnim` (the animation event a windowless
     game doesn't fire), then the game's own `Throw` → `Pickupable.Drop` ran. (H) until a windowed throw confirms it.
+  - With the flashlight put away (first run), B's copy read `lightsActive` false while A's read true; once drawn
+    they matched.
   - No screenshots: a windowless game crashed around a night screenshot (TESTING.md). Whether the light is still
     drawn at 60–120 m (culling) needs windowed screenshots.
 - **Fixes from the probe**, for example the layer, the light state when a tool is drawn, or the culling distance. Keep
@@ -1121,4 +1124,4 @@ prices, "keeping it scary").
 | 2026-11-02 | — | Spec created from design decisions + feasibility research (3 read-only investigations) | — |
 | 2026-11-02 | §2–§3, §8, T1, T2, F1, F2 | Fear and difficulty review: principles 2–4 and 6, analysis, price table, journey map, D1–D6, prices on T1/T2/F2, options table; second round of design decisions; README showcase rule (§13.1); basics sweep (§12.1) with R2 and the D4 update; gaps made items B1–B6 (§12); build-efficiency pass: wave 0 (A0 probe run, A1 shared plumbing, A2 #2859 trial merge), D5 split into D5a/D5b, shared partner hand-target (T2), D2 state on `PlayerStats`, shared branches per wave (§13) | Code and decompiled-game reads (cited inline) |
 | 2026-11-02 | D4, §12, §13.1 | D4 rebased on FIX_SPEC S14 (merged): what S14 fixed and tested, the creatures left, the probe extends S14's scenario. AGENTS.md Drillable note corrected; README "Planned co-op features" rewritten per §13.1 and S13/S14 added to its fix table | FIX_SPEC S13/S14 entries; `Drillable_ManagedUpdate_Patch.cs`, `PacketSuppressorPatch.cs` read |
-| 2026-11-02 | A0 | Probe run: bridge `hold`, `sounds`, `pdaqueue`, `animator`; findings in D1 (breathing and pain not heard, bubbles 2D), D2 (real biome strings), D6 (light state matches; thrown flare not synced, H), R2 (`using_pda`, `holding_tool` missing), T1 (death clips play once, no held pose), T4 (reach fine, Nitrox blocks), B4 (fire parents have ids), B5 (no wild regrowth in vanilla: drop), F2 (icon reset, from code). P2 not probed | `tools/scenarios/A0-Probes.ps1` windowless (two runs), game code, batch cell files |
+| 2026-11-02 | A0 | Probe run: bridge `hold`, `sounds`, `pdaqueue`, `animator`; findings in D1 (breathing and pain not heard, bubbles 2D), D2 (real biome strings), D6 (light state matches; thrown flare not synced, H), R2 (`using_pda`, `holding_tool` missing), T1 (death clips play once, no held pose), T4 (reach fine; a click with `currentSub` set not shown), B4 (fire parents have ids), B5 (no wild regrowth in vanilla: drop), F2 (icon reset, from code). P2 not probed | `tools/scenarios/A0-Probes.ps1` windowless (two runs), game code, batch cell files |

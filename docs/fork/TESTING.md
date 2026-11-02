@@ -158,7 +158,8 @@ tools\bridge.ps1 Bob animator <alicePlayerId>          # Animator parameters and
   ```
 - **Negative control:** for a new scenario, run it once with the fix removed (move the patch file out or check out the
   pre-fix files, `dotnet build Nitrox.Launcher`, run, restore). It must FAIL there, or it doesn't test the fix.
-- **Gotchas:** teleporting does fire trigger volumes (the gun terminal opened). Things only load near a player:
+- **Gotchas:** teleporting inside a Cyclops clears `currentSub` (seen 2026-11-02); enter through the hatch and walk
+  with `input move` instead. Teleporting does fire trigger volumes (the gun terminal opened). Things only load near a player:
   teleport first, then `Wait-Until { find ... }`. Prefer the game's own entry points (`OnHandClick`, `EnergyMixin.Select`,
   `Inventory.InternalDropItem`) over setting fields, so the Nitrox patches run as they would for a player. Read the
   decompiled method first (AGENTS.md §5.3) to find them. Values that live in assets (story goal keys, teleport
@@ -325,6 +326,9 @@ tools\run-suite.ps1 -Windowless
   - Still different (read from the game code, not checked in game): animators and UI canvases that switch off when not
     visible (`AnimatorLink`, `CanvasLink`, Animator culling) stay off, so animation-driven bones don't move. Screen
     effects (`OnPreRender`) never run.
+  - Animation events don't fire (seen 2026-11-02): a flare drawn and "thrown" with `hold none 0.3 RightHand` never
+    left the hand, because the throw comes from `Flare.OnToolUseAnim`, an animation event. Call such methods through the
+    bridge (`call <id> Flare.OnToolUseAnim player`).
   - Sound is muted (`NitroxBootstrapper.MuteIfWindowless`, not saved in the game's options). The game keeps playing
     sound in the background otherwise, because Nitrox forces run-in-background.
   - Works as usual: terrain and its colliders, physics, creature AI, initial sync, spawning (including
