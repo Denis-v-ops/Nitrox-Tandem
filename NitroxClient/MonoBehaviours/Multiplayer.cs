@@ -26,6 +26,14 @@ namespace NitroxClient.MonoBehaviours
     public class Multiplayer : MonoBehaviour
     {
         public static Multiplayer Main;
+
+        /// <summary>
+        ///     Real time since the previous packet processing: a packet processed now waited at most that long in this game,
+        ///     however long the frame in between took (cells loading, a hitch). See <see cref="MovementReplicator.AddSnapshot" />.
+        /// </summary>
+        public static float PacketWaitBound { get; private set; }
+
+        private float lastPacketProcessingTime;
         private ClientProcessorContext packetProcessorContext;
         private PacketProcessorsInvoker processorInvoker = null!;
         private IClient client;
@@ -67,6 +75,10 @@ namespace NitroxClient.MonoBehaviours
 
         public void Update()
         {
+            float now = Time.realtimeSinceStartup;
+            PacketWaitBound = lastPacketProcessingTime > 0f ? now - lastPacketProcessingTime : 0f;
+            lastPacketProcessingTime = now;
+
             client.PollEvents();
 
             if (multiplayerSession.CurrentState.CurrentStage != MultiplayerSessionConnectionStage.DISCONNECTED)

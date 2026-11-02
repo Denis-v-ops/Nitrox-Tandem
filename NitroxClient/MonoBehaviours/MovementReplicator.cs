@@ -51,11 +51,11 @@ public abstract class MovementReplicator : MonoBehaviour
     public void AddSnapshot(MovementData movementData, float snapshotRealTime)
     {
         float realTime = RealTime;
-        // Packets are processed once per frame, so a packet waited in the queue for up to the last frame's duration.
+        // Packets are processed once per frame, so a packet waited here for up to the time since the previous processing.
         // After a long frame (cells loading, a hitch) every packet looks late by that much, but that isn't network
         // latency and the snapshots are still in time: counting it kept the object 0.3 s further behind for 10+ s after
         // a single 300 ms frame, then made it skip ahead when the latency was lowered again (FIX_SPEC S13).
-        float latency = Mathf.Max(0f, realTime - snapshotRealTime - Time.unscaledDeltaTime);
+        float latency = Mathf.Max(0f, realTime - snapshotRealTime - Multiplayer.PacketWaitBound);
 
         RecalculateMaxAllowedLatency(latency, realTime);
 

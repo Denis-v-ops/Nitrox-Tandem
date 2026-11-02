@@ -300,17 +300,18 @@ try {
         # One long frame in the observer's game, as when cells load (Thread.Sleep on its main thread)
         Invoke-Bridge $B "call Thread.Sleep $HitchMs" | Out-Null
         $script:hitchAt = Now-Ms
-        Start-Sleep -Seconds 6
+        Start-Sleep -Seconds 3
         Mark 'driveStraightA' $from (Now-Ms)
+        # The sub heads west and meets rising ground about 100 m on (2026-11-02), so from here on it circles
+        # (input 1,0,1 turns about 7 deg/s, a circle of about 60 m) until Bob drives it back east.
         Invoke-Bridge $A 'input move 1 0 1' | Out-Null
         Start-Sleep -Seconds 2
         $from = Now-Ms
         Start-Sleep -Seconds 6
         Mark 'driveTurnA' $from (Now-Ms)
-        Invoke-Bridge $A 'input move 0 0 1' | Out-Null
     }
 
-    Step 'Bob walks around inside while Alice drives' {
+    Step 'Bob walks around inside while Alice drives in circles' {
         $from = Now-Ms
         foreach ($yaw in 0, 90, 180, 270) {
             Invoke-Bridge $B "look $yaw 0" | Out-Null
@@ -321,7 +322,7 @@ try {
         Mark 'walkB' $from (Now-Ms)
     }
 
-    Step 'Alice leaves the helm at speed with forward held (#2379); Bob takes it over at once' {
+    Step 'Alice leaves the helm at speed with her keys held (#2379); Bob takes it over at once' {
         $from = Now-Ms
         Assert-True (Exit-Helm $A) "$A left the helm"
         $script:handoverFrom = Now-Ms
@@ -333,17 +334,17 @@ try {
         $script:handoverTo = Now-Ms
     }
 
-    Step 'Bob drives straight, then turns; Alice rides' {
-        Invoke-Bridge $B 'input move 0 0 1' | Out-Null
-        Start-Sleep -Seconds 3
-        $from = Now-Ms
-        Start-Sleep -Seconds 6
-        Mark 'driveStraightB' $from (Now-Ms)
-        Invoke-Bridge $B 'input move -1 0 1' | Out-Null
+    Step 'Bob turns, then drives straight; Alice rides' {
+        Invoke-Bridge $B 'input move 1 0 1' | Out-Null
         Start-Sleep -Seconds 2
         $from = Now-Ms
         Start-Sleep -Seconds 6
         Mark 'driveTurnB' $from (Now-Ms)
+        Invoke-Bridge $B 'input move 0 0 1' | Out-Null
+        Start-Sleep -Seconds 3
+        $from = Now-Ms
+        Start-Sleep -Seconds 5
+        Mark 'driveStraightB' $from (Now-Ms)
         Invoke-Bridge $B 'input off' | Out-Null
         Assert-True (Exit-Helm $B) "$B left the helm"
         $from = Now-Ms
