@@ -141,8 +141,14 @@ if ($direct) {
     }
     # Measured: available RAM drops by about 3.7 GB per game over a scenario, windowless or not. Keep 2 GB for the rest
     # of the PC, which slows to a crawl when it runs out.
-    $freeGb = (Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB
+    # Right after a -Stop, Windows takes a few seconds to hand the old games' RAM back, so wait up to a minute for it.
     $neededGb = 4 * $Players.Count + 2
+    $ramDeadline = (Get-Date).AddSeconds(60)
+    do {
+        $freeGb = (Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB
+        if ($freeGb -ge $neededGb -or (Get-Date) -gt $ramDeadline) { break }
+        Start-Sleep -Seconds 3
+    } while ($true)
     if ($freeGb -lt $neededGb) {
         throw ('Only {0:N1} GB RAM free; {1} games need about {2:N1} GB. Stop another rig or use fewer players.' -f $freeGb, $Players.Count, $neededGb)
     }
