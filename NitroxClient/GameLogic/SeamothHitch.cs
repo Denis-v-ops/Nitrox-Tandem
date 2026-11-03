@@ -73,6 +73,7 @@ public sealed class SeamothHitch
         // Static for the patches and the dev bridge: a new session starts up
         LocalVehicleId = null;
         LastReleaseReason = string.Empty;
+        LastOfferTime = -1;
     }
 
     /// <summary>
@@ -89,6 +90,12 @@ public sealed class SeamothHitch
     public static string LastReleaseReason { get; private set; } = string.Empty;
 
     /// <summary>
+    ///     When the hand reticle last offered "hold on" (<c>Time.unscaledTime</c>, for the dev bridge: windowless games show
+    ///     no reticle).
+    /// </summary>
+    public static float LastOfferTime { get; private set; } = -1;
+
+    /// <summary>
     ///     The hand reticle on a Seamoth's hull. True if this game shows "hold on" (the original hover must not run).
     /// </summary>
     public bool TryHover(Vehicle target)
@@ -97,6 +104,7 @@ public sealed class SeamothHitch
         {
             return false;
         }
+        LastOfferTime = Time.unscaledTime;
         HandReticle.main.SetIcon(HandReticle.IconType.Hand);
         HandReticle.main.SetText(HandReticle.TextType.Hand, "Nitrox_HitchHoldOn", true, GameInput.Button.LeftHand);
         HandReticle.main.SetText(HandReticle.TextType.HandSubscript, "Nitrox_HitchHoldOnHint", true);
