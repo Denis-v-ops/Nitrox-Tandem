@@ -22,7 +22,7 @@
        simulates it, so Alice's push was undone at once by his position updates.
     Sound isn't checked (windowless games are muted).
 
-    Negative control (2026-11-03, integration/wave4 without B6): 9 of 29 checks fail (beam, glow, beam end, both shot
+    Negative control (2026-11-03, integration/wave4 without B6): 9 of 30 checks fail (beam, glow, beam end, both shot
     effects, Bob's grab after the shot and his beam for Alice, the repulsion flight in both games).
 
     Starts a fresh world and two games, unless -NoLaunch. Run it windowless:
