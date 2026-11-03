@@ -74,9 +74,7 @@ public class RemoteToolEffects : MonoBehaviour
         PlayerTool? tool = remotePlayer.ItemAttachPoint ? remotePlayer.ItemAttachPoint.GetComponentInChildren<PlayerTool>() : null;
         RemoteToolKind kind = KindOf(tool);
         AnimationController animator = remotePlayer.AnimationController;
-        bool usingTool = animator["using_tool"];
-        bool usingToolAlt = animator["using_tool_alt"];
-        bool play = RemoteToolEffectRules.ShouldPlay(kind, animator["holding_tool"], usingTool, usingToolAlt, remotePlayer.InCinematic);
+        bool play = RemoteToolEffectRules.ShouldPlay(kind, animator["holding_tool"], animator["using_tool"], animator["using_tool_alt"], remotePlayer.InCinematic);
 
         if (playingOn && (!play || playingOn != tool))
         {
@@ -93,7 +91,7 @@ public class RemoteToolEffects : MonoBehaviour
         }
         if (playingOn)
         {
-            Tick(usingTool, usingToolAlt);
+            Tick();
         }
     }
 
@@ -147,18 +145,10 @@ public class RemoteToolEffects : MonoBehaviour
         }
     }
 
-    private void Tick(bool usingTool, bool usingToolAlt)
+    private void Tick()
     {
         switch (playingOn)
         {
-            case ScannerTool scanner:
-                // The scanner's own nozzle animation (ScannerTool.LateUpdate sets it for the local player only)
-                if (scanner.animator && scanner.animator.isActiveAndEnabled)
-                {
-                    SafeAnimator.SetBool(scanner.animator, "using_tool", usingTool);
-                    SafeAnimator.SetBool(scanner.animator, "using_tool_alt", usingToolAlt);
-                }
-                break;
             case BuilderTool builder:
                 if (TryFindBuildTarget(out Constructable target))
                 {
@@ -195,11 +185,6 @@ public class RemoteToolEffects : MonoBehaviour
             case ScannerTool scanner:
                 scanner.scanBeam.SetActive(false);
                 scanner.scanSound.Stop();
-                if (scanner.animator && scanner.animator.isActiveAndEnabled)
-                {
-                    SafeAnimator.SetBool(scanner.animator, "using_tool", false);
-                    SafeAnimator.SetBool(scanner.animator, "using_tool_alt", false);
-                }
                 break;
             case BuilderTool builder:
                 // Its own LateUpdate then turns the beams and the sound off

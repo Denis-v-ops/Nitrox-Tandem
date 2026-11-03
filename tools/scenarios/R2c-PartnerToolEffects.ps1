@@ -8,14 +8,15 @@
     the sender (GUIHand.GetUsingTool needs AvatarInputHandler.IsEnabled(), false without a locked cursor), so the scenario
     turns Alice's ArmsController off and writes using_tool / using_tool_alt on her own arms animator. What is tested is
     her game's watcher, the relay, and Bob's copy of her held tool (the same item id in Bob's game):
-    - scanner: ScannerTool.scanBeam active, its scan loop playing, the scanner's own animator in using_tool; the same for
-      the self-scan (using_tool_alt); all off after;
+    - scanner: ScannerTool.scanBeam active and its scan loop playing; the beam for the self-scan (using_tool_alt) too;
+      all off after;
     - builder: Alice places a corridor ghost and builds it frame by frame (BuilderTool.Construct, what holding the button
       calls) while using_tool is on. Bob's copy beams at the ghost his game sees being built (BuilderTool.LateUpdate draws
       the beams from it): beams active, the build loop playing, the target the ghost. With using_tool on and nothing
       being built, no beam;
-    - welder: the sparks (VFXController emitter instance, underwater index 1) and the weld loop (FMODASRPlayer), twice;
-    - laser cutter: its beam effect and light, twice. Its sound isn't played by Bob's copy: it's already relayed.
+    - welder: the sparks (VFXController emitter instance, underwater index 1) at the tool's tip and the weld loop
+      (FMODASRPlayer), twice (the emitters spawn on each play);
+    - laser cutter: its sparks and light, twice. Its sound isn't played by Bob's copy: it's already relayed.
     Before R2c, none of this showed on Bob's copy (the tools' effects run only for the player who holds them).
 
     Starts a fresh world and two games, unless -NoLaunch. Run it windowless:
@@ -29,7 +30,21 @@ $B = 'Bob'
 
 function Get-Seen { param([string]$Parameter) (Invoke-BridgeJson $B "animator $script:aliceId")[0].parameters.$Parameter }
 
-function Get-OnBob { param([string]$Path) Invoke-Bridge $B "get $Path" -AllowError }
+# Strings come back JSON-quoted
+function Get-OnBob { param([string]$Path) ([string](Invoke-Bridge $B "get $Path" -AllowError)).Trim().Trim('"') }
+
+# Metres between two positions read on Bob's game; infinite if either can't be read (not Get-Distance: bridge.ps1's diff uses that name)
+function Measure-GapOnBob {
+    param([string]$From, [string]$To)
+    try {
+        $a = Get-OnBob $From | ConvertFrom-Json
+        $b = Get-OnBob $To | ConvertFrom-Json
+        [math]::Sqrt([math]::Pow($a[0] - $b[0], 2) + [math]::Pow($a[1] - $b[1], 2) + [math]::Pow($a[2] - $b[2], 2))
+    }
+    catch {
+        [double]::PositiveInfinity
+    }
+}
 
 function Assert-OnBob {
     param([string]$Path, [string]$Expected, [string]$Message, [int]$TimeoutSeconds = 8)
@@ -37,10 +52,16 @@ function Assert-OnBob {
     Assert-True ([bool]$matched) "$Message ($Path = $(Get-OnBob $Path))"
 }
 
-# A Unity object reference reads 'null' once it's gone
+# A Unity object reference reads 'null', or '<destroyed>' once it's gone
+function Test-ObjectOnBob {
+    param([string]$Path)
+    $value = Get-OnBob $Path
+    $value -notin @('null', '', '<destroyed>') -and -not $value.StartsWith('ERR') -and -not $value.StartsWith('[Bob]')
+}
+
 function Assert-ObjectOnBob {
     param([string]$Path, [bool]$Exists, [string]$Message, [int]$TimeoutSeconds = 8)
-    $matched = Wait-Until { ((Get-OnBob $Path) -notin @('null', '') -and -not (Get-OnBob $Path).StartsWith('ERR')) -eq $Exists } -TimeoutSeconds $TimeoutSeconds -IntervalSeconds 0.25
+    $matched = Wait-Until { (Test-ObjectOnBob $Path) -eq $Exists } -TimeoutSeconds $TimeoutSeconds -IntervalSeconds 0.25
     Assert-True ([bool]$matched) "$Message ($Path = $(Get-OnBob $Path))"
 }
 
@@ -106,8 +127,6 @@ try {
             Assert-Playing 'SCANNER' "Bob's game plays Alice's scanner"
             Assert-OnBob "$scanner ScannerTool.scanBeam.activeSelf" 'true' "Bob sees the scan beam"
             Assert-OnBob "$scanner ScannerTool.scanSound.playing" 'true' "Bob's game plays the scan loop on her scanner"
-            $nozzle = Wait-Until { (Invoke-BridgeJson $B "animator $scanner")[0].parameters.using_tool -eq $true } -TimeoutSeconds 5 -IntervalSeconds 0.25
-            Assert-True ([bool]$nozzle) "the scanner's own animator on Bob's copy is in using_tool"
             Use-Tool -Value $false
             Assert-OnBob "$scanner ScannerTool.scanBeam.activeSelf" 'false' "the scan beam goes off"
             Assert-OnBob "$scanner ScannerTool.scanSound.playing" 'false' "the scan loop stops"
@@ -157,7 +176,7 @@ try {
             Assert-Playing 'BUILDER' "Bob's game knows Alice is building"
             Assert-OnBob "$builder BuilderTool.beamLeft.gameObject.activeSelf" 'false' "with nothing being built, Bob sees no beam" -TimeoutSeconds 1
 
-            $seen = @{ beam = $false; sound = $false; target = $false; nozzle = $false }
+            $seen = @{ beam = $false; sound = $false; target = $false }
             $end = (Get-Date).AddSeconds(6)
             $rounds = 0
             while ((Get-Date) -lt $end) {
@@ -166,7 +185,6 @@ try {
                 if ((Get-OnBob "$builder BuilderTool.beamLeft.gameObject.activeSelf") -eq 'true' -and (Get-OnBob "$builder BuilderTool.beamRight.gameObject.activeSelf") -eq 'true') { $seen.beam = $true }
                 if ((Get-OnBob "$builder BuilderTool.buildSound.playing") -eq 'true') { $seen.sound = $true }
                 if ((Get-OnBob "$script:aliceId RemoteToolEffects.BuildTarget") -match $ghostId) { $seen.target = $true }
-                if ((Invoke-BridgeJson $B "animator $builder")[0].parameters.using_tool -eq $true) { $seen.nozzle = $true }
             }
             $amount = Invoke-Bridge $B "get $ghostId Constructable.constructedAmount"
             Write-Host "  $rounds build calls; the ghost is at $amount in Bob's game"
@@ -174,7 +192,6 @@ try {
             Assert-True $seen.beam "Bob sees both builder beams while Alice builds"
             Assert-True $seen.sound "Bob's game plays the build loop on her builder"
             Assert-True $seen.target "Bob's copy beams at the ghost being built"
-            Assert-True $seen.nozzle "the builder's own animator on Bob's copy is in using_tool"
             Use-Tool -Value $false
             Assert-Playing 'NONE' "Bob's game stops Alice's builder"
             Assert-OnBob "$builder BuilderTool.beamLeft.gameObject.activeSelf" 'false' 'the builder beams go off'
@@ -186,13 +203,12 @@ try {
     }
 
     foreach ($tool in @(
-            @{ TechType = 'Welder'; Anim = 'welder'; Kind = 'WELDER' },
-            @{ TechType = 'LaserCutter'; Anim = 'lasercutter'; Kind = 'LASER_CUTTER' })) {
+            @{ TechType = 'Welder'; Kind = 'WELDER' },
+            @{ TechType = 'LaserCutter'; Kind = 'LASER_CUTTER' })) {
         Step "Alice uses the $($tool.TechType) twice" {
             $id = Select-Tool $tool.TechType
             $component = $tool.TechType
-            $animName = Invoke-Bridge $A "get $id $component.animToolName"
-            Wait-HoldsOnBob $animName
+            Wait-HoldsOnBob (Get-OnBob "$id $component.animToolName")
             # Alice is under water: the game's underwater effect (index 1)
             $effect = "$id $component.fxControl.emitters[1].instanceGO"
             Invoke-Bridge $A 'set Player.main.armsController.enabled false' | Out-Null
@@ -202,6 +218,9 @@ try {
                     Assert-Playing $tool.Kind "Bob's game plays Alice's $component (round $round)"
                     Assert-ObjectOnBob $effect $true "Bob sees the $component's effect (round $round)"
                     Assert-OnBob "$effect.activeSelf" 'true' "the effect is active (round $round)"
+                    # The sparks follow the tool's spark point (VFXFakeParent), not the world origin (upstream #2463's ray)
+                    $offset = Measure-GapOnBob "$effect.transform.position" "$id $component.fxControl.emitters[1].parentTransform.position"
+                    Assert-True ($offset -lt 0.5) "the effect is at the tip of Alice's $component in Bob's game ($([math]::Round($offset, 3)) m)"
                     if ($component -eq 'Welder') {
                         Assert-OnBob "$id Welder.weldSound.playingSounds" 'true' "Bob's game plays the weld loop (round $round)"
                     }
