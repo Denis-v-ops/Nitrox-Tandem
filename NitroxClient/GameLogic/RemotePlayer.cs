@@ -74,6 +74,13 @@ public class RemotePlayer : INitroxPlayer
     public void SetInCinematic(NitroxId entityId)
     {
         InCinematicEntityId = entityId;
+        // The partner's game stops sending movement during a cinematic (PlayerMovementBroadcaster): the last velocity must
+        // not carry the body off the seat or out of the bed
+        if (RigidBody && !RigidBody.isKinematic)
+        {
+            RigidBody.velocity = Vector3.zero;
+            RigidBody.angularVelocity = Vector3.zero;
+        }
     }
 
     /// <summary>
