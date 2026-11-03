@@ -63,7 +63,7 @@ public sealed partial class PlayerCinematicController_StartCinematicMode_Patch :
         NitroxId lockId = BedLockId.Resolve(entity, __instance);
 
         // Check if we already have the lock, or if this cinematic needs none (CinematicLocks.UsesLock)
-        if (!CinematicLocks.UsesLock(entity) || Resolve<SimulationOwnership>().HasExclusiveLock(lockId))
+        if (!CinematicLocks.UsesLock(entity) || CinematicLocks.IsPlayedTogether(entity, __instance) || Resolve<SimulationOwnership>().HasExclusiveLock(lockId))
         {
             multiplayerCinematicController.CallAllCinematicModeEnd();
             int identifier = __instance.gameObject.GetHierarchyPath(entity.gameObject).GetHashCode();

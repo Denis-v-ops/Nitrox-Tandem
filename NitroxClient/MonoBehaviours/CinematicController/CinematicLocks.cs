@@ -33,6 +33,31 @@ public static class CinematicLocks
     }
 
     /// <summary>
+    ///     A story-gate cinematic that every player plays at the same moment, each in their own game: the gun terminal
+    ///     (COOP_FEATURES_SPEC G1) and the rocket launch (G2). Its gate already decided who plays it, so it takes no
+    ///     exclusive lock: with one, the player whose request reached the server second was refused and saw no cinematic
+    ///     (G1/G2 scenario on the merged build, 2026-11-03). The start is still sent, so each body shows the pose.
+    /// </summary>
+    public static bool IsPlayedTogether(NitroxEntity entity, PlayerCinematicController controller)
+    {
+        foreach (PrecursorDisableGunTerminal terminal in entity.GetComponentsInChildren<PrecursorDisableGunTerminal>(true))
+        {
+            if (terminal.cinematic == controller)
+            {
+                return true;
+            }
+        }
+        foreach (LaunchRocket launchRocket in entity.GetComponentsInChildren<LaunchRocket>(true))
+        {
+            if (launchRocket.cinematicController == controller)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
     ///     The patches got this lock for a cinematic: <see cref="Release" /> gives it back when the cinematic ends.
     /// </summary>
     public static void Taken(NitroxId lockId)
