@@ -2352,9 +2352,78 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   plant with fruit had `fruitSpawnEnabled` false and `timeNextFruit` -1 (9 creepvines near the pod, 5 lantern trees on
   the Floating Island). Planted fruit plants regrow through the planter lock already. Suggest dropping B5.
 
-#### B6: Cosmetic leftovers (S)
-- The repulsion cannon has no sync; the propulsion cannon moves objects (`PropulsionCannon_GrabObject_Patch.cs:44`) but
-  shows no beam. Picture frames aren't synced (#2261; adopt PR #2840 after reading its review).
+#### B6: Cosmetic leftovers (S) — cannons done 2026-11-03 (branch `feat/4-b6-cosmetics`); picture frames deferred
+- **Before:** the propulsion cannon moved objects for the partner (`PropulsionCannon_GrabObject_Patch` takes the
+  object's exclusive lock and sends its position) but the partner saw no beam; the repulsion cannon had no sync at all.
+  Picture frames aren't synced (#2261).
+- **Read in the game code:** the beam is turned on and off only by the `PropulsionCannon.grabbedObject` setter
+  (`fxBeam`, `grabbedEffect`, the `grabbingSound` loop) and drawn by `PropulsionCannon.Update` while something is
+  grabbed (its `VFXElectricLine`s go from the muzzle to the object's bounds centre). Every grab and let-go goes through
+  that setter: `GrabObject`, `ReleaseGrabbedObject`, `OnShoot` (which sets it to null directly), the out-of-range release
+  in `FixedUpdate`, loading from the inventory, `OnAmmoHandlerDestroyed`. `RepulsionCannon.OnToolUseAnim` (an
+  animation event) sphere-casts 35 m and sets the velocity of each object it may push in `ShootObject`, only in the
+  shooter's game, then plays `fxControl`, bubbles and a sound. The partner's game holds a real copy of the drawn cannon
+  (held-item packet), so it has all of these objects.
+- **Built:**
+  - Packet `CannonEffect` (cannon item id, `PROPULSION_GRAB` with the object's id, `PROPULSION_RELEASE`,
+    `PROPULSION_SHOT`, `REPULSION_SHOT`). No server processor: cosmetic, relayed by the default processor, not
+    persisted, so there's no server half and no L2 test.
+  - `CannonEffects` (client): the senders and `Apply`, which plays the effect on the partner's copy of the cannon. Kept
+    apart so R2c (tool effects on the partner's body) can follow the same shape.
+  - `RemotePropulsionBeam` on the copy draws the beam as `PropulsionCannon.Update` does and plays the grab loop. It
+    never sets the copy's `grabbedObject`: that would run the cannon's attraction physics (`FixedUpdate`) towards a
+    point in front of the partner's own camera and drain the copy's battery.
+  - Hooks: a Postfix on the `grabbedObject` setter (grab and let-go), `PropulsionCannon.OnShoot` (shot) and
+    `RepulsionCannon.OnToolUseAnim` (shot, only with charge, as the game).
+  - **Repulsion push in both games:** `RepulsionCannon_ShootObject_Patch` does what a grab does: take the object's
+    exclusive lock (a normal lock can't be taken from the partner, whose game usually simulates loose items in cells it
+    saw first), then push it, send its position while it flies and keep a normal lock. If the partner holds it
+    exclusively (grabbed with their cannon, piloting it), the shot pushes it in neither game. The partner's body is
+    never pushed (it moves with their own game). The push comes one lock round trip after the shot (H: not noticeable
+    on a LAN; not measured).
+  - **Found and fixed:** after a propulsion shot the shooter's game kept the exclusive lock on the shot object, because
+    `OnShoot` lets go without `ReleaseGrabbedObject` (the only place that gave the lock back), so the partner could never
+    grab that object again. The setter Postfix now gives back the exclusive lock on anything the cannon lets go of
+    (keeping a normal lock, so its position is still sent while it flies);
+    `PropulsionCannon_ReleaseGrabbedObject_Patch` is gone.
+  - **Not covered:** the Prawn suit's propulsion arm (same `PropulsionCannon` class, but no item id of its own; it would
+    need the suit's id and arm side, as `ExosuitArmActionPacket` has); a late joiner doesn't see a beam that is already
+    on; the first-use animation's beam to the hand; a repulsion shot that knocks off a bleeder plays no effect for the
+    partner (its push is synced).
+- **Verified:** `dotnet build`, `dotnet test` (PacketsSerializableTest and PacketProcessorTest cover the new packet).
+  L3 windowless `B6-Cosmetics.ps1` **PASS (30 checks)**: Bob's copy of Alice's held cannon shows the beam and the glow,
+  its lines end at the grabbed scrap in Bob's game (0.3 m), the copy grabs nothing itself, the beam goes off on release
+  and on a shot; Bob's game plays both shots (log line); Bob can grab the scrap Alice shot; a repulsion shot at scrap
+  that Bob's game simulates flies 7–9 m along Alice's aim in both games and ends at the same place; no desync for the
+  scrap once it rests. **Negative control** on `integration/wave4` without B6: **9 of 30 fail** (beam, glow, beam end,
+  both shot effects, Bob's grab after Alice's shot and his beam for her, the repulsion flight in both games).
+  Scenario findings: scrap on the sea floor slides downhill by itself (an early version of the repulsion check passed on
+  the unfixed build because of it), and a dropped item's lock can move to the other player with the cells, so the
+  scenario holds the scrap still in open water and has Bob take its lock first. One early run's shot found nothing in
+  Alice's game (no lock request, cause not found); the scenario fires a second time if the first doesn't move it there.
+- **Not verified:** how the beam and the shots look and sound (windowless games render nothing to see and are muted);
+  a real trigger pull (input and animation events don't run windowless: the scenario calls `GrabObject`, `OnShoot` and
+  `OnToolUseAnim`).
+- **Picture frames: deferred (decision for the user).** Read PR #2840, its review and #2261:
+  - The review (CHANGES_REQUESTED) has no body and two inline notes: the ProtoInclude tag, and whether image packets
+    need their own network channel. No maintainer objection to the design. The substantive concerns are the PR
+    author's own in #2261: any player can put any image on the host's disk and the partner's screen (abuse, consent),
+    images as a size/DoS vector, and whether to persist at all. Those drove most of the 37 files: an AES file cipher
+    with a key provider, a storage service with rate limits, OFF/SESSION/PERSISTED server modes, a per-client byte
+    budget with a modal, a separate channel.
+  - Between two players who trust each other most of that isn't needed, but a minimal core still needs choices the
+    review leaves open: (1) where the image lives: in the frame's metadata (persisted and sent to a late joiner for free,
+    but every picture bloats `GlobalRootData`/`EntityData` and the join payload by ~50–150 KB) or as files next to the
+    save keyed by hash, as the PR does; (2) the size cap and resolution (the PR re-encodes to a capped JPEG); (3) how the
+    partner's frame shows a picture that isn't in their own screenshots folder: the game draws frames only from
+    `ScreenshotManager` (thumbnail, then the full file on approach, `PictureFrame.SetState`/`UpdateRoutine`), so either
+    replace that state machine (the PR's `SetState` Prefix) or write the image into the partner's screenshots folder
+    (it then shows up in their PDA gallery).
+  - **Minimal core, if wanted (about a day):** `PictureFrameMetadata` (**tag 97, reserved, unused**) with the JPEG bytes,
+    re-encoded and capped (e.g. 1024 px, 200 KB) in a `PictureFrame.SelectImage` Postfix; a metadata processor that
+    decodes it into a texture; a `SetState` Prefix that uses that texture instead of `ScreenshotManager`; the server
+    rejects oversized metadata; a `SaveLoadRoundTrip` test, an L2 late-join test and a windowless scenario (textures do
+    load windowless, TESTING.md). It's cosmetic for the two-player story goal.
 
 **Doc correction (done 2026-11-02):** AGENTS.md §6 said `Drillable_ManagedUpdate_Patch`'s transpiler may never run. It
 does: the class overrides `Patch()` and applies it (`Drillable_ManagedUpdate_Patch.cs:42-46`), and
@@ -2441,3 +2510,5 @@ prices, "keeping it scary").
 | 2026-11-03 | R1b | Done: upstream #2859 merged, then: hatch use keyed on the player name (server adds the sender only; old saves load); #2859's `InCinematic` folded into `RemotePlayer.IsPoseLocked` (read by the animation controller, not assigned); its arm writes through `SetArmState` (own states held back during a cinematic, replayed after); lock lifecycle (only the cinematic patches' own locks given back, bed side kept until getting up, no lock under a Cyclops/base/vehicle/docking bay/creature or for blacklisted cinematics, only the local player's cinematics); bed: no local time skip, late joiner gets bed-side locks; bench: no sit sent when refused, seat from movement. Findings: session ids don't survive a save; as merged the helm, docking and intro would compete for locks; the copy sat 1.2 m low. README row | L1 save/load (fails on session ids) + old save; L2 `EscapePodHatchUseTest`, `CinematicLockTest` (each fails without its fix); windowless `R1b-SeeEachOtherSit.ps1` PASS (41 checks), negative control on `coop`: 14 of 40 fail; S3, T1, T4, S6 PASS. `dotnet test` 510 pass. Not windowed: poses, seat height, first-use pod scenes |
 | 2026-11-03 | R2c | Done: the partner's held scanner, builder, welder and laser cutter play their beam, sparks and sound while the partner's `using_tool` is on (not during a cinematic): `RemoteToolEffects` on the body; the builder beams at the ghost the partner's game last progressed (prefix on `BuilderTool.LateUpdate`, which otherwise turns the copy's beams off every frame); the welder and cutter effects use the partner's underwater state; only non-relayed loops play (the cutter's is whitelisted). Findings: the scanner's and builder's tool animators are null in the prefabs; the sparks sit at the tool tip; #2463 not shown fixed (suspect `LaserCutObject` moving the local look target, H); Seaglide not built (drains the battery, no `using_tool`). README row | L1 `RemoteToolEffectRulesTest`; windowless `R2c-PartnerToolEffects.ps1` PASS (76 checks), negative control (component off): 36 of 76 fail. `dotnet test` 532 pass. Not verified: looks and sounds (windowed), a real button press, a cinematic during tool use, #2463 |
 | 2026-11-03 | T5 | Done: hold on to the hull of a Seamoth the partner pilots ("Hold on" on the hull, the server grants it), ride along outside as a swimmer (Normal mode, motor off, air drains, no tools), let go by the Exit key, when down, when the pilot gets out or leaves, when it docks or is destroyed. The hitcher is put on a hull handle every frame (not parented) and keeps sending movement; the other games hang the body on the same handle (no doubled lag). Server keeps hitches in memory for late joiners. Option `SeamothHitch` (true). README row added. Seen once: the partner's game can lose the pilot state after a dock (H, upstream movement race) | L2 `SeamothHitchTest` (3, fail without the server processors); windowless `T5-HitchARide.ps1` PASS (72 checks; 209 m drive, per-frame on the handle in both games); negative control (switch off) 21 of 72 FAIL; T1 (73) and S6 (14) still pass; full suite green. Windowed look not checked |
+| 2026-11-03 | G1 + G2 | Done: the gun terminal and the rocket launch wait for both players' clicks (`ALL_READY`), each game plays its own cinematic / launches its own player from its held click. Gun: Prefix on `PrecursorDisableGunTerminal.OnHandClick` only when cured (denied path ungated), `Cancel` on every `OnTerminalAreaExit`. Rocket: Prefix on `LaunchRocket.OnHandClick` before `SetLaunchStarted` (transpiler unchanged, delta -8); the rule gets the cockpit box of the server's `RocketBase` entity (measured 35.2 m above the rocket's root, ±7/±6/±7 m), so a click only counts while aboard; new server `RocketLaunchProcessor` relays the launch only after the gate started. Texts `Nitrox_StoryGateGun*`, `Nitrox_StoryGateRocket*` (en/de) | L1 `StoryGatesTest`; L2 `GunAndRocketGateTest` (6 tests; the no-relay test fails without the processor); windowless `G1G2-GunAndRocketTogether.ps1` PASS 29, negative control 6 FAIL (4 G1, 2 G2). Not driven: preflight checks (`forcerocketready`), the credits; not checked windowed |
+| 2026-11-03 | B6 | Cannons done, picture frames deferred: packet `CannonEffect` (grab, release, propulsion shot, repulsion shot; default relay, not persisted) played by `CannonEffects` on the partner's copy of the held cannon; `RemotePropulsionBeam` draws the beam without grabbing on the copy; a repulsion shot takes the object's exclusive lock before pushing it (as a grab), sends its flight and keeps a normal lock. Found and fixed: a propulsion shot kept the exclusive lock on the shot object (the partner could never grab it); the grab setter now gives it back on every let-go. Picture frames (#2840): review has only two nits; the open choices (where the image lives, cap, how the partner's frame draws it) are written down with a one-day minimal core for a decision; tag 97 stays reserved. README fix row | `dotnet test` 521 pass; L3 windowless `B6-Cosmetics.ps1` PASS (30 checks); negative control on the unfixed build 9 of 30 fail. Not verified: the look and sound (windowless), real trigger input, the Prawn suit arm (not covered) |

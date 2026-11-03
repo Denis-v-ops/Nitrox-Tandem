@@ -52,6 +52,8 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
 | **Creatures** | Eggs in an alien containment no longer vanish when they hatch: each egg gives exactly one creature for both players, also in a tank split off by deconstructing part of a stacked one | [#2538](https://github.com/SubnauticaNitrox/Nitrox/issues/2538) | In game + headless + negative control |
 | **Creatures** | Warpers are the same for both of you: each warper spawner sends out one warper that you both see and that warps out for both of you, instead of different warpers in each game. Bleeders now swim about as in single player; before, no game ran them. | new | In game + headless + negative control |
 | **Creatures** | A bleeder latches onto either of you, not only onto the player whose game runs it: it sucks your blood, you both see it on you, it lets go when you get into a vehicle, go inside or go down, and you can fight it off yourself | new | In game + negative control |
+| **Creatures** | Warpers are the same for both of you: each warper spawner sends out one warper that you both see and that warps out for both of you, instead of different warpers in each game. Bleeders now swim about as in single player; before, no game ran them. A bleeder still latches on only to the player whose game runs it, not yet to the partner | new | In game + headless + negative control |
+| **Tools** | You see your partner's propulsion cannon beam on the object they hold, and their propulsion and repulsion cannon shots. A repulsion shot now pushes things in both games, not only in the shooter's, and after your partner shoots something away with the propulsion cannon you can grab it yourself | new | In game + negative control |
 
 ### Co-op features
 
@@ -106,6 +108,9 @@ What's planned:
 - **Story moments together:** the cure (each with your own cure scene) waits until both players are there, like
   the drive core, the Sea Emperor, the gun and the rocket launch already do. Playing alone in between is fine.
 - **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner.
+- **Teamwork survival:** hitching a ride on the Seamoth.
+- **Cozy base life:** seeing each other sit, sleep and use things, seeing the cuddlefish's tricks when it plays with
+  your partner, and the pictures you put in picture frames.
 
 ### For developers
 - An agent- and human-friendly guide to the codebase: [AGENTS.md](AGENTS.md).
