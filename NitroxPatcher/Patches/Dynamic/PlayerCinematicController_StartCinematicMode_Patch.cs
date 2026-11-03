@@ -37,6 +37,13 @@ public sealed partial class PlayerCinematicController_StartCinematicMode_Patch :
             return true;
         }
 
+        // The intro, a reaper's grab and the bench have their own systems (PlayerCinematics' blacklist): no lock round trip,
+        // which would hold back their start (two new players' intros would compete for the pod's lock)
+        if (!Resolve<PlayerCinematics>().IsSynced(__instance.playerViewAnimationName))
+        {
+            return true;
+        }
+
         if (!Player.main || !Player.main.gameObject.activeInHierarchy)
         {
             return false;

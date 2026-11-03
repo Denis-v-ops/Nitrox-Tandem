@@ -191,6 +191,9 @@ function Test-MetadataEqual {
     # (B3-BasePowerPersists.ps1); here only the rest of the metadata is compared.
     $A = $A -replace "`"Power`":($number|null)", '"Power":#'
     $B = $B -replace "`"Power`":($number|null)", '"Power":#'
+    # The escape pod's hatch use (COOP_FEATURES_SPEC R1b): a game reports only its own player's, the server keeps everyone's.
+    $A = $A -replace '"PlayersWith(Bottom|Top)HatchUsed":\[[^\]]*\]', '"PlayersWith$1HatchUsed":#'
+    $B = $B -replace '"PlayersWith(Bottom|Top)HatchUsed":\[[^\]]*\]', '"PlayersWith$1HatchUsed":#'
     if ($A -eq $B) { return $true }
     if (($A -replace $number, '#') -ne ($B -replace $number, '#')) { return $false }
     $numbersA = [regex]::Matches($A, $number)

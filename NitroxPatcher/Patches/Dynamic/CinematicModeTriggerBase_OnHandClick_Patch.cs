@@ -1,5 +1,6 @@
 using System.Reflection;
 using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.PlayerLogic;
 using NitroxClient.GameLogic.Simulation;
 using NitroxClient.MonoBehaviours;
 using NitroxClient.MonoBehaviours.CinematicController;
@@ -26,8 +27,8 @@ public sealed partial class CinematicModeTriggerBase_OnHandClick_Patch : NitroxP
             return true;
         }
 
-        // If no cinematic controller, let vanilla handle it
-        if (!__instance.cinematicController)
+        // If no cinematic controller, or one left to another system (the bench: Bench_OnHandClick_Patch), let vanilla handle it
+        if (!__instance.cinematicController || !Resolve<PlayerCinematics>().IsSynced(__instance.cinematicController.playerViewAnimationName))
         {
             return true;
         }

@@ -29,6 +29,12 @@ public class PlayerCinematics
         this.localPlayer = localPlayer;
     }
 
+    /// <summary>
+    ///     Whether this cinematic (its <c>playerViewAnimationName</c>) is played for the other players. The others are left
+    ///     to the game and to their own systems, lock included (COOP_FEATURES_SPEC R1b).
+    /// </summary>
+    public bool IsSynced(string key) => !blacklistedKeys.Contains(key);
+
     public void StartCinematicMode(SessionId sessionId, NitroxId controllerID, int controllerNameHash, string key, Dictionary<string, bool> animationParameters = null)
     {
         if (!blacklistedKeys.Contains(key))
