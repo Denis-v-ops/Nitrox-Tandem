@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Nitrox.Model.Core;
+using Nitrox.Model.DataStructures;
 using Nitrox.Model.DataStructures.GameLogic;
 using NitroxClient.GameLogic.HUD;
 using NitroxClient.GameLogic.PlayerLogic;
@@ -56,6 +57,22 @@ public class RemotePlayer : INitroxPlayer
     public PilotingChair PilotingChair { get; private set; }
     public InfectedMixin InfectedMixin { get; private set; }
     public LiveMixin LiveMixin { get; private set; }
+
+    public NitroxId? InCinematicEntityId { get; private set; }
+
+    public bool InCinematic => InCinematicEntityId != null;
+
+    public void SetInCinematic(NitroxId entityId)
+    {
+        InCinematicEntityId = entityId;
+        AnimationController.UpdatePlayerAnimations = false;
+    }
+
+    public void ClearInCinematic()
+    {
+        InCinematicEntityId = null;
+        AnimationController.UpdatePlayerAnimations = true;
+    }
 
     public readonly Event<RemotePlayer> PlayerDeathEvent = new();
 
@@ -166,6 +183,12 @@ public class RemotePlayer : INitroxPlayer
 
         Body.SetActive(true);
 
+        // Skip position updates during cinematics - the cinematic controller handles positioning
+        if (InCinematic)
+        {
+            return;
+        }
+
         // When receiving movement packets, a player can not be controlling a vehicle (they can walk through subroots though).
         SetVehicle(null);
         SetPilotingChair(null);
@@ -198,7 +221,7 @@ public class RemotePlayer : INitroxPlayer
         SetVehicle(null);
 
         AnimationController.AimingRotation = localRotation;
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked && !InCinematic;
         AnimationController.Velocity = (localPosition - Pawn.Handle.transform.localPosition) / Time.fixedDeltaTime;
 
         Pawn.Handle.transform.localPosition = localPosition;
@@ -320,7 +343,12 @@ public class RemotePlayer : INitroxPlayer
 
             if (newVehicle)
             {
-                newVehicle.mainAnimator.SetBool(animatorPlayerIn, true);
+                // Only trigger the enter animation if the vehicle doesn't already have player_in set
+                // This prevents replaying the animation during undocking when the player is already in the vehicle
+                if (!newVehicle.mainAnimator.GetBool(animatorPlayerIn))
+                {
+                    newVehicle.mainAnimator.SetBool(animatorPlayerIn, true);
+                }
 
                 Attach(newVehicle.playerPosition.transform);
                 ArmsController.SetWorldIKTarget(newVehicle.leftHandPlug, newVehicle.rightHandPlug);
@@ -389,6 +417,7 @@ public class RemotePlayer : INitroxPlayer
         SetPilotingChair(null);
         SetVehicle(null);
         SetSubRoot(null);
+        ClearInCinematic();
         AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         AnimationController.Reset();
         ArmsController.SetWorldIKTarget(null, null);

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Nitrox.Model.Core;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using Nitrox.Server.Subnautica.Models.GameLogic;
@@ -58,6 +60,11 @@ internal sealed class EntityMetadataUpdateProcessor(PlayerManager playerManager,
             case ThermalPlantMetadata thermalPlantMetadata:
                 return ProcessThermalPlantMetadata(sendingPlayer, entity, thermalPlantMetadata, out stored, out relayed);
 
+            // Merge so each client reports only their own hatch usage.
+            case EscapePodMetadata escapePodMetadata:
+                stored = relayed = MergeEscapePodMetadata(entity, escapePodMetadata);
+                return true;
+
             // Allow metadata updates from any player by default
             default:
                 return true;
@@ -94,6 +101,18 @@ internal sealed class EntityMetadataUpdateProcessor(PlayerManager playerManager,
         stored = new ThermalPlantMetadata(temperature, power ?? current?.Power);
         relayed = new ThermalPlantMetadata(temperature, power);
         return temperatureRose || power.HasValue;
+    }
+
+    private static EscapePodMetadata MergeEscapePodMetadata(Entity entity, EscapePodMetadata incoming)
+    {
+        if (entity.Metadata is not EscapePodMetadata existing)
+        {
+            return incoming;
+        }
+
+        HashSet<SessionId> bottomHatchUsedBy = [.. existing.PlayersWithBottomHatchUsed, .. incoming.PlayersWithBottomHatchUsed];
+        HashSet<SessionId> topHatchUsedBy = [.. existing.PlayersWithTopHatchUsed, .. incoming.PlayersWithTopHatchUsed];
+        return new EscapePodMetadata(incoming.PodRepaired, incoming.RadioRepaired, [.. bottomHatchUsedBy], [.. topHatchUsedBy]);
     }
 
     private bool ProcessPlayerMetadata(Player sendingPlayer, Entity entity, PlayerMetadata metadata)
