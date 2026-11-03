@@ -63,7 +63,8 @@ internal sealed class EntityMetadataUpdateProcessor(PlayerManager playerManager,
 
             // a radiation leak only gains health: a stale update (two players welding one leak) must not make it leak again
             // and reset its fix time (MULTINAUGHTICA_SPEC M2)
-            RadiationMetadata radiationMetadata => entity.Metadata is not RadiationMetadata currentRadiation || RadiationMetadata.IsProgress(currentRadiation.Health, radiationMetadata.Health),
+            case RadiationMetadata radiationMetadata:
+                return entity.Metadata is not RadiationMetadata currentRadiation || RadiationMetadata.IsProgress(currentRadiation.Health, radiationMetadata.Health);
 
             // Allow metadata updates from any player by default
             default:

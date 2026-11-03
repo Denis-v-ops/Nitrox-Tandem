@@ -84,6 +84,9 @@ public class CreatureHealthRoutingTest
         FakePlayer bob = await server.JoinAsync("Bob");
         FakePlayer carol = await server.JoinAsync("Carol");
         WorldEntity stalker = await SpawnAsync(alice, position, "Stalker");
+        // Alice's game has the stalker's cell loaded, as a spawning game does: otherwise the server hands the lock to Bob
+        // when he loads it (FIX_SPEC S16, a simulating player without the creature's cell)
+        await SeeAsync(alice, cell);
         await SeeAsync(bob, cell);
         await SeeAsync(carol, farCell);
 
