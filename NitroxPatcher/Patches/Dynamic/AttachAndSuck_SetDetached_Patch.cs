@@ -1,23 +1,28 @@
 using System.Reflection;
-using Nitrox.Model.DataStructures;
 using NitroxClient.GameLogic;
 
 namespace NitroxPatcher.Patches.Dynamic;
 
 /// <summary>
-///     M4 (FIX_SPEC S15d): <c>SetDetached</c> is the one exit of a Bleeder's attack (it let go, was punched off or killed,
-///     the victim died or went indoors). If this game holds the Bleeder exclusively (<see cref="AttachAndSuck_OnCollisionEnter_Patch" />),
-///     the lock goes back to the normal hand-over of creatures between players.
+///     FIX_SPEC S15d: a bleeder lets go. The simulating game tells the others; a copy on the local player (knocked off,
+///     or the player went inside or down) tells the simulating game. A copy also ends its mirrored attach here, as
+///     <c>StopPerform</c> does where the bleeder is simulated.
 /// </summary>
 public sealed partial class AttachAndSuck_SetDetached_Patch : NitroxPatch, IDynamicPatch
 {
     private static readonly MethodInfo TARGET_METHOD = Reflect.Method((AttachAndSuck t) => t.SetDetached());
 
+    public static void Prefix(AttachAndSuck __instance)
+    {
+        Resolve<Bleeders>().OnDetaching(__instance);
+    }
+
     public static void Postfix(AttachAndSuck __instance)
     {
-        if (__instance.TryGetNitroxId(out NitroxId id))
+        if (!Resolve<Bleeders>().IsSimulatedHere(__instance))
         {
-            BleederClaims.OnDetached(__instance, id, Resolve<SimulationOwnership>());
+            __instance.active = false;
+            Bleeders.SetFollowingRemotePoses(__instance, true);
         }
     }
 }

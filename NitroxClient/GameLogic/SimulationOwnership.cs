@@ -135,7 +135,6 @@ namespace NitroxClient.GameLogic
 
                 StopSimulatingEntity(simulatedEntity.Id);
                 EntityPositionBroadcaster.StopWatchingEntity(simulatedEntity.Id);
-                BleederClaims.OnLockLost(simulatedEntity.Id);
             }
 
             // Avoid keeping artifacts of the entity's previous ChangesPosition state
@@ -149,7 +148,6 @@ namespace NitroxClient.GameLogic
         {
             StopSimulatingEntity(entityId);
             EntityPositionBroadcaster.StopWatchingEntity(entityId);
-            BleederClaims.OnLockLost(entityId);
             if (!NitroxEntity.TryGetObjectFrom(entityId, out GameObject gameObject))
             {
                 return;

@@ -401,6 +401,12 @@ programs must run the same build). No metadata tags used.
   (`targetLiveMixin == Player.main.liveMixin`) claim; a non-simulating copy drops any other contact. Whitelist:
   `TechType.Bleeder` added; Spinefish and Shuttlebug really were listed twice (a `HashSet`, so harmless), removed. Not
   taken: their other three whitelist entries, `Bleeder_OnHit_Patch` (needs M5's `CreatureHealthManager`).
+  **Superseded on the merge with `coop` (2026-11-03):** `coop` got its own S15d meanwhile (COOP_FEATURES_SPEC B1,
+  verified in game with `S15d-BleederOnPartner.ps1`): only the simulating game lets a bleeder pick a target, it
+  latches onto the partner's body, and the other games mirror the attach (`BleederAttachChanged`). Both claim the same two
+  `AttachAndSuck` patches, and with S15d's Prefix a copy never takes a contact, so this claim would never run. Kept
+  S15d and B1's whitelist line; removed the claim, its rules and test, the `OnLockLost` lines and M4's whitelist line
+  (the duplicate removal stays). The claim was never checked in game (no M4 scenario case covers bleeders).
 - **Crash fish disappear: held, fixed. Transform hypothesis: held, measured headless.** `CrashHome_OnDestroy_Patch`
   (the `EntityDestroyed` on unload) is deleted; a fish that dies is still sent by `LiveMixin_Kill_Patch`. Their client
   part taken: the gate (`CrashHomeMetadataGate`, 20 s grace) before the 20 minute timer is started and sent and before a

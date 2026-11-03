@@ -29,9 +29,36 @@ public class StoryGatesTest
     }
 
     [TestMethod]
-    public void OtherGates_UseTheGenericTexts()
+    public void SeaEmperor_AndHatching_SayWhereAndWhat()
+    {
+        StoryGateStatus platform = new(StoryGateKind.SEA_EMPEROR, ["Alice"], ["Bob"], false);
+        StoryGates.FormatStatus(platform, "Alice", english).Should().Be("Waiting for Bob to join you on the platform…");
+        StoryGates.FormatStatus(platform, "Bob", english).Should().Be("Alice is waiting for you on the aquarium platform");
+        StoryGateStatus hatching = new(StoryGateKind.HATCHING, ["Bob"], ["Alice"], false);
+        StoryGates.FormatStatus(hatching, "Bob", english).Should().Be("Waiting for Alice to use the incubator too…");
+        StoryGates.FormatStatus(hatching, "Alice", english).Should().Be("Bob is ready to hatch the eggs: use the incubator too");
+    }
+
+    [TestMethod]
+    public void DisableGun_BothUseTheTerminal()
     {
         StoryGateStatus status = new(StoryGateKind.DISABLE_GUN, ["Alice"], ["Bob"], false);
+        StoryGates.FormatStatus(status, "Alice", english).Should().Be("Waiting for Bob to use the terminal too");
+        StoryGates.FormatStatus(status, "Bob", english).Should().Be("Alice is at the gun terminal: use it together to disable the gun");
+    }
+
+    [TestMethod]
+    public void RocketLaunch_BothPressLaunchAboard()
+    {
+        StoryGateStatus status = new(StoryGateKind.ROCKET_LAUNCH, ["Alice"], ["Bob"], false);
+        StoryGates.FormatStatus(status, "Alice", english).Should().Be("Waiting for Bob to board the cockpit and press launch");
+        StoryGates.FormatStatus(status, "Bob", english).Should().Be("Alice is ready for launch: board the rocket's cockpit and press launch too");
+    }
+
+    [TestMethod]
+    public void OtherGates_UseTheGenericTexts()
+    {
+        StoryGateStatus status = new(StoryGateKind.SUNBEAM_RADIO, ["Alice"], ["Bob"], false);
         StoryGates.FormatStatus(status, "Alice", english).Should().Be("Waiting for Bob…");
         StoryGates.FormatStatus(status, "Bob", english).Should().Be("Alice is waiting for you");
     }

@@ -530,6 +530,7 @@ public class RemotePlayer : INitroxPlayer
         }
 
         Partner.PartnerHandTarget.AddTo(this);
+        BodyBleederTarget.AddTo(this);
     }
 
     /// <summary>

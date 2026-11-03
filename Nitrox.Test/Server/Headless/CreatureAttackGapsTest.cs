@@ -11,9 +11,9 @@ using Nitrox.Test.Helper.Headless;
 namespace Nitrox.Test.Server.Headless;
 
 /// <summary>
-///     MULTINAUGHTICA_SPEC M4, the server half: crash fish keep their place through a restart, a world Bleeder is
-///     simulated and its victim can take it exclusively, and the Reaper grab and the Crabsquid EMP reach the players who see
-///     the creature. (What the games do with it is checked in game by M4-CreatureAttacks.)
+///     MULTINAUGHTICA_SPEC M4, the server half: crash fish keep their place through a restart, and the Reaper grab and the
+///     Crabsquid EMP reach the players who see the creature. (What the games do with it is checked in game by
+///     M4-CreatureAttacks. World bleeders: COOP_FEATURES_SPEC B1 and FIX_SPEC S15d, WarperSpawnerTest.)
 /// </summary>
 [TestClass]
 [TestCategory("L2")]
@@ -59,48 +59,6 @@ public class CreatureAttackGapsTest
         {
             AssertNear(sent.Transform.Position, fishPosition, "the fish Bob's game spawns (CrashEntitySpawner places it at Transform.Position)");
         }
-    }
-
-    /// <summary>
-    ///     FIX_SPEC S15d: world bleeders weren't on the movement whitelist, so nobody simulated them and they never attacked.
-    ///     The victim's game takes the Bleeder's exclusive lock when its copy accepts the contact (BleederClaims), the
-    ///     partner can't take it back while it holds on, and the victim hands it back as a transient lock when it lets go.
-    /// </summary>
-    [TestMethod]
-    public async Task WorldBleeder_IsSimulated_AndItsVictimTakesItExclusively()
-    {
-        await using ServerHarness server = await ServerHarness.StartAsync("L2-M4-Bleeder");
-        FakePlayer alice = await server.JoinAsync("Alice");
-        FakePlayer bob = await server.JoinAsync("Bob");
-        // Level-0 cells are 16 m cubes from a multiple of 16: the middle of one
-        NitroxVector3 position = new(-24, -40, 168);
-        AbsoluteEntityCell cell = new(position, 0);
-        WorldEntity bleeder = new(new NitroxTransform(position, NitroxQuaternion.Identity, NitroxVector3.One), 0, "bleeder-class-id", true, new NitroxId(),
-                                  new NitroxTechType("Bleeder"), null, null, []);
-        server.EntityRegistry.AddOrUpdate(bleeder);
-        server.WorldEntityManager.TrackEntityInTheWorld(bleeder);
-
-        alice.Send(new CellVisibilityChanged(alice.SessionId, [cell], []));
-        SimulationOwnershipChange aliceSimulates = await alice.WaitForAsync<SimulationOwnershipChange>(change => change.Entities.Any(entity => entity.Id == bleeder.Id));
-        SimulatedEntity simulation = aliceSimulates.Entities.Single(entity => entity.Id == bleeder.Id);
-        simulation.SessionId.Should().Be(alice.SessionId, "the player who loads a world Bleeder's cell simulates it");
-        simulation.ChangesPosition.Should().BeTrue("a Bleeder swims");
-
-        // Bob's copy touched Bob
-        bob.Send(new SimulationOwnershipRequest(bob.SessionId, bleeder.Id, SimulationLockType.EXCLUSIVE));
-        (await bob.WaitForAsync<SimulationOwnershipResponse>(response => response.Id == bleeder.Id)).LockAcquired.Should().BeTrue();
-        await alice.WaitForAsync<SimulationOwnershipChange>(change => change.Entities.Any(entity => entity.Id == bleeder.Id && entity.SessionId == bob.SessionId));
-
-        // Alice's copy touches Alice while it is on Bob
-        alice.Send(new SimulationOwnershipRequest(alice.SessionId, bleeder.Id, SimulationLockType.EXCLUSIVE));
-        (await alice.WaitForAsync<SimulationOwnershipResponse>(response => response.Id == bleeder.Id)).LockAcquired.Should().BeFalse("the Bleeder is on Bob");
-
-        // It let go of Bob
-        bob.Send(new SimulationOwnershipRequest(bob.SessionId, bleeder.Id, SimulationLockType.TRANSIENT));
-        (await bob.WaitForAsync<SimulationOwnershipResponse>(response => response.Id == bleeder.Id && response.LockType == SimulationLockType.TRANSIENT)).LockAcquired.Should().BeTrue();
-        alice.Send(new SimulationOwnershipRequest(alice.SessionId, bleeder.Id, SimulationLockType.EXCLUSIVE));
-        (await alice.WaitForAsync<SimulationOwnershipResponse>(response => response.Id == bleeder.Id && response.LockAcquired)).LockType.Should().Be(SimulationLockType.EXCLUSIVE,
-            "once Bob is free, Alice's copy can attach to her");
     }
 
     /// <summary>

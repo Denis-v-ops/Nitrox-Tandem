@@ -159,6 +159,41 @@ public class StoryGateStateTest
         }
     }
 
+    [TestMethod]
+    public void AquariumPlatform_IsTheTurnedTriggerBox_AsMeasuredInGame()
+    {
+        // Points checked in game with the trigger's BoxCollider.ClosestPoint (2026-11-03): the first two inside, the third
+        // inside the box's axis-aligned bounds but outside the turned box.
+        StoryGateArea platform = StoryGateRules.AquariumPlatform;
+        platform.Contains(new NitroxVector3(278.42f, -1470.5f, -420.47f)).Should().BeTrue();
+        platform.Contains(new NitroxVector3(353.36f, -1470.5f, -456.66f)).Should().BeTrue();
+        platform.Contains(new NitroxVector3(311.38f, -1470.5f, -397.2f)).Should().BeFalse();
+        platform.Contains(new NitroxVector3(320, -1466, -436)).Should().BeTrue("the game's 'aquarium' teleport spot fires the trigger");
+        platform.Contains(new NitroxVector3(335, -1444, -470)).Should().BeFalse("the antechamber is above the platform");
+        platform.Contains(new NitroxVector3(315.89f, -1462, -438.566f)).Should().BeFalse("the box is 15 m high");
+    }
+
+    [TestMethod]
+    public void Area_WithoutYaw_IsAxisAligned_TurnedMovesTheCorners()
+    {
+        StoryGateArea box = StoryGateArea.Box("room", new NitroxVector3(5, 5, 5), new NitroxVector3(10, 10, 10), 0);
+        box.Should().Be(room);
+        box.Contains(new NitroxVector3(9.9f, 0.1f, 9.9f)).Should().BeTrue();
+        StoryGateArea turned = box with { YawDegrees = 45 };
+        turned.Contains(new NitroxVector3(9.9f, 0.1f, 9.9f)).Should().BeFalse("a corner of the box falls outside once it's turned");
+        turned.Contains(new NitroxVector3(5, 0.1f, 11.9f)).Should().BeTrue("and a turned corner reaches past the old edge");
+    }
+
+    [TestMethod]
+    public void Rules_SeaEmperorNeedsBothOnThePlatform_HatchingIsAClick()
+    {
+        StoryGateDefinition seaEmperor = StoryGateRules.For(StoryGateKind.SEA_EMPEROR);
+        seaEmperor.Rule.Should().Be(StoryGateRule.ONE_READY_ALL_PRESENT);
+        seaEmperor.Area.Should().Be(StoryGateRules.AquariumPlatform);
+        StoryGateRules.For(StoryGateKind.HATCHING).Rule.Should().Be(StoryGateRule.ALL_READY);
+        StoryGateRules.For(StoryGateKind.HATCHING).Area.Should().BeNull();
+    }
+
     private static List<StoryGatePlayer> Online(params (string Name, NitroxVector3 Position)[] players) =>
         players.Select(player => new StoryGatePlayer(player.Name, player.Position)).ToList();
 

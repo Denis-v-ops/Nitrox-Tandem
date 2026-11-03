@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using NitroxClient.GameLogic;
 
 namespace NitroxPatcher.Patches.Dynamic;
@@ -9,6 +10,35 @@ namespace NitroxPatcher.Patches.Dynamic;
 public sealed partial class LaunchRocket_OnHandClick_Patch : NitroxPatch, IDynamicPatch
 {
     internal static readonly MethodInfo TARGET_METHOD = Reflect.Method((LaunchRocket t) => t.OnHandClick(default));
+
+    /// <summary>
+    ///     COOP_FEATURES_SPEC G2: the launch waits until every player pressed launch in the cockpit, then each game launches
+    ///     its own player at once. Only a click that would launch is held (the same checks as the game's, before
+    ///     <c>SetLaunchStarted</c>); the gun warning and a rocket that isn't ready behave as before.
+    /// </summary>
+    public static bool Prefix(LaunchRocket __instance, GUIHand hand)
+    {
+        if (!__instance.IsRocketReady() || LaunchRocket.launchStarted ||
+            (!StoryGoalCustomEventHandler.main.gunDisabled && !__instance.forcedRocketReady))
+        {
+            return true;
+        }
+        StoryGates storyGates = Resolve<StoryGates>();
+        if (storyGates.IsPassing(StoryGateKind.ROCKET_LAUNCH))
+        {
+            // A player who left the cockpit since the click stays behind rather than starting a launch without them.
+            Rocket rocket = __instance.GetComponentInParent<Rocket>();
+            return !rocket || Rockets.IsAboard(rocket.gameObject);
+        }
+        storyGates.Hold(StoryGateKind.ROCKET_LAUNCH, () =>
+        {
+            if (__instance)
+            {
+                __instance.OnHandClick(hand);
+            }
+        });
+        return false;
+    }
 
     /*
      * 

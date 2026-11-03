@@ -4,7 +4,10 @@ using System.Linq;
 using Nitrox.Model.Core;
 using Nitrox.Model.Packets;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using Nitrox.Model.Subnautica.Packets;
+using Nitrox.Server.Subnautica.Models.GameLogic.Entities;
 using Nitrox.Server.Subnautica.Models.AppEvents;
 using Nitrox.Server.Subnautica.Models.Packets.Core;
 
@@ -17,15 +20,24 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic.StoryGates;
 ///     (<see cref="StoryGateRules" />) is met. With <see cref="SubnauticaServerOptions.StoryGatesEnabled" /> off every
 ///     ready starts at once.
 /// </summary>
-internal sealed class StoryGateService(IPacketSender packetSender, PlayerManager playerManager, IOptions<SubnauticaServerOptions> options, ILogger<StoryGateService> logger)
+internal sealed class StoryGateService(
+    IPacketSender packetSender,
+    PlayerManager playerManager,
+    EntityRegistry entityRegistry,
+    IOptions<SubnauticaServerOptions> options,
+    ILogger<StoryGateService> logger)
     : ISessionCleaner
 {
+    private static readonly NitroxTechType rocketTechType = new("RocketBase");
+
     private readonly IPacketSender packetSender = packetSender;
     private readonly PlayerManager playerManager = playerManager;
+    private readonly EntityRegistry entityRegistry = entityRegistry;
     private readonly IOptions<SubnauticaServerOptions> options = options;
     private readonly ILogger<StoryGateService> logger = logger;
     private readonly StoryGateState state = new();
     private readonly Dictionary<StoryGateKind, StoryGateDecision> lastStatus = [];
+    private readonly HashSet<StoryGateKind> started = [];
     private readonly Stopwatch clock = Stopwatch.StartNew();
 
     /// <summary>The players the gates wait for, from the option or else every saved player.</summary>
@@ -41,6 +53,10 @@ internal sealed class StoryGateService(IPacketSender packetSender, PlayerManager
         {
             if (ready)
             {
+                lock (state)
+                {
+                    started.Add(kind);
+                }
                 await packetSender.SendPacketToAllAsync(new StoryGateStart(kind));
             }
             return;
@@ -73,6 +89,22 @@ internal sealed class StoryGateService(IPacketSender packetSender, PlayerManager
         return decision.Outcome == StoryGateOutcome.START;
     }
 
+    /// <summary>
+    ///     True once the gate's moment has started since the server started (or the gates are off). The rocket launch is
+    ///     only relayed after that (G2), since a launch can't be taken back.
+    /// </summary>
+    public bool HasStarted(StoryGateKind kind)
+    {
+        if (!options.Value.StoryGatesEnabled)
+        {
+            return true;
+        }
+        lock (state)
+        {
+            return started.Contains(kind);
+        }
+    }
+
     /// <summary>One line per gate for the <c>storygate status</c> command.</summary>
     public List<string> DescribeGates()
     {
@@ -82,7 +114,7 @@ internal sealed class StoryGateService(IPacketSender packetSender, PlayerManager
         {
             foreach (StoryGateKind kind in Enum.GetValues<StoryGateKind>())
             {
-                StoryGateDefinition gate = StoryGateRules.For(kind);
+                StoryGateDefinition gate = Definition(kind);
                 string line = $"{kind}: {gate.Rule}{(gate.Area == null ? "" : $" in the {gate.Area.Name}")}";
                 if (state.IsReleased(kind))
                 {
@@ -125,7 +157,28 @@ internal sealed class StoryGateService(IPacketSender packetSender, PlayerManager
     }
 
     private StoryGateDecision Evaluate(StoryGateKind kind, List<StoryGatePlayer> online) =>
-        state.Evaluate(StoryGateRules.For(kind), Roster, online, clock.Elapsed);
+        state.Evaluate(Definition(kind), Roster, online, clock.Elapsed);
+
+    /// <summary>The gate's rule, with the area of a rocket's cockpit for the rocket launch (it stands where it was built).</summary>
+    private StoryGateDefinition Definition(StoryGateKind kind)
+    {
+        StoryGateDefinition gate = StoryGateRules.For(kind);
+        if (kind == StoryGateKind.ROCKET_LAUNCH && gate.Area == null && FindRocket() is { } rocket)
+        {
+            gate = gate with { Area = StoryGateRules.RocketCockpit(rocket.Transform.Position, rocket.Transform.Rotation) };
+        }
+        return gate;
+    }
+
+    /// <summary>
+    ///     The rocket the launch is about: the most built one (H: a world with two rockets uses the one with more stages).
+    ///     Null if none is built; the launch then waits for everyone's click without an area.
+    /// </summary>
+    private VehicleEntity? FindRocket() =>
+        entityRegistry.GetEntities<VehicleEntity>()
+                      .Where(vehicle => rocketTechType.Equals(vehicle.TechType))
+                      .OrderByDescending(vehicle => vehicle.Metadata is RocketMetadata rocketMetadata ? rocketMetadata.CurrentStage : -1)
+                      .FirstOrDefault();
 
     private static List<StoryGatePlayer> OnlinePlayers(List<Player> players) => players.Select(player => new StoryGatePlayer(player.Name, player.Position)).ToList();
 
@@ -145,6 +198,10 @@ internal sealed class StoryGateService(IPacketSender packetSender, PlayerManager
             else
             {
                 lastStatus[kind] = decision;
+            }
+            if (decision.Outcome == StoryGateOutcome.START)
+            {
+                started.Add(kind);
             }
         }
 
