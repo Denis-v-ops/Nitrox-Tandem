@@ -2472,7 +2472,7 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
 - **Not verified:** how the beam and the shots look and sound (windowless games render nothing to see and are muted);
   a real trigger pull (input and animation events don't run windowless: the scenario calls `GrabObject`, `OnShoot` and
   `OnToolUseAnim`).
-- **Picture frames: deferred (decision for the user).** Read PR #2840, its review and #2261:
+- **Picture frames: deferred (decided 2026-11-03).** Not part of this spec for now; tag 97 stays reserved. Read PR #2840, its review and #2261:
   - The review (CHANGES_REQUESTED) has no body and two inline notes: the ProtoInclude tag, and whether image packets
     need their own network channel. No maintainer objection to the design. The substantive concerns are the PR
     author's own in #2261: any player can put any image on the host's disk and the partner's screen (abuse, consent),

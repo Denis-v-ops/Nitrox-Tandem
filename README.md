@@ -107,8 +107,7 @@ stays lonely, scary and hard, just shared.
 - **Each rule gets a switch** in the server's `server.cfg`.
 
 What's planned:
-- **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner, and the pictures you put in
-  picture frames.
+- **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner.
 
 ### For developers
 - An agent- and human-friendly guide to the codebase: [AGENTS.md](AGENTS.md).
