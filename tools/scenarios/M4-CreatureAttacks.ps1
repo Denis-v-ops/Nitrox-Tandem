@@ -246,9 +246,13 @@ function Test-EmpToolsCase {
         Invoke-Bridge $A "teleport $(Format-Point @(($creaturePos[0] - 2), $creaturePos[1], $creaturePos[2]))" | Out-Null
         Start-Sleep -Seconds 2
         $row.bodyTag = (Invoke-Bridge $A "get $($script:PlayerIds[$B]) GameObject.tag" -AllowError).Trim().Trim('"')
+        # Diagnostics for a miss: a sleeping body may not get a trigger from a new collider, and the copy may be cast elsewhere
+        $row.note = "Bob's body asleep: $(Invoke-Bridge $B 'call player Rigidbody.IsSleeping' -AllowError)"
         Invoke-Bridge $A "call $id EMPAttack.CastEMPBlast" | Out-Null
         $castAt = Get-Date
         Start-Sleep -Milliseconds 500
+        $bobBlast = try { @(Invoke-BridgeJson $B 'find EMPBlast 1') | Select-Object -First 1 } catch { $null }
+        $row.note += "; blast in Bob's game: $(if ($bobBlast.distance -ne $null) { "$($bobBlast.distance) m from him" } else { 'none' })"
         # Then Alice draws her flashlight and her game's blast touches Bob's body (as its growing sphere did a moment ago):
         # for a target tagged "Player" the game disables Inventory.main's held tool, which is Alice's
         Invoke-Bridge $A "call Inventory.main.quickSlots.SelectImmediate $(Invoke-Bridge $A "call Inventory.main.quickSlots.GetSlotByItem $aliceTool")" | Out-Null

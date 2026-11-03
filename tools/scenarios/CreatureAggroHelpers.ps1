@@ -70,6 +70,9 @@ function New-Creature {
     # Natural creatures load in around the spawner too: only a new one of the spawned type counts.
     $new = Wait-Until { (Invoke-BridgeJson $Spawner 'find Creature 80') | Where-Object { $_.id -match '^[0-9a-f-]{36}$' -and $before -notcontains $_.id -and $_.techType -eq $TechType } | Select-Object -First 1 } -TimeoutSeconds 15
     if (-not $new) { throw "$TechType didn't spawn" }
+    # A crash fish is only synced as the fish of its home (CrashEntitySpawner destroys one without a home): one spawned on
+    # its own stays in the spawner's game, where it may go for a nearby fish and detonate within seconds
+    if ($TechType -eq 'crash') { return $new.id }
     $seen = Wait-Until { Test-Loaded $other $new.id } -TimeoutSeconds 15
     Assert-True ([bool]$seen) "$other has the $TechType $($new.id)"
     $new.id
@@ -475,7 +478,8 @@ function New-CreatureNearSeamoth {
         Start-Sleep -Seconds 2
         $id = New-Creature $Simulator $TechType -Distance 10
     }
-    Invoke-Bridge $Simulator "set $id Creature.Hunger.Value 0.6" -AllowError | Out-Null
+    # Hungry enough to attack, except a crash fish: the case detonates it itself before it goes for anything
+    if ($TechType -ne 'crash') { Invoke-Bridge $Simulator "set $id Creature.Hunger.Value 0.6" -AllowError | Out-Null }
     Show-Facts $Simulator $TechType $id
     $id
 }
