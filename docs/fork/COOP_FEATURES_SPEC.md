@@ -1021,37 +1021,99 @@ fire puts the player down like any other damage (decided 2026-11-03, §11).
 - **Not verified:** a real mouse click (windowed); fires doused by a crew member's suppression (no fire in the test);
   the decoy is a local object in each game, not a synced entity (unchanged).
 
-### T5: Seamoth hitch-a-ride
+### T5: Seamoth hitch-a-ride — done 2026-11-03 (branch `feat/4-t5-hitch-a-ride`)
 - **The game has no towing.**
   - Vehicles attach the pilot through `EnterLockedMode`, which makes the game treat the player as not underwater
     (`game:Player.cs:1859-1862`), so no air is used. **Don't reuse it.**
-- **Design:**
-  - **Hitcher's client:**
-    - stays in Normal mode, so air drains;
-    - `playerController.SetEnabled(false)`;
-    - parents to a handle object we create on the Seamoth hull (no handle in the prefab, H);
-    - the body is kinematic and ignores collisions with the vehicle;
-    - stops sending `PlayerMovement`.
-  - **Packets:** `PlayerHitched(vehicleId, handle)` / `PlayerUnhitched(position)`.
-  - **Pilot's client:** attaches the partner's body to the handle (`RemotePlayer.Attach`, `RemotePlayer.cs:128`).
-  - **Server:** keeps the hitch state for late joiners; it isn't saved.
-  - **The hitcher lets go on:**
-    - the Exit key;
-    - being downed;
-    - the vehicle being destroyed: detach in a Prefix in `Vehicle_OnKill_Patch`, or the attached player is destroyed
-      with it (`game:Vehicle.cs:752`);
-    - docking starting (`VehicleDockingBay.DockVehicle`, `:233`);
-    - the pilot getting out.
-  - **Seamoth only (decided 2026-11-02).** No Prawn suit hitching.
-- **Risks:**
-  - physics fighting;
-  - terrain clipping;
-  - world streaming while being dragged;
-  - doubled interpolation lag on the pilot's screen (`MovementReplicator.cs:12`).
-- **Tests:**
-  - L2: hitch relay, join payload, release position.
-  - L3: hitch, drive 200 m, air drains, release, dock-release, destroy-release.
-- **Size:** L. Do it last.
+- **Design (as specified):** the hitcher stays in Normal mode with the motor off and hangs on a handle on the hull;
+  packets `PlayerHitched` / `PlayerUnhitched`; the other games hang the body on the same handle; the server keeps the
+  hitch for late joiners, unsaved; let go on the Exit key, going down, the vehicle destroyed, docking, the pilot out.
+  **Seamoth only (decided 2026-11-02).**
+- **Risks named before:** physics fighting, terrain clipping, world streaming while dragged, doubled interpolation lag.
+- **What was built:**
+  - **Grab on:** the hull of a Seamoth a partner pilots offers "Hold on" (hand icon, interact button; subscript "Ride
+    along outside: your air keeps draining, no tools", en and de) instead of "Enter", which the partner's lock refuses
+    anyway: Prefix on `Vehicle.OnHandHover` (new), a branch at the top of `Vehicle_OnHandClick_Patch` before the lock
+    request. Offered only when the option is on, it's a Seamoth, not docked, this game has a partner as its pilot
+    (`RemotePlayer.Vehicle`), and the player is up, in Normal mode and not holding on already. The click asks the server
+    (`PlayerHitched(vehicle)`, resent at most every 3 s) and the game grabs on only when the answer comes, so a refusal
+    needs no undo. Not a `PartnerAction` on the pilot's body: that body sits inside the hull's colliders.
+  - **The hitcher's game** (`SeamothHitch`, driven by `SeamothHitchDriver`): held item put away, quick slots ignored,
+    `Player.IsFreeToInteract` false (the T1 Postfix also tests the hitch: no tools, no hand targets), the motor off
+    (`playerController.SetEnabled(false)`; verified in game code: `UnderwaterMotor.SetEnabled(false)` makes the body
+    kinematic and turns `detectCollisions` off, so nothing fights the Seamoth or snags on terrain). Mode stays Normal,
+    so `UpdateIsUnderwater` uses the position and air drains at the depth's rate. **Deviation:** the player isn't
+    parented to the handle; `LateUpdate` puts it on the handle every frame, after this game's copy of the Seamoth moved.
+    A Seamoth destroyed in this game can't take the local player with it, and the camera's rotation stays free (no
+    `ResetCamera` needed). "Let go" (Exit button, `HandReticle` Use line) is shown while holding on.
+  - **Let go** (game side, checked every frame): the Exit key (`GameInput.GetButtonDown(Exit)` and the PDA not in use,
+    as `Bench` does), going down (`RescueWindow.GoDown` releases first, so T1's input lock is the one a revive undoes),
+    the Seamoth gone or dead, docked, or docking (`VehicleDocking` packet), the player dead, in another mode or a
+    cinematic, or no pilot for 1.5 s. The game sends `PlayerUnhitched(position)`. Releasing gives the motor and quick
+    slots back unless the player is down (T1 keeps them locked) or dead (the respawn does it).
+  - **The other games** (`RemotePlayer.SetHitched`): the body is attached to the same handle (a child GameObject
+    `NitroxHitchHandle` created on first use at a fixed local pose, so nothing about it is sent), kinematic like a
+    pilot's body; its collider is a trigger, so it can't push the Seamoth. Movement packets only update where it looks
+    while it hangs there. It isn't a cinematic (R1b's note): the animator keeps running and the lock backstop doesn't
+    touch it. Let go: off the handle, placed where the hitcher's game let go. `ResetStates` lets go too, so death,
+    disconnect, `Vehicle_OnKill_Patch` and `EntityDestroyedProcessor.DestroyVehicle` (both reset the players under a
+    destroyed vehicle) take the body off before the Seamoth is destroyed. The pilot's game also lets go of the body when
+    its docking starts (`VehicleDockingBay_OnTriggerEnter` Postfix), so the bay doesn't pull it in.
+  - **Server** (`HitchService`, in memory): grants a hitch if the option is on, the sender is up and pilots nothing,
+    the vehicle is a Seamoth that another online player pilots (`PlayerContext.DrivingVehicle`), nobody holds on to it
+    yet, and the sender is within 8 m of it by the server's positions; then `PlayerHitched` to everyone, the hitcher's
+    game included. It ends hitches itself and tells everyone: the pilot gets out (`VehicleOnPilotModeChangedProcessor`;
+    this also covers T1's ejected pilot), leaves the game (`ISessionCleaner`), the Seamoth docks
+    (`VehicleDockingProcessor`) or is destroyed (`EntityDestroyedPacketProcessor`); the hitcher leaving just forgets
+    it. The hitcher's own `PlayerUnhitched` is relayed to the others only if the server had them holding on, and sets
+    the server's position. A joiner gets one `PlayerHitched` per hitch after the join (`JoiningManager`, after T1's
+    replay).
+  - **Deviation: the hitcher keeps sending `PlayerMovement`** (the spec said stop). Its position is where its own copy
+    of the Seamoth carries it, so the server always knows where the hitcher is: the partner check (T1/T2/T3), D3's
+    distress pulse and the rejoin position stay right, and a server-side release has a position to send. The other
+    games ignore the position while the body hangs on the handle.
+  - Option `SeamothHitch` (default true) in `server.cfg`, sent in `CoopSettings`.
+- **Findings (windowless, 2026-11-03):**
+  - **No doubled lag:** the body rides the Seamoth as each game has it, so on the pilot's screen it sits on the
+    handle in every frame (0.000 m over 3032 frames of a 209 m drive). In the hitcher's own game it is on the handle in
+    every sampled frame too (3011 frames). Where the two games have the hitcher differs by the Seamoth's own
+    replication delay: 2–3 m while driving at about 11 m/s, 0.3 m once stopped.
+  - **No physics fighting, no clipping problems seen** on the 209 m drive over the Grassy Plateaus (real Seamoth
+    physics, `input move`), and streaming kept up (the hitcher's game loaded the cells along the way).
+  - **Air:** 45 → 21 in 22 s while holding on at about 45 m (shallow class, 1/s plus the start).
+  - **Handle pose** (measured): the Seamoth's left pod collider ends about 1.4 m from its origin; the handle is at
+    (-1.9, 0.1, -0.3), the body 1.93 m from the origin. How that looks on screen is unchecked.
+  - **The pilot's state in the partner's game can be stale** (seen once, not reproduced): right after a Seamoth docked
+    in a Cyclops, Alice teleported out and got into a new Seamoth; Bob's game didn't have her as that Seamoth's pilot,
+    so the hull offered "Enter" (refused by the lock) instead of "Hold on". Waiting for the docking cinematic to end
+    before the next step made it go away in three runs. Suspected (H): a late `PlayerMovement` (unreliable channel)
+    processed after `VehicleOnPilotModeChanged` runs `RemotePlayer.UpdatePosition`, whose `SetVehicle(null)` drops the
+    pilot. That is upstream behaviour, not T5's; it would also hide the pilot's seated body. Left as is.
+  - The Exit key doesn't get a pilot out of the Seamoth in a windowless game (the scenario uses `ToNormalMode`); it
+    does release the hitcher.
+- **Verified:**
+  - L2 `SeamothHitchTest` (3 tests): granted to everyone (the hitcher's game included, the server's sender id) only for
+    a Seamoth another player pilots, within 8 m, one hitcher; refused for 20 m away, the pilot herself, a Cyclops, an
+    unknown id, a downed player, the option off, nobody piloting. A late joiner gets the hitch (and the pilot through
+    `DrivingVehicle`); the hitcher's let-go is relayed with its position, not echoed, sets the server's position, isn't
+    relayed twice; a later joiner sees none. Released by the server to everyone at the hitcher's position when the pilot
+    gets out, the Seamoth docks, is destroyed, the pilot leaves; the hitcher leaving clears it. **All 3 fail without the
+    two server processors** (the default processor relays the request to the others and never to the hitcher).
+    `CoopPlumbingTest` checks the option reaches the game; `EntityDestroyedPacketProcessorTest` updated.
+  - L3 windowless `tools/scenarios/T5-HitchARide.ps1` **PASS (72 checks)**: "hold on" offered on the hull, a GUIHand
+    click holds on; Normal mode, motor off, no interaction, underwater; on the handle in both games; a 209 m drive
+    (per-frame recordings in both games, above), air drains, no Seamoth position desync; Exit key → let go in both games,
+    motor and interaction back, the body where he let go; pilot out → let go; docking in a Cyclops → let go before the
+    bay, not in the Cyclops; a new Seamoth destroyed → let go, Bob's player and body survive, Alice too; a new Seamoth,
+    500 damage → down (T1) and let go, motor stays locked by T1. **Negative control** (the option off by default, i.e.
+    no hitch anywhere): 21 of 72 FAIL (no offer, never holds on, stays behind on the drive, no release reasons).
+  - Regression windowless on this branch: T1 PASS (73), S6 PASS (14, `-Cycles 6 -DockEvery 2`, 3 docks).
+- **Not verified:** anything windowed: how the body looks on the hull (pose, which way it faces; the remote body
+  takes the Seamoth's orientation, the hitcher's own view doesn't turn with it), the reticle lines on screen, a real
+  E key. A late joiner seeing a hitch in game (L2 only). Creatures going for a hitcher (code-read: the body keeps its
+  `EcoTarget`s and the local player is a normal target). Riding through the surface (the hitcher would breathe there
+  as any swimmer) or into a base moonpool (code path as the Cyclops bay: `VehicleDockingBay`). Riding while the
+  partner's game holds a stale pilot state (above). Two hitchers (refused: one per Seamoth).
 
 ---
 
@@ -2317,3 +2379,4 @@ prices, "keeping it scary").
 | 2026-11-03 | G1 + G2 | Done: the gun terminal and the rocket launch wait for both players' clicks (`ALL_READY`), each game plays its own cinematic / launches its own player from its held click. Gun: Prefix on `PrecursorDisableGunTerminal.OnHandClick` only when cured (denied path ungated), `Cancel` on every `OnTerminalAreaExit`. Rocket: Prefix on `LaunchRocket.OnHandClick` before `SetLaunchStarted` (transpiler unchanged, delta -8); the rule gets the cockpit box of the server's `RocketBase` entity (measured 35.2 m above the rocket's root, ±7/±6/±7 m), so a click only counts while aboard; new server `RocketLaunchProcessor` relays the launch only after the gate started. Texts `Nitrox_StoryGateGun*`, `Nitrox_StoryGateRocket*` (en/de) | L1 `StoryGatesTest`; L2 `GunAndRocketGateTest` (6 tests; the no-relay test fails without the processor); windowless `G1-GunAndRocketTogether.ps1` PASS 29, negative control 6 FAIL (4 G1, 2 G2). Not driven: preflight checks (`forcerocketready`), the credits; not checked windowed |
 | 2026-11-03 | B1 (bleeders) / FIX_SPEC S15d | A bleeder latches onto the partner too: attach on the partner's body in the simulating game, suck relayed with the bleeder as dealer, lets go in a base, a vehicle or when downed; the attach is mirrored in the other games (arms fight it, hits kill it for both). Fixed a copy marking the partner's own attach target occupied for good. README rows updated | Windowless `S15d-BleederOnPartner.ps1` PASS (52 checks); negative control 21 of 52 FAIL; full test suite green. Windowed look and lock hand-over while attached not checked |
 | 2026-11-03 | R1b | Done: upstream #2859 merged, then: hatch use keyed on the player name (server adds the sender only; old saves load); #2859's `InCinematic` folded into `RemotePlayer.IsPoseLocked` (read by the animation controller, not assigned); its arm writes through `SetArmState` (own states held back during a cinematic, replayed after); lock lifecycle (only the cinematic patches' own locks given back, bed side kept until getting up, no lock under a Cyclops/base/vehicle/docking bay/creature or for blacklisted cinematics, only the local player's cinematics); bed: no local time skip, late joiner gets bed-side locks; bench: no sit sent when refused, seat from movement. Findings: session ids don't survive a save; as merged the helm, docking and intro would compete for locks; the copy sat 1.2 m low. README row | L1 save/load (fails on session ids) + old save; L2 `EscapePodHatchUseTest`, `CinematicLockTest` (each fails without its fix); windowless `R1b-SeeEachOtherSit.ps1` PASS (41 checks), negative control on `coop`: 14 of 40 fail; S3, T1, T4, S6 PASS. `dotnet test` 510 pass. Not windowed: poses, seat height, first-use pod scenes |
+| 2026-11-03 | T5 | Done: hold on to the hull of a Seamoth the partner pilots ("Hold on" on the hull, the server grants it), ride along outside as a swimmer (Normal mode, motor off, air drains, no tools), let go by the Exit key, when down, when the pilot gets out or leaves, when it docks or is destroyed. The hitcher is put on a hull handle every frame (not parented) and keeps sending movement; the other games hang the body on the same handle (no doubled lag). Server keeps hitches in memory for late joiners. Option `SeamothHitch` (true). README row added. Seen once: the partner's game can lose the pilot state after a dock (H, upstream movement race) | L2 `SeamothHitchTest` (3, fail without the server processors); windowless `T5-HitchARide.ps1` PASS (72 checks; 209 m drive, per-frame on the handle in both games); negative control (switch off) 21 of 72 FAIL; T1 (73) and S6 (14) still pass; full suite green. Windowed look not checked |

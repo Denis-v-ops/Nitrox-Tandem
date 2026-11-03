@@ -36,8 +36,9 @@ namespace NitroxClient.GameLogic;
 public sealed class SeamothHitch
 {
     /// <summary>
-    ///     Where the hitcher hangs, in the Seamoth's space: on the left side of the hull, beside the cockpit. (H) measured
-    ///     on the rig: the hull's colliders end about 1.4 m to the side of the Seamoth's origin.
+    ///     Where the hitcher hangs, in the Seamoth's space: beside the left pod, level with the cockpit. Measured on the rig
+    ///     (2026-11-03): the pod's capsule (radius 0.32) runs along x = ±1.07 below the origin, so the hull ends about 1.4 m
+    ///     to the side; the handle is half a metre further out. How it looks on screen wasn't checked (H).
     /// </summary>
     public static readonly Vector3 HandleLocalPosition = new(-1.9f, 0.1f, -0.3f);
 
