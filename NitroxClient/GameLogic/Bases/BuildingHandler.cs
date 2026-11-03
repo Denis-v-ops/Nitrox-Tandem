@@ -154,6 +154,8 @@ public partial class BuildingHandler : MonoBehaviour
                 yield return BuildingPostSpawner.ApplyPostSpawner(constructable.gameObject, modifyConstructedAmount.GhostId);
                 yield break;
             }
+            // The partner's builder beams at it (COOP_FEATURES_SPEC R2c)
+            RemoteToolEffects.NoteRemoteConstruction(constructable);
             constructable.SetState(false, false);
             constructable.constructedAmount = modifyConstructedAmount.ConstructedAmount;
             yield return constructable.ProgressDeconstruction();
