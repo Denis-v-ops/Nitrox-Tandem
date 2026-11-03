@@ -74,6 +74,8 @@ function Get-BabyField {
 # A cure ball from one of this game's babies, as its burp animation would make it; returns the ball's position.
 function New-CureBall {
     param([string]$Player, [string]$BabyId)
+    # Only a baby that drops enzymes plays the burp animation whose events make the ball
+    if ((Get-BabyField $Player $BabyId 'DropEnzymes.enabled') -ne 'true') { return $null }
     Invoke-Bridge $Player "call $BabyId DropEnzymes.SpawnCureBall" | Out-Null
     Start-Sleep -Seconds 3
     Invoke-Bridge $Player "call $BabyId DropEnzymes.ReleaseSpawnedCureBall" | Out-Null
@@ -141,7 +143,12 @@ try {
 
     Step 'The visit ends: Bob''s babies leave and start dropping cure balls on his game too' {
         foreach ($player in $A, $B) {
-            foreach ($id in $script:babyIds) { Invoke-Bridge $player "call $id SeaEmperorBabyCinematicController.OnCinematicModeEnd" | Out-Null }
+            # The visit's end is an animation event of the visit: only a baby that plays its visit gets it
+            foreach ($id in $script:babyIds) {
+                if ((Get-BabyField $player $id 'SeaEmperorBabyCinematicController.currentCinematic') -match '\w') {
+                    Invoke-Bridge $player "call $id SeaEmperorBabyCinematicController.OnCinematicModeEnd" | Out-Null
+                }
+            }
         }
         foreach ($player in $A, $B) {
             $dropping = @($script:babyIds | Where-Object { (Get-BabyField $player $_ 'DropEnzymes.enabled') -eq 'true' })
