@@ -158,27 +158,30 @@ public class Bleeders
         BleederAttachTarget target = GetTarget(packet.PlayerId, out LiveMixin targetLiveMixin);
         bool simulated = simulationOwnership.HasAnyLockType(packet.BleederId);
 
-        using (PacketSuppressor<BleederAttachChanged>.Suppress())
+        if (!packet.Attached)
         {
-            if (!packet.Attached)
+            if (!target || attachAndSuck.currentTarget != target)
             {
-                // The simulating game let go, or (when we simulate it) the latched player knocked it off or can't hold it
-                if (target && attachAndSuck.currentTarget == target)
-                {
-                    attachAndSuck.SetDetached();
-                    if (!simulated)
-                    {
-                        attachAndSuck.active = false;
-                    }
-                }
                 return;
             }
+            if (simulated)
+            {
+                // The latched player knocked it off or can't hold it: let go, and tell everyone (SetDetached's patch)
+                attachAndSuck.SetDetached();
+                return;
+            }
+            // The simulating game let go
+            using (PacketSuppressor<BleederAttachChanged>.Suppress())
+            {
+                attachAndSuck.SetDetached();
+            }
+            return;
+        }
 
-            // An attach sent before the lock came to us: this game decides now
-            if (simulated || !target || attachAndSuck.currentTarget == target)
-            {
-                return;
-            }
+        // An attach sent before the lock came to us: this game decides now
+        if (simulated || !target || attachAndSuck.currentTarget == target)
+        {
+            return;
         }
 
         if (target == LocalTarget && (!CanHoldLocalPlayer() || (target.occupied && target.bleeder && target.bleeder != attachAndSuck.bleeder)))
