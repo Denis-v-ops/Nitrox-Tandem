@@ -10,6 +10,9 @@
     Then Bob's StoryGoalCustomEventHandler.gunDisabled must be true, which is what LaunchRocket.OnHandClick checks
     (gunDisabled || forcedRocketReady). Not covered: clicking a real rocket (none is built in a fresh world).
 
+    Runs with StoryGatesEnabled=False (written into the save's server.cfg), the switch that lets one player disable the
+    gun alone. With story gates on, both players must use the terminal: G1-GunAndRocketTogether.ps1 covers that.
+
     Starts a fresh world and two games (opens windows), unless -NoLaunch. Needs a Debug build (dual-client.ps1 -NoBuild
     is used, so build first).
 #>
@@ -23,7 +26,13 @@ $terminal = 'find:PrecursorDisableGunTerminal'
 $terminalRoom = '372.9 -72.7 1078.4'
 
 try {
-    Start-ScenarioGames -Players $A, $B -NoLaunch:$NoLaunch
+    if (-not $NoLaunch) {
+        $saveDir = Join-Path (Get-NitroxRig).SavesDir 'bridge-scenario'
+        if (Test-Path $saveDir) { Remove-Item -Recurse -Force $saveDir }
+        New-Item -ItemType Directory -Force $saveDir | Out-Null
+        Set-Content -Path (Join-Path $saveDir 'server.cfg') -Value 'StoryGatesEnabled=False' -Encoding UTF8
+    }
+    Start-ScenarioGames -Players $A, $B -NoLaunch:$NoLaunch -KeepSave
 
     Step 'Both players go to the gun terminal' {
         Invoke-Bridge $A "teleport $terminalRoom" | Out-Null
