@@ -126,13 +126,25 @@ public class StoryGates(IPacketSender packetSender, LocalPlayer localPlayer)
         }
         if (status.ReadyNames?.Contains(localName, comparer) == true)
         {
-            string template = status.Kind == StoryGateKind.DRIVE_CORE ? translate("Nitrox_StoryGateDriveCoreWait") : translate("Nitrox_StoryGateWaitingFor");
+            string template = translate(status.Kind switch
+            {
+                StoryGateKind.DRIVE_CORE => "Nitrox_StoryGateDriveCoreWait",
+                StoryGateKind.DISABLE_GUN => "Nitrox_StoryGateGunWait",
+                StoryGateKind.ROCKET_LAUNCH => "Nitrox_StoryGateRocketWait",
+                _ => "Nitrox_StoryGateWaitingFor"
+            });
             return template.Replace("{PLAYERS}", missing);
         }
         if (status.MissingNames?.Contains(localName, comparer) == true)
         {
             string ready = string.Join(", ", status.ReadyNames ?? []);
-            string template = status.Kind == StoryGateKind.DRIVE_CORE ? translate("Nitrox_StoryGateDriveCoreJoin") : translate("Nitrox_StoryGatePartnerReady");
+            string template = translate(status.Kind switch
+            {
+                StoryGateKind.DRIVE_CORE => "Nitrox_StoryGateDriveCoreJoin",
+                StoryGateKind.DISABLE_GUN => "Nitrox_StoryGateGunJoin",
+                StoryGateKind.ROCKET_LAUNCH => "Nitrox_StoryGateRocketJoin",
+                _ => "Nitrox_StoryGatePartnerReady"
+            });
             return template.Replace("{PLAYERS}", ready);
         }
         return "";

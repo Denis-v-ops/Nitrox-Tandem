@@ -43,16 +43,25 @@ namespace NitroxClient.GameLogic
             RocketLaunch(NitroxEntity.RequireObjectFrom(rocketId));
         }
 
-        public void RocketLaunch(GameObject rocketObject)
+        /// <summary>
+        ///     Whether the local player is in the rocket's cockpit: within 5.55 m (pre-calculated radius) of a point in the
+        ///     middle of the rocket's last stage, not underwater and not in a sub.
+        /// </summary>
+        public static bool IsAboard(GameObject rocketObject)
         {
             GameObject sphereCenter = rocketObject.FindChild("AtmosphereVolume");
+            return sphereCenter &&
+                   !Player.main.IsUnderwater() &&
+                   !Player.main.currentSub &&
+                   NitroxVector3.Distance(Player.main.transform.position.ToDto(), sphereCenter.transform.position.ToDto()) <= 5.55f;
+        }
+
+        public void RocketLaunch(GameObject rocketObject)
+        {
             LaunchRocket launchRocket = rocketObject.RequireComponentInChildren<LaunchRocket>(true);
 
-            // Only launch if you're in the rocket so
-            // verify if the distance to a centered point in the middle of the stage 3 of the rocket is inferior to 5.55 (pre-calculated radius)
-            if (Player.main.IsUnderwater() ||
-                Player.main.currentSub ||
-                NitroxVector3.Distance(Player.main.transform.position.ToDto(), sphereCenter.transform.position.ToDto()) > 5.55f)
+            // Only launch if you're in the rocket
+            if (!IsAboard(rocketObject))
             {
                 return;
             }

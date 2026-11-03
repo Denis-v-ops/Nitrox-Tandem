@@ -139,5 +139,9 @@
     "Nitrox_Waiting": "Warte in der Beitrittswarteschlange…",
     "Nitrox_WaitingPassword": "Warte auf Eingabe des Server Passworts…",
     "Nitrox_WaitingUserInput": "Warte auf Nutzereingaben…",
-    "Nitrox_WorldSettling": "Warte auf das Laden der Welt…"
+    "Nitrox_WorldSettling": "Warte auf das Laden der Welt…",
+    "Nitrox_StoryGateGunWait": "Warte, bis auch {PLAYERS} das Terminal benutzt",
+    "Nitrox_StoryGateGunJoin": "{PLAYERS} steht am Terminal der Waffe: benutzt es gemeinsam, um die Waffe abzuschalten",
+    "Nitrox_StoryGateRocketWait": "Warte, bis {PLAYERS} im Cockpit ist und auf Start drückt",
+    "Nitrox_StoryGateRocketJoin": "{PLAYERS} ist startbereit: steig ins Cockpit der Rakete und drück auch auf Start"
 }
