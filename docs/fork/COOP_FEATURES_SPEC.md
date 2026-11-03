@@ -1881,8 +1881,9 @@ sets ever reaches them.
       (`weldSound`) plays; the cutter's light goes on and flickers as in `LaserCutter.RandomizeIntensity`.
     - **Sounds:** `tools/scanner/scan_loop`, `tools/builder/loop` and `tools/welder/weld_loop` aren't in
       `SoundWhitelist_Subnautica.csv`, so they weren't relayed, and playing them on the copy sends nothing (the FMOD
-      patches only send whitelisted paths). `tools/lasercutter/cut_loop` and `cut_end` are whitelisted and already relayed
-      on the cutter's entity: the copy doesn't play them.
+      patches only send whitelisted paths). `tools/lasercutter/cut_loop` and `cut_end` are whitelisted; `cut_loop` is already
+      relayed on the cutter's entity (`FMODASRPlayer.Play` → `PlayUI`, patched), so the copy doesn't play either. Whether
+      `cut_end` (`Utils.PlayEnvSound`) is relayed wasn't traced (H).
   - **Findings:**
     - `ScannerTool.animator` and `BuilderTool.animator` are null in the prefabs (seen windowless, both games), so the game
       never animates those tools' own nozzles from code; nothing to sync there.
@@ -1911,7 +1912,7 @@ sets ever reaches them.
     corridor ghost frame by frame (`BuilderTool.Construct`), both beams on, the build loop playing, the target that ghost,
     and all off after; the welder's sparks (at the tip) and weld loop, and the cutter's sparks, light and no cut loop of
     its own, two rounds each; nothing after the tool is put away. Per-step `diff`: only the usual drifting scrap metal and
-    a battery charge, also without the fix. **Negative control** (component not added): 36 of 76 checks fail (every
+    a battery charge, also without the fix. **Negative control** (component not added): 36 of 76 checks fail (counted from the run's failure list) (every
     effect check; the "stays off" checks pass). `dotnet test` 532 pass.
   - **Not verified:** how any of it looks or sounds (windowless renders and plays nothing; the loops' 3D attenuation on
     the copy is FMOD's own, H); a real button press on the sender (windowless `using_tool` can't be produced, R2b); a

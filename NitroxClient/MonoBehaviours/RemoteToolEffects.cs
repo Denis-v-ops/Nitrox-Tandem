@@ -176,6 +176,11 @@ public class RemoteToolEffects : MonoBehaviour
         PlayerTool? tool = playingOn;
         playingOn = null;
         playingKind = RemoteToolKind.NONE;
+        if (tool is BuilderTool builderTool)
+        {
+            // Also when the builder was destroyed. Its own LateUpdate then turns the beams and the sound off
+            buildTargets.Remove(builderTool);
+        }
         if (!tool)
         {
             return;
@@ -185,10 +190,6 @@ public class RemoteToolEffects : MonoBehaviour
             case ScannerTool scanner:
                 scanner.scanBeam.SetActive(false);
                 scanner.scanSound.Stop();
-                break;
-            case BuilderTool builder:
-                // Its own LateUpdate then turns the beams and the sound off
-                buildTargets.Remove(builder);
                 break;
             case Welder welder:
                 if (welder.fxControl)
