@@ -135,10 +135,10 @@ public class RemoteToolEffects : MonoBehaviour
                 welder.weldSound.Play();
                 break;
             case LaserCutter cutter:
+                laserIntensity = cutter.fxLight.intensity;
                 if (cutter.fxControl && MiscSettings.flashes)
                 {
                     cutter.fxControl.Play(vfxIndex);
-                    laserIntensity = cutter.fxLight.intensity;
                     cutter.fxLight.enabled = true;
                     nextLaserFlickerTime = 0;
                 }
