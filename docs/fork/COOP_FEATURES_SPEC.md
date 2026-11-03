@@ -444,7 +444,7 @@ Without the no-oxygen cheat a player drowns down there within a minute (seen). R
 - **Texts** (en/de): `Nitrox_StoryGateSeaEmperorWait` "Waiting for *name* to join you on the platform…",
   `..SeaEmperorJoin` "*name* is waiting for you on the aquarium platform".
 - **Findings:** the Emperor's animation events do fire in windowless games (its animator is `AlwaysAnimate`): the dialog
-  goal completed about 25 s after the trigger. **Today (before G3):** the first player on the platform starts the
+  goal completed about 27 s after the trigger. **Today (before G3):** the first player on the platform starts the
   Emperor alone, and the partner's game plays the Emperor's words wherever the partner is (Bob heard
   `Precursor_Prison_Aquarium_EmperorLog1` at the escape pod): the goal is relayed and the PDA line plays. With the gate
   both are on the platform when it plays. While held, the invisible walls (`precursor_prison_walls`) stay as they are
