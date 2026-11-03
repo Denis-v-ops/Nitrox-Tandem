@@ -51,6 +51,10 @@ public sealed class EntityDestroyedProcessor(Entities entities) : IClientPacketP
             {
                 DestroyCyclopsDamagePoint(cyclopsDamagePoint);
             }
+            else if (gameObject.TryGetComponent(out Warper warper))
+            {
+                DestroyWarper(warper);
+            }
             else
             {
                 Entities.DestroyObject(gameObject);
@@ -119,5 +123,26 @@ public sealed class EntityDestroyedProcessor(Entities entities) : IClientPacketP
     private void DestroyCyclopsDamagePoint(CyclopsDamagePoint cyclopsDamagePoint)
     {
         cyclopsDamagePoint.liveMixin.AddHealth(999);
+    }
+
+    /// <summary>
+    ///     COOP_FEATURES_SPEC B1: a living warper warped out in the game that simulates it (Warper_EndWarpOut_Patch). It warps
+    ///     out here too: the same animation and effect, and its spawner (if it is ours, see WarperEntitySpawner) restarts its
+    ///     timer as it does in that game. A dead one (its corpse removed) is just destroyed.
+    /// </summary>
+    private static void DestroyWarper(Warper warper)
+    {
+        if (warper.isActiveAndEnabled && warper.liveMixin && warper.liveMixin.IsAlive())
+        {
+            // Destroys it after the animation (Invoke of EndWarpOut); we don't simulate it, so that sends nothing
+            warper.WarpOut();
+            return;
+        }
+        WarperSpawner spawner = warper.spawner.AliveOrNull();
+        if (spawner)
+        {
+            spawner.OnWarpOut();
+        }
+        Entities.DestroyObject(warper.gameObject);
     }
 }
