@@ -173,6 +173,8 @@ public class RemotePlayer : INitroxPlayer
         vitals = playerVitalsManager.CreateOrFindForPlayer(this);
         RefreshVitalsVisibility();
         Body.AddComponent<PartnerSignal>().Initialize(this);
+        // The held tool's beam, sparks and sound (COOP_FEATURES_SPEC R2c)
+        Body.AddComponent<RemoteToolEffects>().Initialize(this);
 
         PlayerDisconnectEvent.AddHandler(Body, _ =>
         {

@@ -1858,10 +1858,66 @@ sets ever reaches them.
     poses look (bones don't move windowless), a fall onto land (`diving_land`), the two-handed grip of a tool that has
     hand IK targets, and a late joiner arriving while the partner has a tool out (the replay sends `holding_tool` before
     the held item; `SetArmState` recomputes the arms on either, from code). Needs a windowed run.
-- **R2c: Tool effects (M–L).** Each tool plays its beam or sparks only for the local user (`game:BuilderTool.cs:362`,
-  `Welder.cs:61`, `LaserCutter.cs:100`, `ScannerTool.cs:146`, the Seaglide propeller `Seaglide.cs:110-117`). Play them on
-  the partner's body when R2b's `using_tool` turns on. Scanner, builder and welder first; the laser cutter beam also
-  fixes #2463.
+- **R2c: Tool effects (M–L)** — done 2026-11-03 (branch `feat/4-r2c-tool-effects`). Each tool plays its beam or sparks
+  only for the local user (`game:BuilderTool.cs:362`, `Welder.cs:61`, `LaserCutter.cs:100`, `ScannerTool.cs:146`, the
+  Seaglide propeller `Seaglide.cs:110-117`). Play them on the partner's body when R2b's `using_tool` turns on.
+  - **What was built:** `RemoteToolEffects`, a component on the partner's body (one line in `RemotePlayer`; separate from
+    B6's cannon beams). Each frame it reads the body's animator, i.e. what `SetArmState` wrote, and plays the effects of
+    the tool plugged into the hand while `holding_tool` and `using_tool` are on (the scanner also on `using_tool_alt`),
+    never while a cinematic holds the body (R1b keeps a `using_tool` from before the cinematic in the animator). The
+    decision is pure (`RemoteToolEffectRules`); it stops the effects on the tool it started them on, also when the tool
+    is put away or swapped.
+    - **Scanner:** `scanBeam` on and the scan loop (`scanSound`). Not `ScannerTool.SetFXActive`: it also lays the scan
+      overlay on the *local* player's scan target. `LateUpdate` is behind `isDrawn`, so nothing turns them off.
+    - **Builder:** `BuilderTool.LateUpdate` is *not* behind `isDrawn`: on the partner's copy it runs every frame and
+      turns the beams and the build loop off unless its `constructable` is set, which only the local player's building
+      does. `BuilderTool_LateUpdate_Patch` (prefix) hands it the ghost the partner builds, and the game then draws the
+      beams to random construction points, the nozzles, the sound and the bar as for its own player. The ghost: the one
+      whose `ModifyConstructedAmount` from another game was applied last (`BuildingHandler.ProgressConstruction` notes it;
+      the sender throttles it to every 0.1 s while building, also while taking apart), within 1 s and 30 m (the builder's
+      reach). No such ghost, no beam (the sender also has none without a target).
+    - **Welder and laser cutter:** `fxControl.Play(index)` with the index from the partner's `is_underwater` (the game
+      reads the local player's), `StopAndDestroy(0)` to stop, only with `MiscSettings.flashes`. The welder's loop
+      (`weldSound`) plays; the cutter's light goes on and flickers as in `LaserCutter.RandomizeIntensity`.
+    - **Sounds:** `tools/scanner/scan_loop`, `tools/builder/loop` and `tools/welder/weld_loop` aren't in
+      `SoundWhitelist_Subnautica.csv`, so they weren't relayed, and playing them on the copy sends nothing (the FMOD
+      patches only send whitelisted paths). `tools/lasercutter/cut_loop` and `cut_end` are whitelisted; `cut_loop` is already
+      relayed on the cutter's entity (`FMODASRPlayer.Play` → `PlayUI`, patched), so the copy doesn't play either. Whether
+      `cut_end` (`Utils.PlayEnvSound`) is relayed wasn't traced (H).
+  - **Findings:**
+    - `ScannerTool.animator` and `BuilderTool.animator` are null in the prefabs (seen windowless, both games), so the game
+      never animates those tools' own nozzles from code; nothing to sync there.
+    - The welder's and cutter's effects are `spawnOnPlay`, `lateTime` and `fakeParent` emitters (`VFXFakeParent` on the
+      tool's `SparkEmit`): each play spawns a new instance, `StopAndDestroy` removes it. On the partner's copy the
+      instance sits at the tool's tip (measured 0 m), not at the world origin.
+    - Decision: the welder's sparks and the cutter's beam play while the partner holds the button, also with nothing in
+      front of them; the sender's game shows them only while it actually welds or cuts a target (`Welder.Weld`,
+      `LaserCutter.LaserCut`, from an animation event). Their sound already plays while the button is held, so the
+      partner hears the tool anyway; finding the target from the copy's aim isn't worth it for that.
+    - **#2463** (a ray from the world origin while cutting a sealed door) is *not* shown fixed: it is seen by the cutting
+      player, and windowless nothing renders. Suspect (H): `LaserCutObject.SetCutFxPosition` runs in every game that
+      receives the door's metadata (`SealedDoorMetadataProcessor` calls `ActivateFX`) and moves the *local* player's
+      `armsController.lookTargetTransform` to the door, and uses the local player to pick the door's front or back side.
+      Needs a windowed check.
+    - **Seaglide: not built.** It never sets `using_tool` (no `GetUsedToolThisFrame`); its `Update` isn't behind
+      `isDrawn` and recomputes `activeState` from `usingPlayer` and the local input every frame, and while active it
+      drains the battery (`UpdateEnergy`) and pushes `Player.main` (`FixedUpdate`, power glide). Spinning the copy's
+      propeller would need its own signal (held Seaglide + the body's speed) and a patch that keeps the copy from
+      draining the partner's battery. Its lights are already synced (`Seaglide_onLightsToggled_Patch`).
+  - **Verified:** L1 `RemoteToolEffectRulesTest` (each tool on `using_tool`, the self-scan for the scanner only, other
+    tools and a put-away tool play nothing, a cinematic stops them, the build target is the latest ghost within age and
+    reach). **L3 windowless `tools/scenarios/R2c-PartnerToolEffects.ps1` PASS (76 checks):** tool use driven on Alice's own
+    arms animator with her `ArmsController` off, as in R2b. On Bob's copy of her held tool: scanner beam and scan loop on
+    and off, the self-scan beam; with `using_tool` on and nothing built, no builder beam; while Alice's game builds a
+    corridor ghost frame by frame (`BuilderTool.Construct`), both beams on, the build loop playing, the target that ghost,
+    and all off after; the welder's sparks (at the tip) and weld loop, and the cutter's sparks, light and no cut loop of
+    its own, two rounds each; nothing after the tool is put away. Per-step `diff`: only the usual drifting scrap metal and
+    a battery charge, also without the fix. **Negative control** (component not added): 36 of 76 checks fail (counted from the run's failure list) (every
+    effect check; the "stays off" checks pass). `dotnet test` 532 pass.
+  - **Not verified:** how any of it looks or sounds (windowless renders and plays nothing; the loops' 3D attenuation on
+    the copy is FMOD's own, H); a real button press on the sender (windowless `using_tool` can't be produced, R2b); a
+    cinematic or the downed pose while a tool is in use (L1 only); a partner taking apart a finished piece (the same
+    packets, from code); three or more players building at once (each copy beams at the latest ghost in its reach, H).
 - **Covered elsewhere:** hatches, the escape-pod ladder, beds, benches and story cinematics come with R1b (#2859: the
   receiving side already exists, only the three senders are `#if false`). Death has no animation for the partner
   (cosmetic). Precursor teleporters show the partner snapping away (cosmetic).
@@ -2317,3 +2373,4 @@ prices, "keeping it scary").
 | 2026-11-03 | G1 + G2 | Done: the gun terminal and the rocket launch wait for both players' clicks (`ALL_READY`), each game plays its own cinematic / launches its own player from its held click. Gun: Prefix on `PrecursorDisableGunTerminal.OnHandClick` only when cured (denied path ungated), `Cancel` on every `OnTerminalAreaExit`. Rocket: Prefix on `LaunchRocket.OnHandClick` before `SetLaunchStarted` (transpiler unchanged, delta -8); the rule gets the cockpit box of the server's `RocketBase` entity (measured 35.2 m above the rocket's root, ±7/±6/±7 m), so a click only counts while aboard; new server `RocketLaunchProcessor` relays the launch only after the gate started. Texts `Nitrox_StoryGateGun*`, `Nitrox_StoryGateRocket*` (en/de) | L1 `StoryGatesTest`; L2 `GunAndRocketGateTest` (6 tests; the no-relay test fails without the processor); windowless `G1-GunAndRocketTogether.ps1` PASS 29, negative control 6 FAIL (4 G1, 2 G2). Not driven: preflight checks (`forcerocketready`), the credits; not checked windowed |
 | 2026-11-03 | B1 (bleeders) / FIX_SPEC S15d | A bleeder latches onto the partner too: attach on the partner's body in the simulating game, suck relayed with the bleeder as dealer, lets go in a base, a vehicle or when downed; the attach is mirrored in the other games (arms fight it, hits kill it for both). Fixed a copy marking the partner's own attach target occupied for good. README rows updated | Windowless `S15d-BleederOnPartner.ps1` PASS (52 checks); negative control 21 of 52 FAIL; full test suite green. Windowed look and lock hand-over while attached not checked |
 | 2026-11-03 | R1b | Done: upstream #2859 merged, then: hatch use keyed on the player name (server adds the sender only; old saves load); #2859's `InCinematic` folded into `RemotePlayer.IsPoseLocked` (read by the animation controller, not assigned); its arm writes through `SetArmState` (own states held back during a cinematic, replayed after); lock lifecycle (only the cinematic patches' own locks given back, bed side kept until getting up, no lock under a Cyclops/base/vehicle/docking bay/creature or for blacklisted cinematics, only the local player's cinematics); bed: no local time skip, late joiner gets bed-side locks; bench: no sit sent when refused, seat from movement. Findings: session ids don't survive a save; as merged the helm, docking and intro would compete for locks; the copy sat 1.2 m low. README row | L1 save/load (fails on session ids) + old save; L2 `EscapePodHatchUseTest`, `CinematicLockTest` (each fails without its fix); windowless `R1b-SeeEachOtherSit.ps1` PASS (41 checks), negative control on `coop`: 14 of 40 fail; S3, T1, T4, S6 PASS. `dotnet test` 510 pass. Not windowed: poses, seat height, first-use pod scenes |
+| 2026-11-03 | R2c | Done: the partner's held scanner, builder, welder and laser cutter play their beam, sparks and sound while the partner's `using_tool` is on (not during a cinematic): `RemoteToolEffects` on the body; the builder beams at the ghost the partner's game last progressed (prefix on `BuilderTool.LateUpdate`, which otherwise turns the copy's beams off every frame); the welder and cutter effects use the partner's underwater state; only non-relayed loops play (the cutter's is whitelisted). Findings: the scanner's and builder's tool animators are null in the prefabs; the sparks sit at the tool tip; #2463 not shown fixed (suspect `LaserCutObject` moving the local look target, H); Seaglide not built (drains the battery, no `using_tool`). README row | L1 `RemoteToolEffectRulesTest`; windowless `R2c-PartnerToolEffects.ps1` PASS (76 checks), negative control (component off): 36 of 76 fail. `dotnet test` 532 pass. Not verified: looks and sounds (windowed), a real button press, a cinematic during tool use, #2463 |
