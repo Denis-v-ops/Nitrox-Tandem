@@ -53,7 +53,8 @@ function Get-CopyAnim {
 
 function Test-CopyInCinematic {
     param([string]$Viewer, [string]$PlayerId)
-    (Invoke-Bridge $Viewer "get $PlayerId RemotePlayerIdentifier.RemotePlayer.InCinematic") -eq 'true'
+    # -AllowError: before R1b (the negative control) RemotePlayer has no InCinematic, which counts as not held
+    (Invoke-Bridge $Viewer "get $PlayerId RemotePlayerIdentifier.RemotePlayer.InCinematic" -AllowError) -eq 'true'
 }
 
 function Test-InCinematicMode { param([string]$Player) (Invoke-Bridge $Player 'get player Player.cinematicModeActive') -eq 'true' }
@@ -99,7 +100,15 @@ function New-Furniture {
     Invoke-Bridge $Player ('teleport ' + ($Spot -join ' ')) | Out-Null
     Invoke-Bridge $Player "call Player.main.SetCurrentSub $($S7.Base) true" | Out-Null
     $existing = @(Invoke-BridgeJson $Player 'find Constructable 40' | ForEach-Object { $_.id })
-    Invoke-Bridge $Player "call Builder.BeginAsync $TechType" | Out-Null
+    # Right after building the previous piece, BeginAsync sometimes makes no ghost (seen windowless): start it again
+    $ghost = $null
+    for ($attempt = 0; $attempt -lt 4 -and -not $ghost; $attempt++) {
+        Invoke-Bridge $Player 'call Builder.End' -AllowError | Out-Null
+        Start-Sleep -Milliseconds 500
+        Invoke-Bridge $Player "call Builder.BeginAsync $TechType" | Out-Null
+        $ghost = Wait-Until { (Invoke-Bridge $Player 'get Builder.ghostModel') -ne 'null' } -TimeoutSeconds 5 -IntervalSeconds 0.5
+    }
+    if (-not $ghost) { throw "$Player's builder shows no $TechType ghost" }
     # The ghost's turn (the mouse wheel in game), in degrees
     Invoke-Bridge $Player "set Builder.additiveRotation $Rotation" | Out-Null
     $placeable = $false
