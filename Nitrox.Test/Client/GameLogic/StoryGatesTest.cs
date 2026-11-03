@@ -47,7 +47,7 @@ public class StoryGatesTest
     [TestMethod]
     public void OtherGates_UseTheGenericTexts()
     {
-        StoryGateStatus status = new(StoryGateKind.HATCHING, ["Alice"], ["Bob"], false);
+        StoryGateStatus status = new(StoryGateKind.SUNBEAM_RADIO, ["Alice"], ["Bob"], false);
         StoryGates.FormatStatus(status, "Alice", english).Should().Be("Waiting for Bob…");
         StoryGates.FormatStatus(status, "Bob", english).Should().Be("Alice is waiting for you");
     }
