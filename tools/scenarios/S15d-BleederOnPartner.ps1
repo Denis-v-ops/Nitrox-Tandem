@@ -8,7 +8,8 @@
       - partner-AB: a bleeder touching Bob's body in Alice's game latches on there; Bob loses health (5 per suck, the
         bleeder as dealer), his game shows the copy on him and marks his own attach target (his arms fight it), the
         copy follows him when he moves; Bob hits it (ArmsController.OnToolBleederHitAnim, an animation event, called
-        through the bridge as windowless games don't fire them) until it dies, and it is gone from him in both games.
+        through the bridge as windowless games don't fire them) until it lets go (FleeOnDamage, in Alice's game since
+        MULTINAUGHTICA_SPEC M5), and it is gone from him in both games with the same, lower health.
       - vehicle-AB: latched onto Bob, Bob gets into a Seamoth: it lets go in both games, no more damage.
       - downed-AB: latched onto Bob, Bob goes down (COOP_FEATURES_SPEC T1): it lets go in both games. Last: Bob stays down.
       - stuck-target-B: Bob touches a free bleeder that Alice's game simulates (and that can't latch on there yet): his
@@ -241,18 +242,27 @@ try {
                 $distanceA = Get-Distance (Get-Position $A $id) (Get-Position $A $script:PlayerIds[$B])
                 Assert-True ($distanceA -lt 1.5 -and (Get-BleederTarget $A $id) -eq $B) "partner-AB : Alice's game: still on Bob's body after he moved ($([math]::Round($distanceA, 2)) m)"
 
-                # Knock it off: the fight animation's hit, until it dies
+                # Knock it off: the fight animation's hit, while it is on him. Since MULTINAUGHTICA_SPEC M5 Bob's hit is applied
+                # in Alice's game, which simulates the bleeder (her no-damage cheat would zero it), and her game runs its AI:
+                # past 4 damage FleeOnDamage (damageThreshold 4, read in game) makes it let go and flee, as in the game. A punch
+                # does 3 (Bleeder.fightDamage), its health is 10, so it lets go alive. Before M5 Bob's copy, which runs no AI,
+                # took every hit itself and died.
+                $max = Get-Number $A "$id LiveMixin.maxHealth"
+                Invoke-Bridge $A 'set NoDamageConsoleCommand.main.noDamageCheat false' | Out-Null
                 $hitsDealt = 0
-                while ($hitsDealt -lt 15 -and (Test-Loaded $B $id) -and (Get-Number $B "$id LiveMixin.health") -gt 0) {
+                while ($hitsDealt -lt 15 -and (Test-Loaded $B $id) -and (Get-Number $B "$id LiveMixin.health") -gt 0 -and (Get-LocalTargetState $B).hasBleeder) {
                     Invoke-Bridge $B 'call Player.main.armsController.OnToolBleederHitAnim null' | Out-Null
                     $hitsDealt++
                     Start-Sleep -Milliseconds 200
                 }
+                Invoke-Bridge $A 'set NoDamageConsoleCommand.main.noDamageCheat true' | Out-Null
                 Write-Host "    Bob hit it $hitsDealt times"
-                Assert-True ($hitsDealt -lt 15) "partner-AB : Bob's hits kill the bleeder in his game ($hitsDealt hits)"
-                $deadA = Wait-Until { if (-not (Test-Loaded $A $id) -or (Get-Number $A "$id LiveMixin.health") -le 0) { $true } } -TimeoutSeconds 5
-                Assert-True ([bool]$deadA) 'partner-AB : it is dead in Alice''s game too'
+                Assert-True ($hitsDealt -lt 15) "partner-AB : Bob's hits knock it off ($hitsDealt hits)"
                 Assert-LetGo 'partner-AB' $id 'knocked off'
+                $healthA = if (Test-Loaded $A $id) { Get-Number $A "$id LiveMixin.health" } else { 0 }
+                $healthB = Wait-Until { $h = if (Test-Loaded $B $id) { Get-Number $B "$id LiveMixin.health" } else { 0 }; if ([math]::Abs($h - $healthA) -lt 0.5) { "$h" } } -TimeoutSeconds 5 -IntervalSeconds 0.3
+                Assert-True ($healthA -lt $max - 0.5) "partner-AB : Bob's hits hurt it in Alice's game, which simulates it ($healthA of $max)"
+                Assert-True ($null -ne $healthB) "partner-AB : Bob's game shows the same health ($healthB, Alice's $healthA)"
             }
             finally {
                 Remove-Bleeder $id

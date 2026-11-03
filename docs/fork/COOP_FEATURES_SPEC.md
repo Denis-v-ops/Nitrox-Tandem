@@ -2127,6 +2127,9 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   suck names the bleeder as dealer, so S14's relay carries it; it lets go when the partner is inside, in a vehicle or
   downed. The other games mirror the attach on their copy (`BleederAttachChanged`), so the latched player's arms fight
   it and their hits kill it for both. Windowless `S15d-BleederOnPartner.ps1` PASS (52 checks), negative control 21 FAIL.
+  Since MULTINAUGHTICA_SPEC M5 (merged 2026-11-03) those hits are applied in the simulating game, where the bleeder's
+  `FleeOnDamage` makes it let go after two punches with 4 of 10 health: knocked off, as in the game, not killed. The
+  scenario now checks that (53 checks).
   MULTINAUGHTICA_SPEC M4 (merged 2026-11-03) had the same whitelist line and another attach: the victim's game took the
   bleeder's exclusive lock when its copy accepted the contact. B1's line and S15d's attach were kept, M4's dropped.
 

@@ -285,6 +285,7 @@ function Test-EmpToolsCase {
         Invoke-Bridge $A "call $id EMPAttack.CastEMPBlast" | Out-Null
         $castAt = Get-Date
         Start-Sleep -Milliseconds 300
+        $row.note += "; Bob holds $((Invoke-BridgeJson $B 'state').held) (flashlight $bobTool)"
         $row.bobDirect = Invoke-Bridge $B "call find:EMPBlast EMPBlast.OnTouch player" -AllowError
         while (((Get-Date) - $castAt).TotalSeconds -lt 4) {
             if ((Invoke-Bridge $A "get $aliceTool EnergyMixin.electronicsDisabled" -AllowError) -eq 'true') { $row.aliceOwnBlast = $true }
