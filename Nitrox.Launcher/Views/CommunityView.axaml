@@ -73,7 +73,7 @@
                                 ToolTip.Tip="Join Discord Server" />
                         </Panel>
                         <TextBlock Text="Discord" />
-                        <TextBlock Text="Join our active Discord server to find servers to play on, get help from the support team and much more." />
+                        <TextBlock Text="Join the official Nitrox Discord to find servers and talk with the Nitrox community. Report Nitrox Tandem bugs on GitHub instead." />
                     </StackPanel>
                 </Border>
                 <Border>
@@ -145,18 +145,18 @@
                             <Button
                                 Classes="anycontent"
                                 Command="{Binding GithubLinkCommand}"
-                                ToolTip.Tip="Contribute on GitHub">
+                                ToolTip.Tip="Nitrox Tandem on GitHub">
                                 <Border Background="#000000">
                                     <Svg Path="/Assets/Icons/brand/github.svg" />
                                 </Border>
                             </Button>
                             <Button
                                 Command="{Binding GithubLinkCommand}"
-                                Content="Contribute"
-                                ToolTip.Tip="Contribute on GitHub" />
+                                Content="Open"
+                                ToolTip.Tip="Nitrox Tandem on GitHub" />
                         </Grid>
-                        <TextBlock Text="GitHub" />
-                        <TextBlock Text="Want to be part of the team? Contribute from code to translations to the Nitrox project on GitHub." />
+                        <TextBlock Text="Nitrox Tandem on GitHub" />
+                        <TextBlock Text="Download Nitrox Tandem releases, report bugs and follow its development on GitHub." />
                     </StackPanel>
                 </Border>
             </controls:FittingWrapPanel>

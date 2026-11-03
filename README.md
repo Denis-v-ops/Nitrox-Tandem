@@ -171,7 +171,12 @@ The design for everything above and what comes next: [docs/fork/COOP_FEATURES_SP
 
 ## Installing
 
-There are no packaged releases yet; for now, build it yourself.
+**Download (Windows):** get the latest `NitroxTandem_<version>_win_x64.zip` from
+[Releases](https://github.com/Denis-v-ops/Nitrox-Tandem/releases), unzip it anywhere and run `Nitrox.Launcher.exe`.
+Both players need the same release, plus the [.NET 10 Runtime and ASP.NET Core 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
+(x64). The release notes have the step-by-step guide.
+
+**Or build it yourself:**
 1. Install the [.NET SDK 10](https://dotnet.microsoft.com/download) and Subnautica.
 2. Clone and build:
    ```bash

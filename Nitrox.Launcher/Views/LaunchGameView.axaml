@@ -36,7 +36,7 @@
                     Grid.Column="0"
                     Margin="0,0,20,0"
                     FontSize="14"
-                    Text="Start your Subnautica adventure in multiplayer mode together with your friends, powered by the Nitrox mod: An open-source modification for the game Subnautica. The project is maintained by the community with regular support and updates from its contributors." />
+                    Text="Play the whole Subnautica story in co-op with Nitrox Tandem, an unofficial fork of the open-source Nitrox multiplayer mod. It isn't made or supported by the Nitrox team: report problems on the Nitrox Tandem GitHub page, not on the Nitrox Discord." />
                 <!--  Play buttons - Negative offset to add some overlap with the background image  -->
                 <StackPanel Grid.Column="1" Margin="0,-110,0,0">
                     <Border ClipToBounds="True" CornerRadius="10">
@@ -57,7 +57,7 @@
                                                     <Setter Property="FontSize" Value="10" />
                                                 </Style>
                                             </StackPanel.Styles>
-                                            <TextBlock Foreground="{DynamicResource BrandSubText}" Text="PLAY NITROX" />
+                                            <TextBlock Foreground="{DynamicResource BrandSubText}" Text="PLAY NITROX TANDEM" />
                                             <TextBlock Text="{Binding Version, FallbackValue='PHASE x.x.x.x'}" />
                                         </StackPanel>
                                         <controls:RecolorImage
