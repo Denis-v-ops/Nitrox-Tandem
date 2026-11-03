@@ -1,9 +1,7 @@
 using System.Reflection;
-using NitroxClient.Communication.Abstract;
 using NitroxClient.GameLogic;
 using NitroxClient.GameLogic.Simulation;
 using Nitrox.Model.DataStructures;
-using Nitrox.Model.Subnautica.Packets;
 
 namespace NitroxPatcher.Patches.Dynamic;
 
@@ -18,6 +16,13 @@ public sealed partial class DockedVehicleHandTarget_OnHandClick_Patch : NitroxPa
         Vehicle vehicle = __instance.dockingBay.GetDockedVehicle();
 
         if (skipPrefix || !vehicle.TryGetIdOrWarn(out NitroxId vehicleId))
+        {
+            return true;
+        }
+
+        // The game refuses these clicks without starting anything (game:DockedVehicleHandTarget.OnHandClick,
+        // CinematicModeTriggerBase.OnHandClick), so no lock is asked for (MULTINAUGHTICA_SPEC M1)
+        if (!__instance.dockingBay.HasUndockingClearance() || !__instance.isValidHandTarget)
         {
             return true;
         }
@@ -40,19 +45,19 @@ public sealed partial class DockedVehicleHandTarget_OnHandClick_Patch : NitroxPa
         if (lockAcquired)
         {
             VehicleDockingBay dockingBay = context.Target.dockingBay;
-            Vehicle vehicle = dockingBay.GetDockedVehicle();
 
-            if (!dockingBay.TryGetIdOrWarn(out NitroxId dockId))
-            {
-                return;
-            }
-
-            Vehicles.EngagePlayerMovementSuppressor(vehicle);
-            Resolve<IPacketSender>().Send(new VehicleUndocking(vehicleId, dockId, Resolve<IMultiplayerSession>().Reservation.SessionId, true));
-
+            // The undocking is announced when the game starts it (VehicleDockingBay_OnUndockingStart_Patch): the click can
+            // still be refused (another cinematic running, a held tool that can't be put away)
             skipPrefix = true;
             context.Target.OnHandClick(context.GuiHand);
             skipPrefix = false;
+
+            // VehicleDockingBay.OnUndockingStart clears this; still set means the game refused, so the lock isn't kept for a
+            // vehicle nobody drives
+            if (dockingBay.vehicle_docked_param)
+            {
+                Resolve<SimulationOwnership>().RequestSimulationLock(vehicleId, SimulationLockType.TRANSIENT);
+            }
         }
         else
         {

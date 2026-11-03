@@ -11,6 +11,7 @@ public class CrashHomeMetadataProcessor : EntityMetadataProcessor<CrashHomeMetad
         if (gameObject.TryGetComponent(out CrashHome crashHome))
         {
             crashHome.spawnTime = metadata.SpawnTime;
+            CrashHomeMetadataGate.MarkMetadataApplied(crashHome);
             UpdateCrashHomeOpen(crashHome);
         }
         else

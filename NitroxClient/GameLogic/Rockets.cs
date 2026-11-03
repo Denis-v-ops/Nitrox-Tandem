@@ -40,7 +40,15 @@ namespace NitroxClient.GameLogic
                 return;
             }
 
-            RocketLaunch(NitroxEntity.RequireObjectFrom(rocketId));
+            // A game that is still loading, or far from the rocket, doesn't have it: its player isn't aboard either
+            // (MULTINAUGHTICA_SPEC M2; RequireObjectFrom threw in the packet processor)
+            if (!NitroxEntity.TryGetObjectFrom(rocketId, out GameObject rocketObject))
+            {
+                Log.Info($"A rocket launch arrived for {rocketId}, which isn't loaded here: ignored");
+                return;
+            }
+
+            RocketLaunch(rocketObject);
         }
 
         /// <summary>

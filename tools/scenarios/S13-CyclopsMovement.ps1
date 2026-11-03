@@ -20,8 +20,15 @@
     old one; the docked Seamoth stays in the bay in both games; the rejoin. Raw recordings are saved to -OutDir.
 
     Starts a fresh world (save s13-cyclops) and two games (opens windows), unless -NoLaunch. Needs a Debug build.
+    Windowed: frame timing and smoothness (AGENTS.md section 4, TESTING.md).
+
+    -AgeWorldSeconds (MULTINAUGHTICA_SPEC M6, M6-AgedWorldMovement.ps1): first makes the fresh world that much older
+    (its active play time, which movement snapshots are stamped with; a restart, Set-ScenarioWorldAge) and checks both
+    games' movement clock reads it, then runs the same measurement.
 #>
 param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 's13-cyclops',
+    # Seconds of active play time to add to the fresh world before the drive (144000 = 40 h). Needs a launch.
+    [double]$AgeWorldSeconds = 0,
     # Over the Grassy Plateaus; at this depth there was nothing within 120 m in any direction (raycasts, 2026-11-02).
     [double[]]$Area = @(263, -60, 64),
     [string]$OutDir = (Join-Path $env:TEMP 's13-recordings'),
@@ -257,6 +264,19 @@ function Get-MaxBackStep {
 
 try {
     Start-ScenarioGames -Players $A, $B -SaveName $SaveName -NoLaunch:$NoLaunch
+    if ($AgeWorldSeconds -gt 0) {
+        Step ("The world is {0:0.#} h older (active play time)" -f ($AgeWorldSeconds / 3600)) {
+            if ($NoLaunch) { throw '-AgeWorldSeconds restarts the world, so it needs a launch (no -NoLaunch)' }
+            Set-ScenarioWorldAge -SaveName $SaveName -Players $A, $B -Seconds $AgeWorldSeconds
+            foreach ($player in $A, $B) {
+                $clock = Get-MovementClock $player
+                $aged = $clock -ge $AgeWorldSeconds
+                Assert-True $aged ("$player's movement clock reads {0:0.0} s (>= $AgeWorldSeconds)" -f $clock)
+                # Measuring a young world would pass without saying anything about M6
+                if (-not $aged) { throw "$player's world is not aged" }
+            }
+        }
+    }
     $script:aliceId = (Get-State $A).playerId
     $script:bobId = (Get-State $B).playerId
 
@@ -393,6 +413,13 @@ try {
         $tracks = Stop-AllRecordings
         $script:tracks = $tracks
         Write-Host "  clocks: Alice $(Format-Result ([S13Analysis]::Clock($tracks.aCyc))) | Bob $(Format-Result ([S13Analysis]::Clock($tracks.bCyc)))"
+        if ($AgeWorldSeconds -gt 0) {
+            # M6: the drive itself ran on the aged clock in both games (rt = TimeManager.RealTimeElapsed)
+            foreach ($name in 'aCyc', 'bCyc') {
+                $rt = $tracks[$name].Column('rt')
+                Assert-True ($rt[0] -ge $AgeWorldSeconds) ("[$name] recorded at movement clock {0:0.0}-{1:0.0} s (>= $AgeWorldSeconds)" -f $rt[0], $rt[-1])
+            }
+        }
         foreach ($name in 'aCyc', 'bCyc', 'aSelf', 'bSelf') { Show-Events $tracks[$name] @('lock', 'replicator', 'mode', 'cinematic', 'sub') }
 
         $results = @{}
@@ -533,4 +560,5 @@ catch {
 finally {
     foreach ($player in $A, $B) { try { Invoke-Bridge $player 'input off' | Out-Null } catch { } }
 }
-Complete-Scenario -Name 'S13 CyclopsMovement' -Keep:$Keep
+$scenarioName = if ($AgeWorldSeconds -gt 0) { 'S13 CyclopsMovement in a world {0:0.#} h older (M6)' -f ($AgeWorldSeconds / 3600) } else { 'S13 CyclopsMovement' }
+Complete-Scenario -Name $scenarioName -Keep:$Keep

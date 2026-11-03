@@ -8,19 +8,28 @@ public class IncubatorMetadataProcessor : EntityMetadataProcessor<IncubatorMetad
 {
     public override void ProcessMetadata(GameObject gameObject, IncubatorMetadata metadata)
     {
+        // The hatch sends (powered, hatched) after the power-up sent (powered, not hatched), and an entity can be sent again
+        // to a game that has it: powering up again plays its sound and goal again, and hatching again (Incubator.OnHatched)
+        // starts every egg's hatch again, which makes new babies (MULTINAUGHTICA_SPEC M2).
         if (metadata.Powered)
         {
             IncubatorActivationTerminal terminal = gameObject.GetComponentInChildren<IncubatorActivationTerminal>();
-            terminal.incubator.SetPowered(true);
-            terminal.onUseGoal?.Trigger();
-            terminal.CloseDeck();
+            if (terminal && terminal.incubator && !terminal.incubator.powered)
+            {
+                terminal.incubator.SetPowered(true);
+                terminal.onUseGoal?.Trigger();
+                terminal.CloseDeck();
+            }
         }
 
         if (metadata.Hatched)
         {
             Incubator incubator = gameObject.GetComponentInChildren<Incubator>();
-            incubator.hatched = true;
-            incubator.OnHatched();
+            if (incubator && !incubator.hatched)
+            {
+                incubator.hatched = true;
+                incubator.OnHatched();
+            }
         }
     }
 }

@@ -117,7 +117,9 @@ tools\bridge.ps1 Bob animator <alicePlayerId>          # Animator parameters and
 - **Targets:** `player`, a NitroxId, or `find:<ComponentType>` (the nearest loaded object with that component, for
   scene objects without an id, e.g. `use find:PrecursorDisableGunTerminal PrecursorDisableGunTerminal`). Static paths
   start with a type name (`Story.StoryGoalManager.main.completedGoals`); `member[3]` indexes a list. Private members
-  work (reflection with non-public flags). Values: numbers, `true`/`false`, `null`, enum names, `x,y,z`, ids.
+  work (reflection with non-public flags). Values: numbers, `true`/`false`, `null`, enum names, `x,y,z`, ids. A
+  `UnityEngine.Object` parameter takes the target's GameObject (`call UnityEngine.Object.Destroy <id>`); an `IOut<T>`
+  parameter gets a fresh `TaskResult<T>`, whatever is written (`call <id> Constructable.DeconstructAsync _ _`).
 - **`diff`** fetches every game's loaded entities (id, tech type, position, parent or container owner, live-extracted
   metadata) and the server's records, and prints mismatches: `GHOST` (game has an id the server doesn't), `MISSING`
   (server has a child of a loaded entity, the game doesn't), `TECHTYPE`, `PARENT` (container contents included),
@@ -189,7 +191,7 @@ A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passe
    side. Windowless games are real clients without windows or sound
    ([below](#windowless-games-and-parallel-rigs)): the default for L3, and they can run while the PC is in use.
 3. **Windowed game clients (L3, plain `dual-client.ps1`).** Only for what windowless games can't show: frame timing and
-   smoothness (S13 for now), animation, HUD/UI, screen effects and sound, anything that has to be seen on screen, and a
+   smoothness (S13 and M6 for now), animation, HUD/UI, screen effects and sound, anything that has to be seen on screen, and a
    comparison run when a windowless run fails for no clear reason. They take over the screen, so tell the user first.
 
 | Use **headless (L1/L2)** — fast, parallel, no rig | Use **real game clients (L3)** — windowless unless marked windowed |
@@ -200,7 +202,7 @@ A fix goes into `coop` only when L1 passes and its spec item's L3 scenario passe
 | Late-join payload: what the server sends a rejoining player | Game objects reacting to state: story objects (S3), Cyclops damage effects and fires, machines producing or burning items (S7 step 2) |
 | Duplicates and loss at server level (two adds, missing remove, `EntityDestroyed` deleting a record) | That a Harmony patch fires at all, and when (timing, echo loops) |
 | Packet validation, server processors, commands, save upgrades | A client spawning or applying metadata to the right GameObject (e.g. `RestoreMapRoom`) |
-| Story goals and PDA state stored per player (server side of #2508) | **Windowed:** anything visual, audio or animation; frame timing and smoothness (S13) |
+| Story goals and PDA state stored per player (server side of #2508) | **Windowed:** anything visual, audio or animation; frame timing and smoothness (S13, M6) |
 
 **Per spec item:** most fixes are *hybrid*. Prove the server half headless, then use **one** in-game scenario for the game
 half.
@@ -262,6 +264,11 @@ public class MyFeatureTest
 - **Sharing:** a server start costs about 0.6 s (first one in a run about 1.2 s), so one per class (`[ClassInitialize]`)
   or per test are both fine. With a shared server, call `server.DisconnectPlayersAsync()` in `[TestCleanup]` so the next
   test can use the same player names.
+- **Joining step by step:** `server.ConnectAsync(name)` connects and gets the policy only; then `ReserveAsync()` (or
+  `SendReservationRequest()`) and `CompleteJoinAsync()`. `player.Crash()` stops without a disconnect message, like a
+  crashed game. `server.RestartHoldingWorldLoadAsync(gate)` starts the server with its world load held until `gate`
+  completes (the network is up meanwhile), then `WaitForStartAsync()`. `ServerHarness.StartAsync(name, extraArgs)`
+  passes server options (e.g. `--GameServer:MaxBackups 2`; the harness sets 0).
 - **Negative control:** revert the fix, the test must fail (same rule as L3).
 - **Can't be faked:** anything the game decides. A `FakePlayer` sends exactly what the test tells it, so the packets
   must match what the client really sends (read the client code: `NitroxClient/GameLogic/Items.cs` and friends). It
@@ -316,6 +323,8 @@ tools\run-suite.ps1 -Windowless
   second run was disturbed by bridge queries, the first by low free RAM; the third was clean. When S13 was built, the
   windowed runs held 120 fps and passed, but S13 hasn't run windowed on the merged `coop` build, so it is open whether
   the drops come from batch mode. Run S13 (and anything that judges frame timing) windowed until that's compared.
+  (2026-11-03: S13 in a 40 h world, `M6-AgedWorldMovement.ps1`, windowed on `coop` + MULTINAUGHTICA M1–M9, passed its
+  53 checks with the observing game at 110–120 fps, while a windowless suite ran on the other rig.)
 - **What differs from a windowed game:**
   - No camera renders, so `Renderer.isVisible` is always false. `BehaviourLOD` (creatures, the Cyclops, bases) would
     stay Minimal beyond 10 m, and the Cyclops engine (`SubControl`), fires (`SubFire`), `SubRoot` and base flooding

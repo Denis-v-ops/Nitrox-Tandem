@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using NitroxClient.Communication.Abstract;
 using NitroxClient.MonoBehaviours;
 using Nitrox.Model.DataStructures;
@@ -16,6 +17,18 @@ public sealed class AI
     private readonly IPacketSender packetSender;
     private readonly Dictionary<Creature, CreatureAction> actions = [];
     private readonly Dictionary<string, Type> cachedCreatureActionTypeByFullName;
+
+    /// <summary>
+    ///     The action this game sent last for each creature it simulates (<see cref="CreatureActionBroadcastRules" />). Weak
+    ///     keys: an entry goes with its creature.
+    /// </summary>
+    private readonly ConditionalWeakTable<Creature, SentAction> lastSentActionByCreature = new();
+
+    private sealed class SentAction
+    {
+        public string ActionTypeName;
+        public float? Time;
+    }
 
     /// <summary>
     /// Contains the types derived from CreatureAction which should be synced.
@@ -51,13 +64,31 @@ public sealed class AI
             return;
         }
 
-        packetSender.Send(new CreatureActionChanged(creatureId, newAction.GetType().FullName));
+        // ChooseBestAction runs on every AI update and can return null (M4): only changes are sent, plus a refresh
+        string actionTypeName = newAction ? newAction.GetType().FullName : CreatureActionBroadcastRules.NO_ACTION;
+        float now = UnityEngine.Time.unscaledTime;
+        SentAction lastSent = lastSentActionByCreature.GetOrCreateValue(creature);
+        if (!CreatureActionBroadcastRules.ShouldSend(lastSent.ActionTypeName, lastSent.Time, actionTypeName, now))
+        {
+            return;
+        }
+        lastSent.ActionTypeName = actionTypeName;
+        lastSent.Time = now;
+
+        packetSender.Send(new CreatureActionChanged(creatureId, actionTypeName));
     }
 
     public void CreatureActionChanged(NitroxId id, string creatureActionTypeName)
     {
         if (!NitroxEntity.TryGetComponentFrom(id, out Creature creature))
         {
+            return;
+        }
+        // Another game simulates it now: if the lock comes back, this game sends its action at once
+        lastSentActionByCreature.Remove(creature);
+        if (string.IsNullOrEmpty(creatureActionTypeName))
+        {
+            actions.Remove(creature);
             return;
         }
         if (cachedCreatureActionTypeByFullName.TryGetValue(creatureActionTypeName, out Type creatureActionType) &&

@@ -18,7 +18,7 @@ public class MovementBroadcaster : MonoBehaviour
 
     public Dictionary<NitroxId, MovementReplicator> Replicators = [];
     private readonly Dictionary<NitroxId, WatchedEntry> watchedEntries = [];
-    private float latestBroadcastTime;
+    private double latestBroadcastTime;
 
     public void Start()
     {
@@ -38,7 +38,8 @@ public class MovementBroadcaster : MonoBehaviour
 
     public void Update()
     {
-        float currentTime = (float)this.Resolve<TimeManager>().RealTimeElapsed;
+        // A double, like the snapshot times it stamps (MovementTime)
+        double currentTime = this.Resolve<TimeManager>().RealTimeElapsed;
         if (currentTime < latestBroadcastTime + BROADCAST_PERIOD)
         {
             return;
@@ -47,7 +48,7 @@ public class MovementBroadcaster : MonoBehaviour
         BroadcastLocalData(currentTime);
     }
 
-    public void BroadcastLocalData(float time)
+    public void BroadcastLocalData(double time)
     {
         List<MovementData> data = [];
         List<NitroxId> watchedIds = [..watchedEntries.Keys];

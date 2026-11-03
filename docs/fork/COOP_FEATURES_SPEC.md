@@ -422,6 +422,8 @@ admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProc
 - **Design:** "ready" = clicked launch while aboard. The server checks aboard from the player's position. Add a real
   `RocketLaunch` processor so it's no longer relayed before everyone is ready.
 - **Note:** the transpiler instruction count in `PatchesTranspilerTest` would change if the gate went into the transpiler; it went into a Prefix, so it stays -8.
+- **See [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02): rocket reports are
+  merged on the server, and a launch for a rocket that isn't loaded is ignored instead of throwing.
 - **Tests:**
   - L2: no relay before both are ready; aboard check from positions.
   - L3: both aboard, both get `launchStarted`. Needs a fixture with a built rocket.
@@ -477,6 +479,8 @@ admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProc
 ### G3: Sea Emperor, hatching and the cure — 3a and 3b done 2026-11-03 (branch `feat/4-g3-sea-emperor`); 3c not built (the partner gets no cure ball)
 
 Three beats. Size L in total. Planned as below; what was built and found follows.
+- **See [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02): babies of the server
+  now swim to the mother in the partner's game, teleported babies leave the server, the incubator metadata applies once.
 
 - **3a, meeting the Emperor:** gate `PrecursorAquariumPlatformTrigger.OnTriggerEnter` (`game:` 46) until both players are
   inside the platform volume, then start the same animator state on both. The trigger won't fire again while a player
@@ -607,6 +611,8 @@ Without the no-oxygen cheat a player drowns down there within a minute (seen). R
   - Message: "Wait for <name> to finish the repair together".
   - Hook: `Welder.Weld` (`game:` 38), or `LiveMixin.AddHealth` on a `LeakingRadiation` leak when it's the last one.
 - **Goal key:** `leaksFixedGoal`, read it at runtime (H).
+- **See [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02): a joiner's
+  `radiationFixed` was set by one fixed leak (it skipped `leaksFixedGoal`); fixed, and stale leak health is dropped.
 - **Tests:**
   - L2: the gate flow.
   - L3: a fixture after the explosion; the `fixleaks` console command (`game:LeakingRadiation.cs:130`) on all leaks but
@@ -1185,6 +1191,8 @@ fire puts the player down like any other damage (decided 2026-11-03, §11).
   (driven from the bridge in windowless games, see Findings). The dead Reefback is gone at once, so its row is
   reported, not checked.
 - **Later:** a hold-radial menu needs key-release wiring.
+- **Follow-up:** the aim (past the own vehicle and, at the helm, the Cyclops; 0.5 m minimum; the partner's body as a
+  "Look! *name*" ping) is [MULTINAUGHTICA_SPEC M9](MULTINAUGHTICA_SPEC.md#m9-ping-aim-xss-follow-up-to-coop-f2).
 
 ---
 
@@ -1453,6 +1461,10 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   the creature-lock check removed). In game: the vehicle cases fail without the fix (first run: 0 damage A→B and B→A,
   forced contact included) and pass with it; each lock direction once. On the fixed build, `D4-ThreatParity.ps1`
   passes in full (95 checks) and `S14-CreatureAggro.ps1` (its helpers moved) passes all 11 cases.
+- **Later, [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M4** (2026-11-02, not verified in game): a crash fish blast
+  next to the partner's vehicle is sent the same way, and a Reaper's grab of a vehicle shows in both games.
+  **M5** (same day, not verified in game): both players' damage on a creature adds up, and a creature's bite or a crash
+  fish blast on a creature the partner simulates reaches it.
 - **Not run:** the Lava lizard's and Warper's ranged attacks (from code), Prawn suit and Cyclops bites (same code path
   as the Seamoth; whether any non-leviathan bites a Cyclops, `canBiteCyclops`, wasn't read), the Ampeel's shock on a
   partner's vehicle (no dealer, so not relayed; by reasoning the pilot's game shocks it locally, like the player
@@ -1504,7 +1516,8 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     partner's radio messages still play. PDAs found in the world arrive as `StoryGoalExecuted` like any story goal
     (survivor PDAs are Encyclopedia goals, see D5b), and the receiver couldn't tell them apart, hence the flag.
   - Option `PartnerDiscoveriesSilent` (default true); false restores today's behaviour (L3 negative control). Before
-    the initial sync, `CoopSettings` holds false, so packets processed then behave as today.
+    the initial sync, `CoopSettings` holds false, so packets processed then behave as today. (Since MULTINAUGHTICA_SPEC
+    M2, story goals that arrive before the initial sync wait for it, so the option applies to them too.)
   - Within one session this gives the whole effect.
   - **Verified:** L1 `ExperientialGoalsTest` (classification, option off, other types, own trigger until heard).
     L3 windowless `tools/scenarios/D5a-OwnFirsts.ps1` PASS (14 checks). Alice reaches the Kelp Forest and hears
@@ -2038,6 +2051,9 @@ and upgrade consoles; trash cans; Aurora keypads, doors, laser-cut seals and rad
 teleporters, terminals and blueprints; player stats and infection; escape pod and radio repair; the clock; vehicle
 health and power; PDA, known tech and fragments; walking, swimming, equipment, held tools and vehicle poses on the
 partner's body.
+Correction ([MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m), 2026-11-02): Precursor doors
+opened through a key's global goal and teleporter pairs weren't fine after a restart, nor for a partner who loaded them
+first; both are fixed there, not verified in game yet.
 
 **Gaps**, each an item below except two that live elsewhere: unprovoked creature attacks (fixed by FIX_SPEC S14 for the
 creatures it tested; D4 covers the rest) and the partner's body (R2).
@@ -2111,6 +2127,11 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   suck names the bleeder as dealer, so S14's relay carries it; it lets go when the partner is inside, in a vehicle or
   downed. The other games mirror the attach on their copy (`BleederAttachChanged`), so the latched player's arms fight
   it and their hits kill it for both. Windowless `S15d-BleederOnPartner.ps1` PASS (52 checks), negative control 21 FAIL.
+  Since MULTINAUGHTICA_SPEC M5 (merged 2026-11-03) those hits are applied in the simulating game, where the bleeder's
+  `FleeOnDamage` makes it let go after two punches with 4 of 10 health: knocked off, as in the game, not killed. The
+  scenario now checks that (53 checks).
+  MULTINAUGHTICA_SPEC M4 (merged 2026-11-03) had the same whitelist line and another attach: the victim's game took the
+  bleeder's exclusive lock when its copy accepted the contact. B1's line and S15d's attach were kept, M4's dropped.
 
 #### B2: Building and crafting without loss or dupes (S–M, done 2026-11-02)
 - **Non-empty storage (S, done):** when a module's constructed amount reached 0, the server removed the entity and its
@@ -2121,7 +2142,8 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   the module with its items again (`SpawnEntities` with `ForceRespawn`). The module stays at the last amount the server
   stored, so that game keeps the materials refunded for the last step (at most one resource), and the items are safe.
   Not used: `BuildingResync` for a single module: its client side destroys every other loose module it isn't sent and
-  can't respawn a missing one (`BuildingResyncProcessor.UpdateEntities`). Headless: `StorageModuleDeconstructionTest`
+  can't respawn a missing one (`BuildingResyncProcessor.UpdateEntities`; the respawn is fixed by
+  [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M1). Headless: `StorageModuleDeconstructionTest`
   (locker with an item, charger with a battery; restart), fails without the check. Not checked in game: the respawned
   locker in the game that deconstructed it. Open (H): whether vanilla planters block deconstruction with plants in them
   (`StorageContainer.preventDeconstructionIfNotEmpty` comes from the prefab); the server now keeps a planter with plants.
@@ -2142,6 +2164,8 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   players build one corridor ghost at the same moment with real costs and pay 2 titanium between them, then both click
   the same finished knife in the escape pod's fabricator and get one between them (server too). Negative control on the
   unfixed client: 4 titanium paid and 2 knives (3 checks FAIL).
+- **See also:** crafting from base and Cyclops lockers, [MULTINAUGHTICA_SPEC M8](MULTINAUGHTICA_SPEC.md#m8-crafting-from-base-and-cyclops-lockers-ml):
+  a granted locker claim re-runs `GhostCrafter.Craft`, so the crafter lock above is taken as for any craft.
 
 #### B3: Base power (L, done 2026-11-02)
 - **Today (before B3):** base power wasn't synced and refilled to full on every load: `InteriorPieceEntitySpawner` and

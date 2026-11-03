@@ -43,6 +43,13 @@ public sealed partial class CrashHome_Update_Patch : NitroxPatch, IDynamicPatch
             return;
         }
 
+        // M4: the home is spawned from its prefab and gets its saved state a little later. Acting before that would
+        // overwrite the saved timer of an emptied home, or start one for a home whose fish is still on its way.
+        if (!CrashHomeMetadataGate.MayActOnItsNumber(crashHome))
+        {
+            return;
+        }
+
         crashHome.spawnTime = DayNightCycle.main.timePassedAsFloat + (float)CrashHome.respawnDelay;
 
         // Set spawn time before broadcast the new CrashHome's metadata

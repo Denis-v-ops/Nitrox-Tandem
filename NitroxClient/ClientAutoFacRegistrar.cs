@@ -93,9 +93,11 @@ namespace NitroxClient
             containerBuilder.RegisterType<AI>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<SimulationOwnership>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<ConstructionLocks>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<LockerCrafting>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Cuddlefish>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Bleeders>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<LiveMixinManager>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<CreatureHealthManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Entities>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<MedkitFabricator>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Items>().InstancePerLifetimeScope();
@@ -114,6 +116,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<Fires>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<FireExtinguishers>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<BaseFlooding>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<GameLogic.InitialSync.InitialSyncDeferral>().InstancePerLifetimeScope();
             containerBuilder.Register(_ => FMODWhitelist.Load(GameInfo.Subnautica)).InstancePerLifetimeScope();
             containerBuilder.RegisterType<FMODSystem>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<NitroxSettingsManager>().InstancePerLifetimeScope();
@@ -132,6 +135,7 @@ namespace NitroxClient
                             .As<PartnerAction>()
                             .InstancePerLifetimeScope();
             containerBuilder.RegisterType<PartnerActions>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<ServerSaveIndicator>().InstancePerLifetimeScope();
         }
 
         private void RegisterMetadataDependencies(ContainerBuilder containerBuilder)

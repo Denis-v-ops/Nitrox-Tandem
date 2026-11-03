@@ -183,6 +183,19 @@ internal sealed class StoryManager : ISummarize
         StoryGoalData.RadioQueue.Enqueue(goalKey);
     }
 
+    /// <summary>
+    ///     Drops the radio messages that a completed goal takes out of the game's queue. Vanilla
+    ///     <c>StoryGoalCustomEventHandler.NotifyGoalComplete</c> removes <c>RadioSunbeam4</c> on <c>Goal_Disable_Gun</c>;
+    ///     every game does it for itself, but the server's queue kept it, and every join brought it back (MULTINAUGHTICA_SPEC M2).
+    /// </summary>
+    public void RemoveRadioMessagesCancelledBy(string goalKey)
+    {
+        if (string.Equals(goalKey, "Goal_Disable_Gun", StringComparison.OrdinalIgnoreCase))
+        {
+            StoryGoalData.RadioQueue.RemoveWhere(message => string.Equals(message, "RadioSunbeam4", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
     Task IEvent<ISummarize.Args>.OnEventAsync(ISummarize.Args args)
     {
         logger.ZLogInformation($"Aurora's state: {GetAuroraStateSummary()}");

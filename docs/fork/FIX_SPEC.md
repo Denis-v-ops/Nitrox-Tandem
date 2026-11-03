@@ -40,7 +40,8 @@ symbol name.
 Rank is severity × likelihood for our run. **Execution order is different, cheapest safe wins first:**
 
 1. **Phase 0, baseline (before anything else):** S0.1 + S0.5 + S0.6 from TESTING.md. Verify the vehicle-movement
-   regression #2761 is fixed on master (fix #2864 merged 2026-09-06). Set up world backups.
+   regression #2761 is fixed on master (fix #2864 merged 2026-09-06). Set up world backups (done for every server
+   start: `backups/server-starts/`, see [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M3).
 2. **Phase 1, adopt batch + small builds:** S9 (#2899) → S5a (#2798) → S8 (#2809) → S4 (#2902, then #2867 with fix)
    → S3 (small build) → S7 step 1 (ghost cell entries; pure server logic, L1-testable). A playthrough can start on
    this build.
@@ -121,6 +122,7 @@ Fixes when merging:
 players.
 
 **Status (branch `fix/s1-s5b-cyclops-flood`, 2026-11-02):** #2881 merged with fixes 1 and 2 (tag 92). L1 and L3 pass. See the Log.
+A Cyclops destroyed by damage (not covered by S1's scenario) is [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M1.
 
 ---
 
@@ -227,7 +229,9 @@ for the next `ProtoInclude` tag.
    - A Prefix makes the same call's Sunbeam branch take the cancel path, as in vanilla.
    - It covers remote goals, local schedules, `PlaySunbeamEvent` and the `goal` console command, and it's safe to run
      twice.
-2. Optional: if the partner's terminal is open at that moment, close it (`SetOpen(false)`).
+2. Optional: if the partner's terminal is open at that moment, close it (`SetOpen(false)`). **Built in
+   [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02), with the server dropping
+   `RadioSunbeam4` from its radio queue; not run in game yet.
 3. Gun animation: *hypothesis only*. `PrecursorGunAim.LateUpdate` exits early when `target` is null, and `target` is
    only set in `PrecursorGunTarget.Start` if `PrecursorGunStoryEvents.main.gunAim` exists then. Load order, or Nitrox
    re-calling `PrecursorGunStoryEvents.Start()` from `StoryGoalInitialSyncProcessor`, may break it. Instrument `target`,
@@ -280,6 +284,8 @@ replayed. Separately, `LiveMixin` kills of non-creature entities don't send `Ent
     through #2902) or a `Player` component.
 - **Later, not now:** [#2903](https://github.com/SubnauticaNitrox/Nitrox/pull/2903) (damage from both players adds up)
   contains #2902. It is large and unreviewed, and its tests have never run. Skip #2842; it's superseded and conflicts.
+  **Taken in [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M5** (2026-11-02, not verified in game), with a fix for
+  creature-on-creature bites; this item's scenario now passes the player as the kill's dealer.
 
 **Automated check:**
 - L3 scenario `CreatureDeathSyncs`: spawn a peeper/stalker near both players and kill it from the non-simulating
@@ -496,6 +502,12 @@ windowless game (nothing is ever visible). Fixed by the Debug, batch-mode-only `
 - If the lock holder leaves without handing over the lock, production stops.
 - `RemoveItem` on the old container notifies its listeners (planters, trash cans).
 - Removing cell entries at the wrong moment could hide real world items.
+
+A deconstructed loose constructable now leaves its cell through the same `TryDestroyEntity` path
+([MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M1).
+
+**See also:** [MULTINAUGHTICA_SPEC M8](MULTINAUGHTICA_SPEC.md#m8-crafting-from-base-and-cyclops-lockers-ml) takes locker
+items for crafting as `EntityDestroyed`; the partner's container loses them through `Pickupable.OnDestroy` (checked in code).
 
 ---
 
@@ -720,6 +732,7 @@ applied.
 
 **Not verified:** network latency; a player dying from a relayed bite. The creatures S14 didn't run and bites on
 vehicles were covered later by COOP_FEATURES_SPEC D4 (vehicle bites fixed there; the gaps it found are S15).
+Bites on *creatures* another player simulates: [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M5 (2026-11-02).
 
 **Risks (fear factor and balance):**
 - The partner is now exactly as exposed as the simulating player, which is vanilla danger for both players, not double.
@@ -766,6 +779,10 @@ player (23.5 at infection 0.5), and a Stalker born in a containment spares the p
 
 **Priority:** a and d before the Lost River, b and c before the lava zones. None loses progress; each is a creature
 that is safe for one of the two players, which is what D4 is about.
+
+**a and d: implemented in [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M4** (2026-11-02, not verified in game): the
+EMP blast is replayed at each game's copy of the Crabsquid; the victim's game takes the Bleeder's exclusive lock, and
+world bleeders are simulated.
 
 ## S13: Cyclops movement and sync glitches
 
@@ -862,6 +879,8 @@ that is safe for one of the two players, which is what D4 is about.
 **Finding, not fixed:** a new player's `PlayerEntity` gets the escape pod as parent id but an unparented transform
 (local = world). After a restart it's linked under the pod, so its derived position is wrong.
 `PlayerPositionPersistenceTest` caught that when the rejoin fix wasn't limited to vehicles. Nothing reads it today.
+**Fixed in [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02, L2
+`NewPlayerEntity_KeepsItsWorldPositionAcrossRestart`).
 
 **Not verified:**
 - Two defensive lines added to `HandOverMotion` after run 5, not run in game:
@@ -885,6 +904,10 @@ that is safe for one of the two players, which is what D4 is about.
 - `ToggleCyclopsMotor` no longer forces the controller on. A path that enters or leaves a Cyclops with the controller
   off and never turns it back on would leave the player frozen. None was found in the IL, and the rejoin and docking
   steps passed. Rerun S6 `InteriorStateHolds` at the next `coop` integration.
+
+These runs used a world a few hundred seconds old. Snapshot times were floats of the world's active play time, which
+step by 15.6 ms after 36 h of play: [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M6 (doubles, and this scenario
+in a world aged 40 h: `M6-AgedWorldMovement.ps1`, `S13-CyclopsMovement.ps1 -AgeWorldSeconds`).
 
 ## S16: Leviathans: the partner sees one elsewhere, or not at all
 
@@ -1171,3 +1194,4 @@ See ISSUE_TRIAGE.md for the full verify list.
 | 2026-11-02 | S16 (new) | Branch `fix/s16-leviathan-sync`. Probe of "leviathans aren't synced": L3 `S16-LeviathanSync.ps1` (natural Reaper, Lost River ghost, Reefback; bridge `record` now also tracks `active`, `remote`, `lod`). **Fixed:** a creature that swims out of its simulating player's loaded cells now goes to a player who has its cell loaded (`EntitySimulation.TryHandOverFromBlindOwner` from `EntityTransformUpdatesProcessor`, and a takeover when a player loads its cell); before, the simulator kept it, even 780 m away as an out-of-cell entity. **Measured, planned as S16b–f:** the partner's copy drifts up to 5 m and then snaps 5–17 m (packets only on `SplineFollowing.GoTo`, correction only beyond 5 m); a late arrival spawns a Reaper up to 34 m off (stale server record); void ghosts are per game (#2461). `CreateFullEntityCache` changes none of this | L2 `CreatureLeavesSimulatorTest` (4; two fail on `coop`, the out-of-cell one fails with "can see" instead of "has the cell"); L3 windowless: 3 baseline + 4 fixed runs, case 5 lock kept 750–780 m away before, moved at 556–579 m after; `dotnet test` 390 of 391 pass in each of two runs, 13 skipped (the failure was a known flake each time: `DroppedOutOfSightTest`, also flaky on `coop`, then `ReadAndWriteSimultaneous`). Not run: rejoin, chase, Sea Dragon, asleep-cell freeze in game |
 | 2026-11-03 | S16b/S16c | Branch `fix/s16bc-creature-replication` (on `fix/s16-leviathan-sync`). New unreliable packet `CreatureMovements` (pose, velocity, angular velocity, sender time; ≤ 5 per packet) sent by `EntityPositionBroadcaster` at `CreatureMovementPolicy`'s rate (leviathans near a partner 0.1 s, other creatures 0.2/0.5 s, nobody near 2 s); server `CreatureMovementsProcessor` keeps the record and relays to players who see it; the watching game's `RemotelyControlled` dead-reckons the copy (velocity + error/0.25 s, physics clock from the frame's start, `Locomotion`/`WorldForces` off meanwhile). Removed: `SplineTransformUpdate` and `SplineFollowing_GoTo_Patch`. Scenario: snap = step beyond the original's movement, max error outside long frames, forced 350 ms frame, send counters. | L1 `CreatureMovementPolicyTest` (8), L2 `CreatureMovementsTest` (2) + `CreatureLeavesSimulatorTest` on the new packet; 5 of 6 fail without the server processor. `dotnet test` 400 of 401 pass, 13 skipped (the failure: known flake `ReadAndWriteSimultaneous`). **L3 windowless, Reaper:** mean error 2.6–4.3 m -> 0.32–0.51 m, snaps up to 16.6 m -> none (largest step beyond the original 0.9 m), late-arrival spawn up to 34 m -> 0.6–1.9 m; final run 18 of 19 `-Strict` checks (`ba` max error 5.09 m for 1 s, the copy held 4 m above the original, probably by terrain the far simulating game lacks). **Reefback:** PASS, 0.005–0.05 m mean, spawn 0.1–0.3 m. Upload 2–5 KB/s with 41–216 moving entities simulated. Two clock bugs found and fixed in game (overshoot after a long frame; age of a packet handled mid-hitch), and an NRE for poses reaching an inactive copy (`Awake` not yet run), which had aborted the rest of those packets. **S14 PASS (65), D4 PASS (95)** on the final build (an earlier S14 run, with the NRE, failed 4 checks: it picked up the previous case's stalker, and a crash fish went for a stalker). Not verified: latency/loss, two PCs, `-Chase`, walkers, containment, windowed |
 | 2026-11-03 | S15d | Branch `feat/4-s15d-bleeder-attach`. A bleeder simulated by one game latches onto the partner: the body's own (copied) `BleederAttachTarget` takes the touch on its trigger, the suck carries the bleeder as dealer through S14's `CreatureAttackedPlayer`, it lets go when the body is inside, in a vehicle or downed. New `BleederAttachChanged` mirrors the attach on the other games' copies (the latched player's arms fight it, hits kill it for both; a detach of that copy goes back). Fixed the (H): a copy touched in the partner's game marked their attach target occupied for good. README fix table row | L3 windowless `S15d-BleederOnPartner.ps1` PASS (52 checks); negative control 21 of 52 FAIL (on the scenario's first revision; the latch-target check tightened after it only adds failures). Full test suite green (507). No L2 (server only relays). Windowed look, lock hand-over while attached, cannons, base entry: not run |
+| 2026-11-03 | S15d | With MULTINAUGHTICA_SPEC M5 merged: the latched player's hits are applied in the simulating game, whose `FleeOnDamage` (threshold 4; a punch does 3) makes the bleeder let go after two punches with 4 of 10 health, as in the game, where before M5 the copy took every hit and died. `S15d-BleederOnPartner.ps1` checks the knock-off and the same health in both games | L3 windowless PASS (53 checks) on `multinaughtica` @ `797dad49` |

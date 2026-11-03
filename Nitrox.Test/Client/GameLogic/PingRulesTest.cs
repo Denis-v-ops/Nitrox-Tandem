@@ -23,6 +23,13 @@ public class PingRulesTest
     }
 
     [TestMethod]
+    public void APartnerIsLook_NotComeHere()
+    {
+        // MULTINAUGHTICA_SPEC M9: "come here" at the partner's body would end at once, they're already there
+        PingRules.SelectKind(isAggressiveCreature: false, isLoot: false, isPartner: true).Should().Be(PingKind.Look);
+    }
+
+    [TestMethod]
     public void CreatureIsAggressiveWhileAliveAndHuntingPlayersOrVehicles()
     {
         PingRules.IsAggressive(isAlive: true, huntsPlayer: true, attacksPilotedVehicles: false, isCrashfish: false).Should().BeTrue();

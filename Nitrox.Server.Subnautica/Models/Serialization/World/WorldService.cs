@@ -94,7 +94,8 @@ internal class WorldService : IHostedService
         {
             WorldData = new()
             {
-                ParsedBatchCells = batchEntitySpawner.SerializableParsedBatches,
+                // Before the entities below: a batch listed here has its entities registered already
+                ParsedBatchCells = worldEntityManager.GetGeneratedBatches(),
                 GameData = GameData.From(pdaManager, storyManager.StoryGoalData, storyScheduler, storyManager, timeService)
             },
             PlayerData = PlayerData.From(playerManager.GetAllPlayers()),
@@ -107,7 +108,9 @@ internal class WorldService : IHostedService
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await progressReporter.ReportProgressAsync("Loading world data", 0.1f);
-        
+
+        await BackUpBeforeLoadAsync(startOptions.Value.GetServerSavePath());
+
         if (!await LoadWorldFromSavePathAsync(startOptions.Value.GetServerSavePath()))
         {
             await CreateAndLoadWorldAsync();
@@ -145,6 +148,42 @@ internal class WorldService : IHostedService
     public Task StopAsync(CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Completes once the saved world (players, entities, story) is loaded, also when loading failed. The services start
+    ///     together, so the network accepts players while the world still loads.
+    /// </summary>
+    internal Task WaitForWorldLoadedAsync(CancellationToken cancellationToken) => hasFinishedLoadingTcs.Task.WaitAsync(cancellationToken);
+
+    /// <summary>
+    ///     A backup of the world as it was before this start, kept apart from the rolling backups (see
+    ///     <see cref="ServerStartBackups" />). Made before the save upgrade, which changes the files in place. A failed
+    ///     backup doesn't stop the server.
+    /// </summary>
+    private async Task BackUpBeforeLoadAsync(string saveDir)
+    {
+        if (options.Value.MaxBackups < 1)
+        {
+            logger.ZLogInformation($"No backup of the world at server start (\"{nameof(options.Value.MaxBackups)}\" is 0)");
+            return;
+        }
+        if (!File.Exists(Path.Combine(saveDir, $"Version{FileEnding}")))
+        {
+            // A new world: nothing to back up yet
+            return;
+        }
+
+        try
+        {
+            string backupsDir = startOptions.Value.GetServerSaveBackupsPath();
+            string zipPath = await Task.Run(() => ServerStartBackups.CreateAndPrune(saveDir, backupsDir, DateTime.Now));
+            logger.ZLogInformation($"World backed up before loading it: {zipPath}");
+        }
+        catch (Exception ex)
+        {
+            logger.ZLogError(ex, $"The backup of the world at server start failed, the server starts anyway");
+        }
     }
 
     internal void UpdateSerializer(IServerSerializer serverSerializer)
@@ -262,7 +301,7 @@ internal class WorldService : IHostedService
                 {
                     parentEntity.ChildEntities.Add(entity);
 
-                    if (entity is WorldEntity worldEntity && parentEntity is WorldEntity parentWorldEntity)
+                    if (entity is WorldEntity worldEntity && parentEntity is WorldEntity parentWorldEntity && !IsCrashFishOfItsHome(worldEntity, parentWorldEntity))
                     {
                         worldEntity.Transform.SetParent(parentWorldEntity.Transform, false);
                     }
@@ -314,6 +353,16 @@ internal class WorldService : IHostedService
             }
         }
     }
+
+    /// <summary>
+    ///     MULTINAUGHTICA_SPEC M4: the game that makes a crash fish sends it with its world position and its home as parent
+    ///     (<c>CrashHome_Spawn_Patch</c>, <c>ToWorldDto</c>), and the server keeps its transform without a parent during the
+    ///     session (<see cref="EntityRegistry.AddToParent" /> only links the entities). So its saved local position is a
+    ///     world position, and hanging it under its home's transform on load (as for every other child, whose positions
+    ///     are local) moved the fish far from its home after a restart: wrong cell, wrong spot in both games.
+    /// </summary>
+    internal static bool IsCrashFishOfItsHome(WorldEntity entity, WorldEntity parent) =>
+        TechType.Crash.ToDto().Equals(entity.TechType) && TechType.CrashHome.ToDto().Equals(parent.TechType);
 
     // TODO: This method should be removed. Each service should load its own data instead of centralizing it here.
     private async Task LoadPersistedWorldIntoServicesAsync(PersistedWorldData pWorldData)

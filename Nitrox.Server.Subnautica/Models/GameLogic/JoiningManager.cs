@@ -242,7 +242,8 @@ internal sealed class JoiningManager(
                 RescueWindowSeconds = options.Value.RescueWindowSeconds,
                 PartnerSignalInterference = options.Value.PartnerSignalInterference,
                 SignalInterferenceDepth = options.Value.SignalInterferenceDepth,
-                PartnerDiscoveriesSilent = options.Value.PartnerDiscoveriesSilent
+                PartnerDiscoveriesSilent = options.Value.PartnerDiscoveriesSilent,
+                CraftFromLockers = options.Value.CraftFromLockers
             }
         );
 
@@ -253,9 +254,17 @@ internal sealed class JoiningManager(
             return playerManager.GetConnectedPlayers().Where(p => p != player).Select(p => p.PlayerContext);
         }
 
-        PlayerEntity SetupNewPlayerEntity(Player player)
+        PlayerEntity SetupNewPlayerEntity(Player player, bool hasPose = false)
         {
             NitroxTransform transform = new(player.Position, player.Rotation, NitroxVector3.One);
+            // The entity's parent id is the escape pod, so its transform needs that parent too: movements are stored through
+            // the world-pose setters, which convert into the parent's space, and a restart links the saved local pose under
+            // the parent. Unparented, the saved pose was the world pose read as local (FIX_SPEC S13 finding, MULTINAUGHTICA_SPEC
+            // M2). A brand-new player's Position is only the default (0, 0, 0), not a place: it starts at the pod's origin.
+            if (player.SubRootId.HasValue && entityRegistry.TryGetEntityById(player.SubRootId.Value, out WorldEntity? parent) && parent.Transform != null)
+            {
+                transform.SetParent(parent.Transform, hasPose);
+            }
 
             PlayerEntity playerEntity = new(transform, 0, null, false, player.GameObjectId, NitroxTechType.None, null, player.SubRootId.OrNull(), []);
             entityRegistry.AddOrUpdate(playerEntity);
@@ -270,7 +279,7 @@ internal sealed class JoiningManager(
                 return playerWorldEntity;
             }
             logger.ZLogError($"Unable to find player entity for {player.Name}. Re-creating one");
-            return SetupNewPlayerEntity(player);
+            return SetupNewPlayerEntity(player, true);
         }
     }
 

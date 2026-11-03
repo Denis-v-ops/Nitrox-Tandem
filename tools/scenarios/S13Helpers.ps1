@@ -470,6 +470,57 @@ function Stop-Recording {
     [S13Track]::Parse($json)
 }
 
+<#
+    The movement clock of a game: TimeManager.RealTimeElapsed, the world's active play time in seconds, which movement
+    snapshots are stamped with (the "rt" column of a recording). Read through a short recording of the local player.
+#>
+function Get-MovementClock {
+    param([Parameter(Mandatory)][string]$Player)
+    Start-Recording $Player 'movementClock' 'player'
+    Start-Sleep -Milliseconds 500
+    $rt = (Stop-Recording $Player 'movementClock').Column('rt')
+    if ($rt.Length -eq 0) { throw "$Player recorded no frames" }
+    $rt[-1]
+}
+
+<#
+    MULTINAUGHTICA_SPEC M6: makes the scenario's own world -Seconds older. Saves it, closes everything, adds -Seconds to
+    its active play time (WorldData.json, GameData.StoryTiming.RealTimeElapsed: what TimeService.ActiveTime is loaded
+    from, the movement clock) and to the Aurora's explosion time on that clock (AuroraRealExplosionTime, so the ship isn't
+    treated as exploded), then starts it again from that save and the players rejoin. Game time (ElapsedSeconds) stays,
+    so no story timer fires. Only for a scenario's throw-away world, never a player's save.
+#>
+function Set-ScenarioWorldAge {
+    param([Parameter(Mandatory)][string]$SaveName, [Parameter(Mandatory)][string[]]$Players, [Parameter(Mandatory)][double]$Seconds)
+    $worldData = Join-Path (Join-Path (Get-NitroxRig).SavesDir $SaveName) 'WorldData.json'
+    $before = (Get-Item $worldData -ErrorAction SilentlyContinue).LastWriteTimeUtc
+    Invoke-Bridge 'server' 'save' | Out-Null
+    $saved = Wait-Until { (Get-Item $worldData -ErrorAction SilentlyContinue).LastWriteTimeUtc -gt $before } -TimeoutSeconds 60
+    if (-not $saved) { throw "The server didn't write $worldData" }
+    Start-Sleep -Seconds 3
+    # -Stop waits until they are gone, so a save at shutdown can't overwrite the change.
+    & (Join-Path $script:RepoRoot 'tools\dual-client.ps1') -Stop | Out-Null
+
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    # Edited as text: a round trip through ConvertFrom-Json/ConvertTo-Json could reorder "$type" keys or reformat numbers.
+    $text = [IO.File]::ReadAllText($worldData)
+    foreach ($key in 'RealTimeElapsed', 'AuroraRealExplosionTime') {
+        $found = [regex]::Matches($text, '"' + $key + '"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)')
+        if ($found.Count -ne 1) {
+            # The Aurora's time can be null; the play time must be there, once
+            if ($key -eq 'RealTimeElapsed') { throw "Expected one $key in $worldData, found $($found.Count)" }
+            continue
+        }
+        $number = $found[0].Groups[1]
+        $old = [double]::Parse($number.Value, $inv)
+        $new = ($old + $Seconds).ToString('R', $inv)
+        $text = $text.Substring(0, $number.Index) + $new + $text.Substring($number.Index + $number.Length)
+        Write-Host "  $key $($number.Value) -> $new s"
+    }
+    [IO.File]::WriteAllText($worldData, $text)
+    Start-ScenarioGames -Players $Players -SaveName $SaveName -KeepSave
+}
+
 function Format-Result {
     param($Result)
     ($Result.GetEnumerator() | ForEach-Object {

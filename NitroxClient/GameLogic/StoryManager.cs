@@ -17,7 +17,9 @@ public static class StoryManager
             scanObject.SendMessage("OnScanned", null, SendMessageOptions.DontRequireReceiver);
             if (!destroy)
             {
-                PDAScanner.fragments.Add(entityId.ToString(), 1f);
+                // The indexer, not Add: Add throws when this game already has the key, when both players scanned the same
+                // fragment (MULTINAUGHTICA_SPEC M2)
+                PDAScanner.fragments[entityId.ToString()] = 1f;
             }
             else
             {
