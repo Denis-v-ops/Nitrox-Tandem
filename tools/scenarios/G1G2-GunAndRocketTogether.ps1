@@ -164,7 +164,7 @@ try {
             Write-Host "  rocket at $(Format-Vector ([double[]]$rocket.position)), rotation $rotation"
             Write-Host "  cockpit AtmosphereVolume at $(Format-Vector ([double[]]$script:atmosphere.position)), lever at $(Format-Vector ([double[]]$lever.position))"
             Write-Host ("  offset {0}" -f (Format-Vector @(([double]$script:atmosphere.position[0] - $rocket.position[0]), ([double]$script:atmosphere.position[1] - $rocket.position[1]), ([double]$script:atmosphere.position[2] - $rocket.position[2]))))
-            Write-Host "  server: $([regex]::Match($server, 'Position[^\]]*').Value)"
+            Write-Host "  server: $([regex]::Match($server, 'Position: \[[^\]]*\]').Value)"
             Assert-True ([bool]$script:atmosphere) 'the cockpit''s AtmosphereVolume was found'
         }
 

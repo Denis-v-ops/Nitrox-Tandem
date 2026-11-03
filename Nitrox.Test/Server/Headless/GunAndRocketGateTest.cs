@@ -41,6 +41,9 @@ public class GunAndRocketGateTest
 
         // Alice walks out of the terminal's area (OnTerminalAreaExit): her click is withdrawn, Bob's alone doesn't start it.
         alice.Send(new StoryGateReady(StoryGateKind.DISABLE_GUN, false));
+        // Alice's and Bob's packets aren't ordered against each other: wait until the server dropped her click.
+        await ServerHarness.WaitUntilAsync(() => !server.Get<StoryGateService>().DescribeGates().Any(line => line.StartsWith("DISABLE_GUN") && line.Contains("WAITING")),
+                                           "Alice's click is withdrawn");
         bob.ClearReceived();
         bob.Send(new StoryGateReady(StoryGateKind.DISABLE_GUN, true));
         waiting = await alice.WaitForAsync<StoryGateStatus>(status => status.Kind == StoryGateKind.DISABLE_GUN && Array.IndexOf(status.ReadyNames, "Bob") >= 0);

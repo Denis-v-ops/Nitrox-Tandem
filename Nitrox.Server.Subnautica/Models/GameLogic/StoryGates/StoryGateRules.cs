@@ -54,12 +54,14 @@ internal static class StoryGateRules
     /// <summary>
     ///     Where the rocket's cockpit is relative to the rocket's own position (the launch platform's root): the centre of
     ///     its <c>AtmosphereVolume</c>, from which the game side measures "aboard" (<c>Rockets.RocketLaunch</c>, 5.55 m).
-    ///     Read in game through the dev bridge (COOP_FEATURES_SPEC G2).
+    ///     Read in game through the dev bridge (2026-11-03): rocket at (-60.0, -0.05, 404.85) with no rotation, its
+    ///     AtmosphereVolume at (-60.0, 35.1, 404.9), the launch lever at (-60.2, 38.8, 404.8). Straight up, so the
+    ///     rocket's yaw doesn't move it (it's still applied).
     /// </summary>
-    public static readonly NitroxVector3 RocketCockpitOffset = new(0, 0, 0);
+    public static readonly NitroxVector3 RocketCockpitOffset = new(0, 35.2f, 0);
 
     /// <summary>Half the size of the cockpit box: the game's 5.55 m radius plus room for position lag.</summary>
-    public static readonly NitroxVector3 RocketCockpitHalfSize = new(8, 8, 8);
+    public static readonly NitroxVector3 RocketCockpitHalfSize = new(7, 6, 7);
 
     private static readonly TimeSpan clickTimeout = TimeSpan.FromMinutes(2);
 
