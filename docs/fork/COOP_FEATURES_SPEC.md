@@ -476,7 +476,7 @@ admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProc
   own click still runs the game's own code; they aren't the discriminating ones. L2 under the same build:
   `RocketLaunch_IsNotRelayed_BeforeTheGateStarts` fails (the default processor relays it).
 
-### G3: Sea Emperor, hatching and the cure — 3a and 3b done 2026-11-03 (branch `feat/4-g3-sea-emperor`); 3c done 2026-11-03 (branch `feat/4-g3c-cure`), windowed re-check of the partner's babies pending
+### G3: Sea Emperor, hatching and the cure — 3a and 3b done 2026-11-03 (branch `feat/4-g3-sea-emperor`); 3c done 2026-11-03 (branch `feat/4-g3c-cure`), verified windowed
 
 Three beats. Size L in total. Planned as below; what was built and found follows.
 - **See [MULTINAUGHTICA_SPEC M2](MULTINAUGHTICA_SPEC.md#m2-story-and-progress-m)** (2026-11-02): babies of the server
@@ -649,14 +649,16 @@ What was built:
   hadn't ended after 90 s (two eggs still hatching at the end), his copies gave up waiting after 60 s, and Alice's babies
   had hatched, visited, left, burped (Alice found a ball of her own) and teleported within about 100 s, which removed
   Bob's copies before they visited; Bob got no ball. (Some passes there were false: the visit check counted bridge
-  errors; fixed.) This is what led to the follow part above; it is not yet re-run windowed.
+  errors; fixed.) This is what led to the follow part above.
+- L3 3c windowed re-check (`-Natural`, 2026-11-03, on `integration/wave4` after the MultiNaughtica merge, so with
+  the merged `SeaEmperorBaby_Start_Patch`): **PASS, 33 checks**.
 
 **Not verified:** anything windowed: the Emperor's arrival on screen, the messages, the music heard. Two players
   reaching the platform in the same instant (each game holds, the first ask that finds both there starts both; code-read).
   A player who leaves the platform while held withdraws the ready (code-read; the L1 area tests cover the box). The real
   hand click on the incubator (the scenario uses the bridge's `use`, which calls `OnHandClick` as the local player).
   Two players both carrying enzymes (the lock loser hears the hatch through the metadata; code-read).
-  **3c, not verified:** the fixed partner chain windowed (the one windowed run failed before the fix, see above): the
+  **3c, not verified:** only through the scenario's checks, not looked at on screen: the
   real burps on the partner's game while he looks, how the copies look (shown when the simulating game's baby leaves
   its egg; the visit ended early by the simulating game's baby). The hatch and visit length windowed (the visit ended
   within about 100 s of the hatch on Alice's game; not timed further). The real
@@ -2538,24 +2540,24 @@ Same as AGENTS.md §7, with one deliberate exception for build efficiency:
 
 ### 13.1 README: showcase the features
 
-The [README](../../README.md) is the fork's front page. It should show what playing together feels like, not list
-code. Every feature that lands, and every change to this spec that players would notice, updates it in the same branch:
+The [README](../../README.md) is the fork's front page. It shows what playing together feels like and what Tandem
+changes compared with Nitrox, grouped and short, not a list of code. Every feature that lands, and every change to this
+spec that players would notice, updates it in the same branch:
 
-- **Shipped features** move out of "Planned co-op features" into a co-op features table next to the bug-fix table:
-  feature, what you get, how to use it (key or interaction), its price or limit (§2.2), and the server option with its
-  default.
-- **Lead with the design idea.** Say why it's built this way: it stays scary (the deep cuts the line, you hear your
-  partner), every help has a price, the big story beats wait for both of you. Mention that every rule can be switched
-  off in `server.cfg`.
+- **README: one short bullet** under its group (the story waits for both of you; help each other, at a price; find each
+  other and keep it scary; see each other), and a fix under its area in "Bug fixes". No tables in the README.
+- **[PLAYING.md](PLAYING.md) carries the detail:** what you get, how to use it (key or interaction), its price or limit
+  (§2.2), and the server option with its default.
+- **Lead with the design idea.** Say why it's built this way: it stays scary, every help has a price, the big story
+  beats wait for both of you, and every rule can be switched off in `server.cfg`.
 - **Players' language.** No class names or file paths. Upstream issues and PRs only as links.
-- **Keep it clean.** Remove dropped features and stale "planned" lines. Keep "Planned co-op features" short and grouped
-  like this spec: story moments, teamwork survival, finding each other, keeping it scary, cozy home.
+- **Keep it clean.** Remove dropped features and stale "planned" lines; keep "Planned" short.
 - **Show it** where a picture helps: a screenshot or short clip from the dual-client rig (`tools\bridge.ps1` can take
   them), such as the faint partner marker or the distress call.
-- The README carries the highlights; `docs/fork/PLAYING.md` (once it exists) carries the full option reference.
 
 The README's "Planned co-op features" list was brought in line with this spec on 2026-11-02 (the design idea, the
-prices, "keeping it scary").
+prices, "keeping it scary"). On 2026-11-03 it was rewritten as grouped bullets after wave 4,
+and the detailed feature table moved to PLAYING.md.
 
 ## Log
 
@@ -2604,3 +2606,5 @@ prices, "keeping it scary").
 | 2026-11-03 | T5 | Done: hold on to the hull of a Seamoth the partner pilots ("Hold on" on the hull, the server grants it), ride along outside as a swimmer (Normal mode, motor off, air drains, no tools), let go by the Exit key, when down, when the pilot gets out or leaves, when it docks or is destroyed. The hitcher is put on a hull handle every frame (not parented) and keeps sending movement; the other games hang the body on the same handle (no doubled lag). Server keeps hitches in memory for late joiners. Option `SeamothHitch` (true). README row added. Seen once: the partner's game can lose the pilot state after a dock (H, upstream movement race) | L2 `SeamothHitchTest` (3, fail without the server processors); windowless `T5-HitchARide.ps1` PASS (72 checks; 209 m drive, per-frame on the handle in both games); negative control (switch off) 21 of 72 FAIL; T1 (73) and S6 (14) still pass; full suite green. Windowed look not checked |
 | 2026-11-03 | B6 | Cannons done, picture frames deferred: packet `CannonEffect` (grab, release, propulsion shot, repulsion shot; default relay, not persisted) played by `CannonEffects` on the partner's copy of the held cannon; `RemotePropulsionBeam` draws the beam without grabbing on the copy; a repulsion shot takes the object's exclusive lock before pushing it (as a grab), sends its flight and keeps a normal lock. Found and fixed: a propulsion shot kept the exclusive lock on the shot object (the partner could never grab it); the grab setter now gives it back on every let-go. Picture frames (#2840): review has only two nits; the open choices (where the image lives, cap, how the partner's frame draws it) are written down with a one-day minimal core for a decision; tag 97 stays reserved. README fix row | `dotnet test` 521 pass; L3 windowless `B6-Cosmetics.ps1` PASS (30 checks); negative control on the unfixed build 9 of 30 fail. Not verified: the look and sound (windowless), real trigger input, the Prawn suit arm (not covered) |
 | 2026-11-03 | G3c + FIX_SPEC S17 | Done (branch `feat/4-g3c-cure`): the partner's copies of the Sea Emperor babies now visit their mother, leave and drop cure balls in the partner's game (S17: the Start patch skipped any baby with a parent; copies get their egg's id, stay hidden during the local hatching, follow their own cinematic; a teleported baby is destroyed on the server and the other games). The cure waits until both took a ball (`CURE`, `ALL_READY`), each with their own cure scene; a relayed cure waits for the own scene; offline partner: locked, `storygate release cure`. README rows | L1 rule + texts, L2 `Cure_StartsWhenBothTookABall_ALonePlayerIsLockedUntilReleased`; windowless `G3c-CureTogether.ps1` PASS (33, only the simulating game's animation links driven), negative controls 7 of 17 (old code) and 7 of 20 (partner waits for its own animation). One windowed run (before the follow-the-simulating-game fix) failed 11 of 21: the partner faced away, his egg and baby animators culled, his copies were teleported away before their visit; `G3-SeaEmperorTogether.ps1` PASS (33, S12 with the release). `dotnet test` 516 pass. Windowed re-check of the fixed partner chain not run |
+| 2026-11-03 | Wave 4 suite | Full windowless suite on `integration/wave4` (before the MultiNaughtica merge): 40 of 50 passed. Failures: S3 (G1 now holds the gun terminal for both players; the scenario now runs with `StoryGatesEnabled=False`), S4 (death step changed on `coop` by MULTINAUGHTICA M5), and S7, S9, S10, B3, G4, P1, which ran while another session's game runs were up (S7 aborted on low RAM, G4 timed out joining); known flaky S14 (`reaper-AB` this time) and D4 (`crabsnake-AB`). After merging `coop` (M1–M9, `e31e5537`): build green, 784 tests pass; re-run of S3, S4, S7, S9, S10, S15d, B3, G3, G3c, G4, M2, M5, P1: 13 of 13 pass. Watch: the D2 headless test `InterferenceIsRelayed_AndALateJoinerGetsItAtOnce` fails now and then under parallel load (passes alone), R1b's pod-ladder step failed once (3 of 41) | Windowless suite + targeted re-run on the merged build |
+| 2026-11-03 | G3c + FIX_SPEC S17 | Windowed re-check (`G3c-CureTogether.ps1 -Natural`, rig 0, windows) on the merged build (`integration/wave4` with MULTINAUGHTICA M1–M9): PASS, 33 checks. The earlier windowed failure (11 of 21, culled animators) is fixed by following the simulating game | Windowed scenario |
