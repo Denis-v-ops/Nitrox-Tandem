@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using Nitrox.Server.Subnautica.Models.GameLogic;
@@ -58,6 +59,10 @@ internal sealed class EntityMetadataUpdateProcessor(PlayerManager playerManager,
             case ThermalPlantMetadata thermalPlantMetadata:
                 return ProcessThermalPlantMetadata(sendingPlayer, entity, thermalPlantMetadata, out stored, out relayed);
 
+            case EscapePodMetadata escapePodMetadata:
+                stored = relayed = MergeEscapePodMetadata(sendingPlayer, entity, escapePodMetadata);
+                return true;
+
             // Allow metadata updates from any player by default
             default:
                 return true;
@@ -94,6 +99,29 @@ internal sealed class EntityMetadataUpdateProcessor(PlayerManager playerManager,
         stored = new ThermalPlantMetadata(temperature, power ?? current?.Power);
         relayed = new ThermalPlantMetadata(temperature, power);
         return temperatureRose || power.HasValue;
+    }
+
+    /// <summary>
+    ///     Each game reports only whether its own player has opened each hatch (upstream #2859, COOP_FEATURES_SPEC R1b): a
+    ///     non-empty list means the sender did. The server adds the sender's name to the players kept so far, so a game can
+    ///     neither mark nor clear anyone else, and a rejoin under a new session id keeps the flags.
+    /// </summary>
+    private static EscapePodMetadata MergeEscapePodMetadata(Player sendingPlayer, Entity entity, EscapePodMetadata incoming)
+    {
+        EscapePodMetadata? existing = entity.Metadata as EscapePodMetadata;
+        return new EscapePodMetadata(incoming.PodRepaired, incoming.RadioRepaired,
+                                     MergeHatchUse(existing?.PlayersWithBottomHatchUsed, incoming.PlayersWithBottomHatchUsed.Count > 0, sendingPlayer.Name),
+                                     MergeHatchUse(existing?.PlayersWithTopHatchUsed, incoming.PlayersWithTopHatchUsed.Count > 0, sendingPlayer.Name));
+
+        static List<string> MergeHatchUse(List<string>? usedBy, bool usedBySender, string sender)
+        {
+            List<string> merged = usedBy == null ? [] : [.. usedBy];
+            if (usedBySender && !merged.Contains(sender))
+            {
+                merged.Add(sender);
+            }
+            return merged;
+        }
     }
 
     private bool ProcessPlayerMetadata(Player sendingPlayer, Entity entity, PlayerMetadata metadata)

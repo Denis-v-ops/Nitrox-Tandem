@@ -116,5 +116,21 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic
                 return playerLocksById.TryGetValue(id, out playerLock);
             }
         }
+
+        public List<KeyValuePair<NitroxId, PlayerLock>> GetExclusiveLocks()
+        {
+            lock (playerLocksById)
+            {
+                List<KeyValuePair<NitroxId, PlayerLock>> exclusiveLocks = [];
+                foreach (KeyValuePair<NitroxId, PlayerLock> idWithPlayerLock in playerLocksById)
+                {
+                    if (idWithPlayerLock.Value.LockType == SimulationLockType.EXCLUSIVE)
+                    {
+                        exclusiveLocks.Add(idWithPlayerLock);
+                    }
+                }
+                return exclusiveLocks;
+            }
+        }
     }
 }

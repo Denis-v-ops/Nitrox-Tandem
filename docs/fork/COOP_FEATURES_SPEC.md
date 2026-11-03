@@ -1672,98 +1672,105 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   too quiet in play, that's this shared path. Seen, not changed: `it.json` uses `{DORMENDO}/{TOTALE}` in
   `Nitrox_SleepingPlayers`, so Italian shows the placeholders unfilled.
 
-### R1b: See each other sit, sleep and use things (adopt upstream PR #2859, L)
-- **Why it's off:** all remote-player cinematic sync patches have been in `#if false` since 1.8 (#2349 → #2287: benches
-  broke and players got stuck after animations). So today the partner doesn't see you lie down, and the sitting pose may
-  be fought by walking animations (`RemotePlayer.cs:161`, H).
-- **PR #2859** (open, no reviews; 32 files, +1045/−127):
-  - re-enables the patches;
-  - adds an "in cinematic" state that stops movement packets fighting animations;
-  - seat positions and the chair pose;
-  - two players sharing a bed, with a lock per side;
-  - escape-pod ladder animations.
-- **Merge cautions:**
-  - It builds on the closed #2642; check that its review points were addressed (per-pod state, per-frame logging,
-    missing serializer/world-test entries).
-  - It **changes `EscapePodMetadata`** (two new lists). The change is additive, so old saves load with empty lists, but
-    the lists are keyed wrongly (see the A2 notes below), so fix that before it ships.
-  - It touches `EscapePodManager.cs` next to S9, but the merge is textually clean (see the A2 notes below).
-  - Its bed patch lets the game's own bed code run, which starts a **local time skip** (`game:Bed.cs:203`). Our clock is
-    server-driven (`DayNightCycle_Update_Patch`): verify that, or keep our skip suppression. `SleepManager` waiting for
-    everyone stays.
-- **A2 trial merge (2026-11-02, not built):** `pr-2859` (head `3bc00d9a`, base `eb4535fd`) merged into `coop` with
-  `--no-ff --no-commit`, then aborted.
-  - **Conflicts: none.** Only two of the 32 files were also changed on `coop` since the base, and both merged cleanly:
-    - `EscapePodManager.cs`: ours is S9 (`SetupIntroSequenceAsync`, `AddOrUpdateGlobalRootEntity`, new constructor
-      parameters); theirs is one line in `CreateNewEscapePodAsync` for the new `EscapePodMetadata` constructor.
-    - `InteriorPieceEntitySpawner.cs`: theirs is a blank line; ours is S2/S10 (`RestoreMapRoom`).
-    - Everything else is new files or files `coop` hasn't touched. `AnimationController.cs`, `AnimChangeType` and
-      `PlayerHeldItemChangedProcessor.cs` are **untouched**; `AnimationController` is reached only through
-      `RemotePlayer`. So the cost is design coupling, not merge work. Build and tests were not run; the compiler may
-      still find things.
-  - **#2642's review points:**
-    - per-frame logging: fixed (no `Log.` calls in the movement broadcaster, `RemotePlayer`'s update paths or the bed
-      positioner);
-    - the extra `BedEnterAnimation`/`BedExitAnimation` packets and the string session id: gone (beds use a lock per side
-      plus `PlayerCinematicControllerCall`);
-    - the "denied" message uses the existing `Nitrox_DenyOwnershipHand` key;
-    - serializer test: the new `Dictionary<string, bool>` and `List<SessionId>` fields are covered by the faker without
-      changes (not run);
-    - world/save test: **not addressed**. The PR's only test change is a flaky-test fix in `ThreadSafeSetTest`, although
-      its checklist says "Has tests";
-    - per-pod state: **only half fixed**. It is now a list per pod, but keyed by `SessionId` (see below).
-  - **Still open on #2859:** no review yet. The author's notes: direction changes while swimming look choppy, and Cyclops
-    movement stutters (may predate the PR). From #2642's six-player test, not retested: the intro cinematic wouldn't
-    let players interact, using a hatch blocks everyone in the pod, benches untested; unfixed there: bulkhead door,
-    purple tablet in hand, Cyclops moonpool.
-  - **New cautions, found by reading (H unless said):**
-    - **Hatch state is keyed by `SessionId`.** Session ids are connection indexes: they start at 1, are reused after 10
-      minutes and start over after a restart (`SessionId.cs`). After a rejoin or restart the flags belong to whoever
-      gets that number, and the ids pile up. The PR text says "player, not session specific", but the code is
-      session-specific. Key it on the persistent player identity instead.
-    - **It likely doesn't survive a save.** The server has JSON converters for `NitroxId`, `PeerId` and `TechType`, none
-      for `SessionId`, whose only public member is the get-only `IsPlayer`. A scratch test with a same-shaped struct
-      wrote `{"IsPlayer":true}` and read it back as 0 (checked with Newtonsoft only; the protobuf save path and the real
-      type were not run). Add a `SaveLoadRoundTrip` test for a populated `EscapePodMetadata`; it would catch this.
-    - **A dropped guard.** `MultiplayerCinematicController.CallStartCinematicMode` no longer checks whether the local
-      player is occupying the animator. Two players in one pod doing the ladder at once could clobber the shared pod
-      animator. The opposite failure (one hatch use blocks the whole pod) is also possible, because hatches and ladders
-      lock on the controller's parent entity id, while only beds get one lock per side. Test both in the pod.
-    - **Bed, side effects of running vanilla `EnterInUseMode`:** `DayNightCycle.SkipTime` sets `skipTimeMode`.
-      `DayNightCycle_deltaTime_Patch` means `_dayNightSpeed` doesn't drive the clock, so the skip is probably inert for
-      time, but `skipTimeMode` stays set on that client until the server time passes `skipModeEndTime` or the bed is
-      left, and `Bed.CanSleep` returns false meanwhile. The patch also calls `StopSleepScreen` right after vanilla's
-      `StartSleepScreen`. Verify the fade, and that the second player can still get into the other side.
-    - **Every cinematic controller under a Nitrox entity now goes through an exclusive lock round trip** to the server
-      before it starts, and a stale lock is released by the ownership-change processor if an end packet is lost.
-      A hatch or ladder press now waits for the server's answer (and shows "denied" if another player holds the lock).
-  - **Overlap with this spec's items** (no textual conflicts anywhere; "coupling" means they share state in
-    `RemotePlayer`). #2859 adds `InCinematicEntityId`/`InCinematic`, `SetInCinematic`/`ClearInCinematic`, an early
-    return in `UpdatePosition`, and `ResetStates` now calls `ClearInCinematic`, which sets
-    `AnimationController.UpdatePlayerAnimations = true`.
-
-    | Item | Coupling | Order |
-    |---|---|---|
-    | R2a | Light. Server-side replay and held item; the PR's cinematic poses go through the lock/bed initial sync, not `AnimChangeType`. | Any |
-    | R2b | Medium. No file overlap, but the PR writes `cinematics_enabled` and `using_tool_first` on the partner's animator. A `using_tool` watcher could fire mid-cinematic. | **Before**, with one `RemotePlayer` method for all arm-state writes, so one `if (!InCinematic)` can go in later |
-    | R2c | None (tool effects on the body). | After R2b, any |
-    | F1 | Light. Model, ping and name-tag code; the PR's hunks are in `UpdatePosition`/`SetVehicle`. | Any; same branch as the other `RemotePlayer` items |
-    | D1 | Light. Emitters on the partner's body. | Any |
-    | D6 | Light. Held tool and lights (`PlayerHeldItemChangedProcessor`), untouched. | Any |
-    | T1 | **Heavy.** The downed pose needs the same two things: skip `UpdatePosition`, keep `UpdatePlayerAnimations` off. `ClearInCinematic` would unfreeze a downed body. | T1 is wave 3, #2859 wave 4: give T1 its own flag that gates the same two spots, and make the animation switch a combined test (any lock set), not an assignment, so the two fold into one pose lock later |
-    | T5 | Light. `RemotePlayer.Attach` (now `RemotePlayer.cs:145`) is untouched; a hitched body must not count as in a cinematic. | After |
-    | R1b | This is #2859. | Wave 4, after the rekey and tests below |
-
-  - **Recommendation:** build **R2b first, on its own**, not on top of #2859. There is no textual conflict, #2859 has no
-    review and an unfinished save-format change, and R2b is two waves earlier. Keep R2b's writes in one method.
-    Before R1b: key the hatch state on player identity, add the save round-trip test, and run the pod test with both
-    players.
-- **Tests:**
-  - L3: remote animation flags and seat position (within 0.3 m); sit/stand 20 times to catch the #2287 regression; lying
-    down in the bed visible to the partner; gun terminal / ladder animations.
-  - L2: any new packet fields.
-  - L1/L2: `SaveLoadRoundTrip` for `EscapePodMetadata` with both hatch lists filled, and one for a rejoin under a new
-    session id.
+### R1b: See each other sit, sleep and use things (adopt upstream PR #2859, L) — done 2026-11-03 (branch `feat/4-r1b-cinematics`)
+- **Why it was off:** all remote-player cinematic sync patches had been in `#if false` since 1.8 (#2349 → #2287: benches
+  broke and players got stuck after animations), so the partner didn't see you lie down or climb a hatch.
+- **What was built:** upstream PR #2859 (head `3bc00d9a`) merged into `coop` (`--no-ff`; conflicts in `RemotePlayer`
+  with T1/R2b and in `EntityMetadataUpdateProcessor` with B3, resolved in the merge commit), then fixed in separate
+  commits:
+  - **Hatch state per player name.** #2859 kept who has opened each escape pod hatch (`EscapePodMetadata`, two new
+    lists) as session ids: connection indexes, reused, and written to the JSON save as `{"IsPlayer":true}`, read back
+    as 0. The lists now hold player names (how the server keys saved players). The server doesn't trust the names a game
+    sends: a non-empty list means "the sender used it", and the sender's name is added (`MergeEscapePodMetadata`), so a
+    game can neither mark nor clear another player. Old saves load with empty lists (the JSON serializer passed the
+    missing members as null; guarded in the constructor). No save upgrade needed: the lists are new.
+  - **One pose lock.** `RemotePlayer.IsPoseLocked` is "downed (T1) or in a cinematic", and the body's
+    `AnimationController` reads it every frame (`IsPoseLocked` delegate) instead of having `UpdatePlayerAnimations`
+    assigned from it, so ending a cinematic can't unfreeze a downed body and a revive can't unfreeze a seated one. Only a
+    cinematic skips `UpdatePosition` (T1 decided the downed body follows its player). `SetInCinematic` also zeroes the
+    body's rigidbody velocity: the partner's game sends no movement during a cinematic, so the last velocity would carry
+    the body off a bench seat, where it is placed once.
+  - **Arm writes through `SetArmState`.** #2859's `cinematics_enabled` (bench, cinematic call, bed, bed initial sync)
+    and the gun terminal's `using_tool_first` go through `RemotePlayer.SetArmState(..., cinematic: true)`, which always
+    writes. The partner's own arm states (R2b's synced states, the held item's flags) are kept but not written while a
+    cinematic holds the body, and written back when it ends (R2b sends on change only, so dropping one would leave the
+    arms wrong afterwards). The downed pose holds none back (T1).
+  - **Lock lifecycle** (`CinematicLocks`):
+    - #2859 downgraded the lock on the entity above a controller to transient at *every* cinematic end, whoever had
+      taken it: the Cyclops helm lock after the sit-down at the helm, the bench seat, the cuddlefish (P1). Now only locks
+      the three cinematic patches took themselves are given back.
+    - A bed side was downgraded when the lie-down ended, so the partner could lie on the same side. It now stays
+      exclusive until `Bed.ExitInUseMode`.
+    - Cinematics under a Cyclops, a base, a vehicle, a docking bay or a creature take no lock
+      (`CinematicLocks.UsesLock`): those ids are the helm/simulation locks. As merged, a ladder, hatch or docked Seamoth
+      in the Cyclops would have been denied while the partner steers (T4), and a base hatch would have locked the whole
+      base and moved B3's power producer. The Cyclops' docking bay has an id of its own; its docking cinematic starts
+      from `VehicleDockingBay.LateUpdate`, and the lock round trip held it back (seen windowless: S6 docked 1 of 5 times
+      and undocked none; passes again with the exemption).
+      Cinematics left to other systems (`PlayerCinematics`' blacklist: the intro, a reaper's grab, bench and chair) take
+      none either: the intro is under the escape pod, so two new players would have competed for the pod's lock.
+    - The start patch synced cinematics started for another player or none (`VehicleDockingBay.LateUpdate` starts one
+      with `null`) and replayed them with `Player.main` after the lock: now only the local player's.
+  - **Late joiner in bed.** `BedSleepInitialSyncProcessor` poses a partner already in bed from their bed-side lock in
+    the join payload, but the server put only global root entities' locks there, and a side's id (`BedLockId`) is no
+    entity: it never found one. The join payload now also carries the other players' exclusive locks on ids the server
+    has no entity for (`EntitySimulation.AssignGlobalRootEntitiesAndGetData`), and the processor takes only exclusive
+    ones (the transient lock left after getting up isn't a sleeper).
+  - **Bed time skip.** #2859's bed patch let vanilla `EnterInUseMode` run: `DayNightCycle.SkipTime` sets the sleeper's
+    `dayNightSpeed` to 79.2 until server time passes `skipModeEndTime` (396 game s) or the bed is left, and
+    `ThermalPlant` (`game:ThermalPlant.cs:68`) and `FiltrationMachine` (`:234`) read it directly: 79× production in that
+    game. Back to `coop`'s full replacement (no local skip; the server's `SleepManager` skips time for everyone).
+  - **Bench** (found on the rig): `Bench_OnHandClick_Patch` sent "sitting down" after the lock even when the game then
+    refused the sit (e.g. the player counted as in water); since #2859 that froze the partner's copy at the bench. Now
+    it's sent only if the sit cinematic started, else the seat lock goes back to transient. #2859 put the copy at the
+    seat's `player_target`, which in the watching game is in its rest pose (that game's seat isn't animated): 1.2 m below
+    the sitter (measured). A bench cinematic now lets movement packets place the body (`SetInCinematic(followsMovement)`);
+    the sitter's game sends where they sit once the sit-down cinematic ends.
+  - `bridge.ps1 diff` leaves the pod's hatch lists out of the metadata comparison (each game reports only its own).
+- **Findings and decisions:**
+  - Dropped guard in `MultiplayerCinematicController.CallStartCinematicMode` ("local player occupies the animator"):
+    kept dropped. Every pod hatch and ladder locks the pod's id, so two players can't be in pod cinematics at once; the
+    second gets "Another player is interacting with that object" until the first is through (a few seconds, by design).
+    For Cyclops and base hatches (no lock now) two players on one hatch at once could still share its animator (H).
+  - #2642's review points: per-frame logging, the extra bed packets and the string session id are gone; the serializer
+    covers the new packet field; the save test and per-pod state are now done (above).
+  - Not changed (H, from #2859's author and #2642): direction changes while swimming look choppy; Cyclops movement
+    stutters; bulkhead door, purple tablet in hand and Cyclops moonpool cinematics unchecked.
+  - The intro patch (`uGUI_SceneIntro_IntroSequence_Patch`, upstream, not #2859) still writes `cinematics_enabled`
+    straight onto the partner's animator; left alone.
+- **For R2c (tool effects):** while a cinematic holds the partner's body, R2b's `using_tool` is held back by
+  `SetArmState` and replayed afterwards: start tool effects from what `SetArmState` writes, or test `InCinematic`, so a
+  beam doesn't play from a seated body.
+- **For T5 (Seamoth hitch):** don't use `SetInCinematic` for a hitched body (it skips `UpdatePosition`, freezes the
+  animator through `IsPoseLocked`, and `SimulationOwnershipChangeProcessor` clears it on the vehicle's lock changes).
+  #2859's docking and undocking processors set it on the *pilot*, keyed on the vehicle's id, while docking; a hitched
+  passenger needs its own handling there.
+- **Verified:**
+  - L1: `EscapePodHatchUseSurvivesSaveAndLoad` (failed on #2859's session-id lists: `IsPlayer` false after load),
+    `EscapePodSavedBeforeR1b_LoadsWithNoHatchUse` (failed with null lists before the guard); `PacketsSerializableTest`
+    covers `PlayerCinematicControllerCall.AnimationParameters` (no faker change needed).
+  - L2: `EscapePodHatchUseTest` (rejoin under a new session id after another player joined, restart, forged and empty
+    updates; fails with #2859's union merge: "Carol" kept); `CinematicLockTest` (per-side bed locks, the late joiner's
+    payload, the side freed after getting up, fails without the server change; the cinematic call relayed with its
+    parameters).
+  - L3 windowless `tools/scenarios/R1b-SeeEachOtherSit.ps1` **PASS (41 checks, fresh world)** on the fixture `s7-machine-base`
+    (Alice builds a bench and a bed in its room): sit down and stand up 10 times, each time Bob's copy is held in the
+    cinematic with `cinematics_enabled` and `bench_sit`, within 0.5 m of where Alice sits (0.01 m), and lets go; Alice
+    never stays in cinematic mode, and the copy follows her again afterwards (#2287). Bed: Bob sees Alice lie down
+    (`bed_down_left`), no local time skip in Alice's game, Bob can't take her side, lies on the other one, both sleep,
+    get up, both copies let go and follow again. Escape pod top hatch: Bob is turned away while Alice is on the ladder,
+    then climbs; each copy is held during the other's climb. Windowless games fire no animation events, so a cinematic
+    that doesn't end on its own is ended through the bridge (`OnPlayerCinematicModeEnd`); the room is narrow, so the
+    scenario shifts the bed a few centimetres in both games until the game offers both sides. **Negative control** on
+    `coop` (without #2859): 14 of 40 fail (no held pose or `cinematics_enabled` for the bed and the pod, Bob lies down on
+    Alice's side, Bob isn't turned away at the ladder). Regression, windowless on this branch: S3 PASS (10), T1 PASS
+    (73), T4 PASS (56), S6 PASS (14, after the docking bay fix).
+- **Not verified:** anything windowed: how the poses look (bones don't move windowless), the bench seat height with
+  the movement-placed body, the sleep fade, choppy swimming or Cyclops stutter. The escape pod's first-use hatch
+  scenes (Debug builds skip the intro, which leaves both hatches used, H), so the per-player first use is covered by
+  L1/L2 only. A late joiner arriving while the partner sleeps (L2 covers the payload, not the pose). The gun terminal
+  (`using_tool_first`, `cured`) and story cinematics. Two players on one Cyclops or base hatch at once (no lock there,
+  H). A real exit-key stand-up (the scenario calls `Bench.ExitSittingMode`).
 
 ### R2: The partner's body reads right (from the basics sweep, §12.1)
 
@@ -2309,3 +2316,4 @@ prices, "keeping it scary").
 | 2026-11-03 | G3 | 3a + 3b done, 3c not built: the Sea Emperor's platform waits until both players stand in its trigger box (measured: 50 x 15 x 70 m turned 151 degrees; `StoryGateArea` got an optional yaw), each game starts its own platform; the incubator hatches once both used it (carrier hatches, partner confirms and hears the soundscape and music). 3c: the partner's game never gets a cure ball (its copies of the babies never visit the mother: `SeaEmperorBaby_Start_Patch` skips any baby with a parent, and spawned entities sit under their cell root), so a "both click" gate would deadlock; findings and a plan (fix the baby chain windowed, then gate; fallback: a presence gate) in G3. Bridge `sounds` records 2D one-shots. README row | L1 area/rules/texts; L2 `StoryGateTest` Sea Emperor and hatching; windowless `G3-SeaEmperorTogether.ps1` PASS (31 checks, incl. S12 in game: cured offline, rejoins cured); negative control 14 of 26 fail. Windowed not run |
 | 2026-11-03 | G1 + G2 | Done: the gun terminal and the rocket launch wait for both players' clicks (`ALL_READY`), each game plays its own cinematic / launches its own player from its held click. Gun: Prefix on `PrecursorDisableGunTerminal.OnHandClick` only when cured (denied path ungated), `Cancel` on every `OnTerminalAreaExit`. Rocket: Prefix on `LaunchRocket.OnHandClick` before `SetLaunchStarted` (transpiler unchanged, delta -8); the rule gets the cockpit box of the server's `RocketBase` entity (measured 35.2 m above the rocket's root, ±7/±6/±7 m), so a click only counts while aboard; new server `RocketLaunchProcessor` relays the launch only after the gate started. Texts `Nitrox_StoryGateGun*`, `Nitrox_StoryGateRocket*` (en/de) | L1 `StoryGatesTest`; L2 `GunAndRocketGateTest` (6 tests; the no-relay test fails without the processor); windowless `G1G2-GunAndRocketTogether.ps1` PASS 29, negative control 6 FAIL (4 G1, 2 G2). Not driven: preflight checks (`forcerocketready`), the credits; not checked windowed |
 | 2026-11-03 | B1 (bleeders) / FIX_SPEC S15d | A bleeder latches onto the partner too: attach on the partner's body in the simulating game, suck relayed with the bleeder as dealer, lets go in a base, a vehicle or when downed; the attach is mirrored in the other games (arms fight it, hits kill it for both). Fixed a copy marking the partner's own attach target occupied for good. README rows updated | Windowless `S15d-BleederOnPartner.ps1` PASS (52 checks); negative control 21 of 52 FAIL; full test suite green. Windowed look and lock hand-over while attached not checked |
+| 2026-11-03 | R1b | Done: upstream #2859 merged, then: hatch use keyed on the player name (server adds the sender only; old saves load); #2859's `InCinematic` folded into `RemotePlayer.IsPoseLocked` (read by the animation controller, not assigned); its arm writes through `SetArmState` (own states held back during a cinematic, replayed after); lock lifecycle (only the cinematic patches' own locks given back, bed side kept until getting up, no lock under a Cyclops/base/vehicle/docking bay/creature or for blacklisted cinematics, only the local player's cinematics); bed: no local time skip, late joiner gets bed-side locks; bench: no sit sent when refused, seat from movement. Findings: session ids don't survive a save; as merged the helm, docking and intro would compete for locks; the copy sat 1.2 m low. README row | L1 save/load (fails on session ids) + old save; L2 `EscapePodHatchUseTest`, `CinematicLockTest` (each fails without its fix); windowless `R1b-SeeEachOtherSit.ps1` PASS (41 checks), negative control on `coop`: 14 of 40 fail; S3, T1, T4, S6 PASS. `dotnet test` 510 pass. Not windowed: poses, seat height, first-use pod scenes |

@@ -82,6 +82,7 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **The story waits for both of you: the Sea Emperor and her eggs** | The Sea Emperor only comes to the platform in her aquarium once both of you stand on it, so you meet her and hear her together, not one of you from across the map. The eggs hatch once both of you have used the incubator, and both of you hear the hatching music | Step onto the platform; your partner sees "*name* is waiting for you on the aquarium platform". At the incubator, whoever carries the enzymes and the partner both use it, in any order | The first one on the platform waits there. The cure itself isn't shared yet: your partner is still cured at the same moment as you, without their own cure scene | The same two options; `storygate release sea_emperor` or `storygate release hatching` lets it happen for one player |
 | **The story waits for both of you: disabling the gun** | Once you're cured, each of you uses the alien terminal, and both of you see your own scene at the same moment. Before, the first player disabled the gun alone and the terminal never opened again for the other | Both stand at the terminal and use it. Alone you see "Waiting for *name* to use the terminal too"; your partner sees that you're at the terminal | Walking away from the terminal takes your turn back. Not cured yet? The terminal still turns you away as usual | `StoryGatesEnabled`, `StoryGatePlayers`; `storygate release disable_gun` lets the next use through alone |
 | **The story waits for both of you: the rocket launch** | Nobody watches the credits alone: the rocket takes off for both of you at the same moment, and only with both of you aboard | Both get into the cockpit and press launch. Alone you see "Waiting for *name* to board the cockpit and press launch" | Pressing launch only counts while you're in the cockpit; climb down and you have to press it again | The same options; `storygate release rocket_launch` |
+| **See each other sit, sleep and climb** | Your partner sits on benches and chairs, lies down in a bed and climbs the escape pod's hatches in front of you, instead of standing next to them. You can share a bed, one on each side. Each of you gets the escape pod's first-time hatch scene once, also after a rejoin | Use benches, beds and hatches as usual | One player per seat, bed side and pod hatch at a time: while your partner climbs the pod's ladder you see "Another player is interacting with that object" until they're through. You see their body move; the view stays their own | None, always on |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -103,8 +104,7 @@ What's planned:
 - **Story moments together:** the cure (each with your own cure scene) waits until both players are there, like
   the drive core, the Sea Emperor, the gun and the rocket launch already do. Playing alone in between is fine.
 - **Teamwork survival:** hitching a ride on the Seamoth.
-- **Cozy base life:** seeing each other sit, sleep and use things, and seeing the cuddlefish's tricks when it plays with
-  your partner.
+- **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner.
 
 ### For developers
 - An agent- and human-friendly guide to the codebase: [AGENTS.md](AGENTS.md).

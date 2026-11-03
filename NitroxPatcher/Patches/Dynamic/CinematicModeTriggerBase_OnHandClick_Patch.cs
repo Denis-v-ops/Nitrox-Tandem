@@ -1,0 +1,79 @@
+using System.Reflection;
+using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.PlayerLogic;
+using NitroxClient.GameLogic.Simulation;
+using NitroxClient.MonoBehaviours;
+using NitroxClient.MonoBehaviours.CinematicController;
+using NitroxClient.MonoBehaviours.Gui.HUD;
+using Nitrox.Model.DataStructures;
+
+namespace NitroxPatcher.Patches.Dynamic;
+
+public sealed partial class CinematicModeTriggerBase_OnHandClick_Patch : NitroxPatch, IDynamicPatch
+{
+    private static readonly MethodInfo targetMethod = Reflect.Method((CinematicModeTriggerBase t) => t.OnHandClick(default));
+    private static bool skipPrefix;
+
+    public static bool Prefix(CinematicModeTriggerBase __instance, GUIHand hand)
+    {
+        if (skipPrefix)
+        {
+            return true;
+        }
+
+        // Only intercept hand target triggers
+        if (__instance.triggerType != CinematicModeTriggerBase.TriggerType.HandTarget || !__instance.isValidHandTarget)
+        {
+            return true;
+        }
+
+        // If no cinematic controller, or one left to another system (the bench: Bench_OnHandClick_Patch), let vanilla handle it
+        if (!__instance.cinematicController || !Resolve<PlayerCinematics>().IsSynced(__instance.cinematicController.playerViewAnimationName))
+        {
+            return true;
+        }
+
+        // Try to get the NitroxEntity from the cinematic controller's parent hierarchy
+        if (!__instance.cinematicController.TryGetComponentInParent(out NitroxEntity entity, true))
+        {
+            return true;
+        }
+
+        NitroxId lockId = BedLockId.Resolve(entity, __instance.cinematicController);
+
+        // Check if we already have the lock, or if this cinematic needs none (CinematicLocks.UsesLock)
+        if (!CinematicLocks.UsesLock(entity) || Resolve<SimulationOwnership>().HasExclusiveLock(lockId))
+        {
+            return true;
+        }
+
+        // Request exclusive lock to prevent multiple players from using the same cinematic simultaneously
+        CinematicTriggerInteraction context = new(__instance, hand);
+        LockRequest<CinematicTriggerInteraction> lockRequest = new(lockId, SimulationLockType.EXCLUSIVE, ReceivedSimulationLockResponse, context);
+        Resolve<SimulationOwnership>().RequestSimulationLock(lockRequest);
+
+        return false;
+    }
+
+    private static void ReceivedSimulationLockResponse(NitroxId id, bool lockAcquired, CinematicTriggerInteraction context)
+    {
+        if (lockAcquired)
+        {
+            CinematicLocks.Taken(id);
+            skipPrefix = true;
+            context.Trigger.OnHandClick(context.Hand);
+            skipPrefix = false;
+        }
+        else
+        {
+            context.Trigger.gameObject.AddComponent<DenyOwnershipHand>();
+            ErrorMessage.AddMessage(Language.main.Get("Nitrox_DenyOwnershipHand"));
+        }
+    }
+
+    private readonly struct CinematicTriggerInteraction(CinematicModeTriggerBase trigger, GUIHand hand) : LockRequestContext
+    {
+        public CinematicModeTriggerBase Trigger { get; } = trigger;
+        public GUIHand Hand { get; } = hand;
+    }
+}

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Nitrox.Model.Core;
+using Nitrox.Model.DataStructures;
 using Nitrox.Model.DataStructures.GameLogic;
 using NitroxClient.GameLogic.HUD;
 using NitroxClient.GameLogic.PlayerLogic;
@@ -34,6 +35,9 @@ public class RemotePlayer : INitroxPlayer
     private readonly FMODWhitelist fmodWhitelist;
     private List<IEquipmentVisibilityHandler> equipmentVisibilityHandlers = [];
     private PlayerTool? armsConfiguredFor;
+    /// <summary>The partner's own arm states (not a cinematic's) as last received, see <see cref="SetArmState" />.</summary>
+    private readonly Dictionary<string, bool> armStates = [];
+    private bool cinematicFollowsMovement;
 
     public PlayerContext PlayerContext { get; }
     public GameObject? Body { get; private set; }
@@ -57,6 +61,47 @@ public class RemotePlayer : INitroxPlayer
     public InfectedMixin InfectedMixin { get; private set; }
     public LiveMixin LiveMixin { get; private set; }
 
+    /// <summary>
+    ///     The entity (or bed side, <see cref="NitroxClient.MonoBehaviours.CinematicController.BedLockId" />) whose cinematic
+    ///     plays on this body (upstream #2859). Null when none does.
+    /// </summary>
+    public NitroxId? InCinematicEntityId { get; private set; }
+
+    public bool InCinematic => InCinematicEntityId != null;
+
+    /// <summary>
+    ///     A cinematic now poses this body: movement packets neither move it nor drive its animator (<see cref="IsPoseLocked" />).
+    /// </summary>
+    /// <param name="followsMovement">
+    ///     Movement packets still place the body (not its animator): on a bench, where the seated player's game sends where
+    ///     they sit, and this game's copy of the seat's animated target would be wrong (the seat isn't animated here).
+    /// </param>
+    public void SetInCinematic(NitroxId entityId, bool followsMovement = false)
+    {
+        InCinematicEntityId = entityId;
+        cinematicFollowsMovement = followsMovement;
+        // The partner's game stops sending movement during a cinematic (PlayerMovementBroadcaster): the last velocity must
+        // not carry the body off the seat or out of the bed
+        if (RigidBody && !RigidBody.isKinematic)
+        {
+            RigidBody.velocity = Vector3.zero;
+            RigidBody.angularVelocity = Vector3.zero;
+        }
+    }
+
+    /// <summary>
+    ///     The cinematic is over. The pose stays locked if the body is also downed (<see cref="IsPoseLocked" />).
+    /// </summary>
+    public void ClearInCinematic()
+    {
+        if (InCinematicEntityId == null)
+        {
+            return;
+        }
+        InCinematicEntityId = null;
+        RestoreArmStates();
+    }
+
     public readonly Event<RemotePlayer> PlayerDeathEvent = new();
 
     public readonly Event<RemotePlayer> PlayerDisconnectEvent = new();
@@ -69,10 +114,12 @@ public class RemotePlayer : INitroxPlayer
     public bool IsDowned { get; private set; }
 
     /// <summary>
-    ///     Something holds the body's pose, so movement must not drive its animator. Only the downed pose today; upstream
-    ///     #2859's cinematic lock belongs in this test too (COOP_FEATURES_SPEC R1b, A2).
+    ///     Something holds the body's pose, so movement must not drive its animator: the downed pose (T1) or a cinematic
+    ///     (upstream #2859, COOP_FEATURES_SPEC R1b). <see cref="AnimationController" /> tests it every frame, so clearing one
+    ///     of them can't free a pose the other still holds. Only a cinematic also stops movement packets from moving the
+    ///     body (<see cref="UpdatePosition" />): a downed body must follow its player (T1).
     /// </summary>
-    public bool IsPoseLocked => IsDowned;
+    public bool IsPoseLocked => IsDowned || InCinematic;
 
     public RemotePlayer(PlayerContext playerContext, PlayerModelManager playerModelManager, PlayerVitalsManager playerVitalsManager, FMODWhitelist fmodWhitelist)
     {
@@ -104,6 +151,7 @@ public class RemotePlayer : INitroxPlayer
         PlayerModel.GetComponent<ConditionRules>().enabled = false;
 
         AnimationController = PlayerModel.AddComponent<AnimationController>();
+        AnimationController.IsPoseLocked = () => IsPoseLocked;
 
         Transform inventoryTransform = new GameObject("Inventory").transform;
         inventoryTransform.SetParent(Body.transform);
@@ -166,12 +214,18 @@ public class RemotePlayer : INitroxPlayer
 
         Body.SetActive(true);
 
+        // Skip position updates during cinematics - the cinematic controller handles positioning
+        if (InCinematic && !cinematicFollowsMovement)
+        {
+            return;
+        }
+
         // When receiving movement packets, a player can not be controlling a vehicle (they can walk through subroots though).
         SetVehicle(null);
         SetPilotingChair(null);
 
         AnimationController.AimingRotation = aimingRotation;
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
+        AnimationController.UpdatePlayerAnimations = true;
         AnimationController.Velocity = MovementHelper.GetCorrectedVelocity(position, velocity, Body, Time.fixedDeltaTime);
 
         // If in a subroot the position will be relative to the subroot
@@ -198,7 +252,7 @@ public class RemotePlayer : INitroxPlayer
         SetVehicle(null);
 
         AnimationController.AimingRotation = localRotation;
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
+        AnimationController.UpdatePlayerAnimations = true;
         AnimationController.Velocity = (localPosition - Pawn.Handle.transform.localPosition) / Time.fixedDeltaTime;
 
         Pawn.Handle.transform.localPosition = localPosition;
@@ -320,7 +374,12 @@ public class RemotePlayer : INitroxPlayer
 
             if (newVehicle)
             {
-                newVehicle.mainAnimator.SetBool(animatorPlayerIn, true);
+                // Only trigger the enter animation if the vehicle doesn't already have player_in set
+                // This prevents replaying the animation during undocking when the player is already in the vehicle
+                if (!newVehicle.mainAnimator.GetBool(animatorPlayerIn))
+                {
+                    newVehicle.mainAnimator.SetBool(animatorPlayerIn, true);
+                }
 
                 Attach(newVehicle.playerPosition.transform);
                 ArmsController.SetWorldIKTarget(newVehicle.leftHandPlug, newVehicle.rightHandPlug);
@@ -370,7 +429,6 @@ public class RemotePlayer : INitroxPlayer
             return;
         }
         IsDowned = downed;
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         if (downed)
         {
             Body.EnsureComponent<DownedPose>().Begin(this);
@@ -389,11 +447,13 @@ public class RemotePlayer : INitroxPlayer
         SetPilotingChair(null);
         SetVehicle(null);
         SetSubRoot(null);
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
+        ClearInCinematic();
+        AnimationController.UpdatePlayerAnimations = true;
         AnimationController.Reset();
         ArmsController.SetWorldIKTarget(null, null);
         // The animator reset cleared holding_tool, and the world-target reconfigure above drops the tool's IK
         armsConfiguredFor = null;
+        armStates.Clear();
     }
 
     public void Destroy()
@@ -439,23 +499,49 @@ public class RemotePlayer : INitroxPlayer
     /// <summary>
     ///     <b>The one place that writes arm and hand states on this body</b> (COOP_FEATURES_SPEC R2b): the synced
     ///     <see cref="ArmStates" /> (tool use, PDA, surface swimming, falls, <c>holding_tool</c>) and the held tool's
-    ///     <c>holding_&lt;tool&gt;</c> and <c>using_tool_first</c> flags. A lock that must hold the body's pose (a cinematic,
-    ///     upstream PR #2859; the downed pose, T1) goes here, as one check, not at each caller.
-    ///     The downed pose needs none: it stops the body's animator (<see cref="DownedPose" />), and the writes must still
-    ///     land so the arms are right after a revive (a downed player's light stays drawn). #2859's cinematic lock can
-    ///     test <see cref="IsPoseLocked" /> here if it must drop them.
+    ///     <c>holding_&lt;tool&gt;</c> and <c>using_tool_first</c> flags, and a cinematic's own <c>cinematics_enabled</c> and
+    ///     <c>using_tool_first</c> (upstream #2859, COOP_FEATURES_SPEC R1b).
+    ///     <para />
+    ///     While a cinematic poses the body (<see cref="InCinematic" />), the partner's own states are kept but not written,
+    ///     so a state change on their side (a tool put away, the surface left) can't pull the arms out of the cinematic's
+    ///     pose; <see cref="ClearInCinematic" /> writes the kept ones back. They are kept rather than dropped because the
+    ///     partner's game sends a state only when it changes. The downed pose (T1) holds none back: it stops the body's
+    ///     animator (<see cref="DownedPose" />), and the arms must be right after a revive (a downed player's light stays drawn).
     ///     <para />
     ///     A change of <c>holding_tool</c> or of a <c>holding_&lt;tool&gt;</c> flag also points the arms and hands at the
     ///     drawn tool (<see cref="ArmsController.Reconfigure" />), as <c>ArmsController.Update</c> does for the local player.
     /// </summary>
-    public void SetArmState(string parameter, bool value)
+    /// <param name="cinematic">The write belongs to the cinematic playing on the body: it always lands and isn't kept.</param>
+    public void SetArmState(string parameter, bool value, bool cinematic = false)
     {
+        if (!cinematic)
+        {
+            armStates[parameter] = value;
+            if (InCinematic)
+            {
+                return;
+            }
+        }
+
         AnimationController[parameter] = value;
 
         if (parameter.StartsWith("holding_", System.StringComparison.Ordinal))
         {
             ReconfigureArms();
         }
+    }
+
+    private void RestoreArmStates()
+    {
+        if (!AnimationController)
+        {
+            return;
+        }
+        foreach (KeyValuePair<string, bool> armState in armStates)
+        {
+            AnimationController[armState.Key] = armState.Value;
+        }
+        ReconfigureArms();
     }
 
     /// <summary>

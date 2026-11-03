@@ -157,6 +157,17 @@ internal sealed class EntitySimulation : ISessionCleaner
             SimulatedEntity simulatedEntity = new(entity.Id, playerLock.Player.SessionId, doesEntityMove, playerLock.LockType);
             simulatedEntities.Add(simulatedEntity);
         }
+
+        // Cinematic locks (upstream #2859, COOP_FEATURES_SPEC R1b) are on ids that aren't entities, such as a bed side
+        // (the client's BedLockId). A player who lies in a bed holds that side's lock: the joiner's game poses them from it
+        // (BedSleepInitialSyncProcessor). The other players' simulations of real entities come with their cells.
+        foreach (KeyValuePair<NitroxId, SimulationOwnershipData.PlayerLock> exclusiveLock in simulationOwnershipData.GetExclusiveLocks())
+        {
+            if (exclusiveLock.Value.Player != player && !entityRegistry.TryGetEntityById(exclusiveLock.Key, out Entity _))
+            {
+                simulatedEntities.Add(new SimulatedEntity(exclusiveLock.Key, exclusiveLock.Value.Player.SessionId, false, SimulationLockType.EXCLUSIVE));
+            }
+        }
         return simulatedEntities;
     }
 

@@ -82,7 +82,7 @@ public class EscapePodEntitySpawner : SyncEntitySpawner<EscapePodEntity>
             using PacketSuppressor<EntityMetadataUpdate> packetSuppressor = PacketSuppressor<EntityMetadataUpdate>.Suppress();
 
             Radio radio = pod.radioSpawner.spawnedObj.GetComponent<Radio>();
-            EscapePodMetadataProcessor.ProcessInitialSyncMetadata(pod, radio, metadata);
+            EscapePodMetadataProcessor.ProcessInitialSyncMetadata(pod, radio, metadata, localPlayer.PlayerName);
             // NB: Entities.SpawnBatchAsync (which is the function calling the current spawner)
             // will still apply the metadata another time but we don't care as it's not destructive
         }
