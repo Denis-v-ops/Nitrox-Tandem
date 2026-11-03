@@ -323,6 +323,8 @@ tools\run-suite.ps1 -Windowless
   second run was disturbed by bridge queries, the first by low free RAM; the third was clean. When S13 was built, the
   windowed runs held 120 fps and passed, but S13 hasn't run windowed on the merged `coop` build, so it is open whether
   the drops come from batch mode. Run S13 (and anything that judges frame timing) windowed until that's compared.
+  (2026-11-03: S13 in a 40 h world, `M6-AgedWorldMovement.ps1`, windowed on `coop` + MULTINAUGHTICA M1–M9, passed its
+  53 checks with the observing game at 110–120 fps, while a windowless suite ran on the other rig.)
 - **What differs from a windowed game:**
   - No camera renders, so `Renderer.isVisible` is always false. `BehaviourLOD` (creatures, the Cyclops, bases) would
     stay Minimal beyond 10 m, and the Cyclops engine (`SubControl`), fires (`SubFire`), `SubRoot` and base flooding
