@@ -90,6 +90,21 @@ function New-CureBall {
     [double[]]$ball.position
 }
 
+# A cure ball on this game: one that is there, else a new one from the babies still there, the last to leave first.
+# Infected fish eat balls they touch (EnzymeBall.OnTriggerEnter; the prison's vents release peepers), so one may be gone.
+function Get-CureBall {
+    param([string]$Player)
+    $there = @(Invoke-BridgeJson $Player 'find EnzymeBall 1') | Where-Object { $_ } | Select-Object -First 1
+    if ($there) { return [double[]]$there.position }
+    $present = @(Get-NetworkedBabies $Player | ForEach-Object { $_.id })
+    $order = $script:babyIds | Where-Object { $present -contains $_ } | Sort-Object { [int](Get-BabyField $Player $_ 'SeaEmperorBaby.babyId') } -Descending
+    foreach ($id in $order) {
+        $ball = New-CureBall $Player $id
+        if ($ball) { return $ball }
+    }
+    $null
+}
+
 $babyIds = @()
 try {
     Start-ScenarioGames -Players $A, $B -NoLaunch:$NoLaunch
@@ -158,6 +173,10 @@ try {
             $visit = Wait-Until { @($script:babyIds | Where-Object { (Get-BabyField $player $_ 'SeaEmperorBabyCinematicController.currentCinematic') -match '\w' }).Count -eq 5 } -TimeoutSeconds 90 -IntervalSeconds 3
             Assert-True ([bool]$visit) "the visit started for all five babies on $player's game"
         }
+        # During the visit Bob's copies follow his own animation, not Alice's poses
+        $following = @($script:babyIds | ForEach-Object { Get-BabyField $B $_ 'RemotelyControlled.enabled' })
+        Write-Host "  RemotelyControlled.enabled on Bob's copies during the visit: $($following -join ', ')"
+        Assert-Equal 5 @($following | Where-Object { $_ -eq 'false' }).Count 'Bob''s copies play their visit by his own animation'
     }
 
     Step 'The visit ends: Bob''s babies leave and start dropping cure balls on his game too' {
@@ -170,23 +189,32 @@ try {
             }
         }
         foreach ($player in $A, $B) {
-            Wait-Until { @($script:babyIds | Where-Object { (Get-BabyField $player $_ 'DropEnzymes.enabled') -eq 'true' }).Count -eq 5 } -TimeoutSeconds $(if ($Natural) { 120 } else { 1 }) -IntervalSeconds 2 | Out-Null
+            Wait-Until { @($script:babyIds | Where-Object { (Get-BabyField $player $_ 'DropEnzymes.enabled') -eq 'true' }).Count -eq 5 } -TimeoutSeconds $(if ($Natural) { 240 } else { 1 }) -IntervalSeconds 2 | Out-Null
             $dropping = @($script:babyIds | Where-Object { (Get-BabyField $player $_ 'DropEnzymes.enabled') -eq 'true' })
             Assert-Equal 5 $dropping.Count "all five babies drop enzymes on $player's game"
         }
         # A ball on each game now, from the last baby to leave (they leave 5 s apart by id, and a ball still held when its
         # baby teleports goes with it): what the burp animation's events would do
-        $script:last = $script:babyIds | Sort-Object { [int](Get-BabyField $A $_ 'SeaEmperorBaby.babyId') } | Select-Object -Last 1
         if ($Natural) {
             # The babies burp their balls themselves (DropEnzymes, every 7-13 s)
-            $foundA = Wait-Until { @(Invoke-BridgeJson $A 'find EnzymeBall 1') | Where-Object { $_ } | Select-Object -First 1 } -TimeoutSeconds 40
-            $foundB = Wait-Until { @(Invoke-BridgeJson $B 'find EnzymeBall 1') | Where-Object { $_ } | Select-Object -First 1 } -TimeoutSeconds 40
+            # A released ball: one that stays where it is for 2 s (a ball still held moves with its baby)
+            $released = {
+                param($player)
+                $first = @(Invoke-BridgeJson $player 'find EnzymeBall 1') | Where-Object { $_ } | Select-Object -First 1
+                if (-not $first) { return $null }
+                Start-Sleep -Seconds 2
+                $second = @(Invoke-BridgeJson $player 'find EnzymeBall 1') | Where-Object { $_ } | Select-Object -First 1
+                $moved = [Math]::Abs($first.position[0] - $second.position[0]) + [Math]::Abs($first.position[2] - $second.position[2])
+                if ($moved -lt 0.5) { $second }
+            }
+            $foundA = Wait-Until { & $released $A } -TimeoutSeconds 60
+            $foundB = Wait-Until { & $released $B } -TimeoutSeconds 60
             $script:ballA = if ($foundA) { [double[]]$foundA.position }
             $script:ballB = if ($foundB) { [double[]]$foundB.position }
         }
         else {
-            $script:ballA = New-CureBall $A $script:last
-            $script:ballB = New-CureBall $B $script:last
+            $script:ballA = Get-CureBall $A
+            $script:ballB = Get-CureBall $B
         }
         Write-Host "  cure balls: Alice's at $(if ($script:ballA) { Format-Vector $script:ballA }), Bob's at $(if ($script:ballB) { Format-Vector $script:ballB })"
         Assert-True ([bool]$script:ballA) 'a cure ball is there on Alice''s game'
@@ -206,7 +234,7 @@ try {
         foreach ($pair in @(@($A, $script:ballA, 1.5), @($B, $script:ballB, -1.5))) {
             Move-To $pair[0] $pair[1]
             Start-Sleep -Seconds 1
-            $now = [double[]](@(Invoke-BridgeJson $pair[0] 'find EnzymeBall 1') | Select-Object -First 1).position
+            $now = Get-CureBall $pair[0]
             Write-Host "  $($pair[0])'s ball is now at $(Format-Vector $now)"
             Move-To $pair[0] @($now[0], $now[1], ($now[2] + $pair[2]))
         }

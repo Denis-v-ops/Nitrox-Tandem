@@ -533,16 +533,19 @@ What was built:
   PDA voice queue (the scenario now waits for it). The bridge `diff` shows the temporary babies on Bob's game as GHOSTs
   after the hatch (a windowless leftover, see 3c), not checked. **With 3c** (2026-11-03): **PASS (33 checks)**; the S12
   step now checks that Alice's cure waits, locked, while Bob is offline, then releases it.
-- L3 3c: windowless `tools/scenarios/G3c-CureTogether.ps1` **PASS (30 checks)**, 2026-11-03, twice (the second with the
-  final scenario; two earlier runs failed on the scenario itself: its infection check counted the cure scene's way out,
-  and it took the balls after their baby had teleported). Alice carries the enzymes, so her game simulates the babies.
-  On Bob's game each copy gets its egg's id (5 of 5 match Alice's), his temporary babies go with the hatch end, his
-  copies swim to the mother, his Emperor starts the visit for all five; after the visit all five drop enzymes and one
+- L3 3c: windowless `tools/scenarios/G3c-CureTogether.ps1` **PASS (32 checks)**, 2026-11-03 (final scenario; before,
+  PASS 30 twice without the two copy checks below; earlier runs failed on the scenario itself: its infection check
+  counted the cure scene's way out, it took the balls after their baby had teleported, and once a fish ate Alice's ball,
+  so it now makes another). Alice carries the enzymes, so her game simulates the babies.
+  On Bob's game each copy gets its egg's id (5 of 5 match Alice's) and is hidden while his game plays the hatching (5 of
+  5), his temporary babies go with the hatch end and his copies show again, swim to the mother, his Emperor starts the
+  visit for all five and his copies play it by his own animation (`RemotelyControlled` off); after the visit all five drop enzymes and one
   burps (`Burp_ball`), and his copies follow Alice's again (`RemotelyControlled` back on). Both infected, one ball each:
   Alice takes hers → no cure scene, still infected, the server waits for Bob; Bob takes his → both cure scenes play, both
   cured, neither game at infection 0 while its scene still played (In/Update), the relayed cure was held on both games
   (log). The babies teleport on Alice's game → gone on Bob's and on the server.
-  **Negative control** (the S17 and gate code reverted to `integration/wave4`): **7 of 17 checks fail** and the run stops
+  **Negative control** (the S17 and gate code reverted to `integration/wave4`, run with the scenario before the two copy
+  checks were added): **7 of 17 checks fail** and the run stops
   at the cure (Bob's copies get no ids, never swim, no visit, no enzymes, no burp, so Bob has no ball). An earlier
   negative run, whose scenario still ended the visit and made balls for babies that hadn't played it: **7 of 30 fail**,
   incl. the gate (Alice's cure starts at once, the server waits for nobody, Bob's game at infection 0 during his scene)
@@ -559,6 +562,9 @@ What was built:
   destroyed while held (code-read). The relayed cure arriving while the own scene is still In/Update (both scenes start
   and end together, so it arrived during the way out; the hold is code-read). The partner arriving after the hatch (the
   copies get the first free id; code-read). (H) A copy whose cell sleeps while it waits hidden stays hidden.
+  (H) Alice's ball vanished once within seconds, likely eaten by one of the prison's infected peepers
+  (`EnzymeBall.OnTriggerEnter` cures an infected creature and destroys the ball, game code); a held ball that is eaten
+  withdraws the ready, so the player takes another.
 
 ### G4: Aurora drive core — done 2026-11-02 (branch `feat/2-g0-g4-story-gates`)
 - **There's no single click.** Players weld many radiation leaks, and the last weld calls `LeakingRadiation.NotifyLeaksFixed`
@@ -2270,4 +2276,4 @@ prices, "keeping it scary").
 | 2026-11-03 | Wave 3 merge | Merged S16 + S16b/c (leviathan sync), B3, T1 + D3, P1 + P2 and the T4 fix; re-ran the affected scenarios windowless on the merged build: T1 73, B3 38, P2 33, S1 62, S2-MapRoom 38, S16 14 (incl. the roam case), S14 65/66 and D4 94/95 (the target-pick flakes above). **P1 failed 6 of 33** after the merge: S16's new out-of-cell hand-over skipped P1's keep-with-holder rule; fixed, P1 then 33/33. Build green, 505 tests pass. **T1 explosions (decided 2026-11-03):** a crashfish explosion or fire puts the player down (rescuable); only the Cyclops' destruction, heat/lava and drowning kill outright. §2, §2.2, T1 and §11 updated | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave3`, `wave3-fixes` |
 | 2026-11-03 | B1 (warpers, bleeders) | Done: only the game that simulates a warper spawner (utility whitelist) spawns its warper, registers it and marks it spawned; the other games link it to their spawner; the warp-out is sent when it starts and played everywhere. Bleeders on the movement whitelist. Findings: a late warp-out packet, and a duplicate warper when the server sent one back to its own game (ghosts). Bleeder attach on the partner stays open (FIX_SPEC S15d, M: the body collider is a trigger), warp ball too (S15c) | L2 `WarperSpawnerTest` (2, fail without the whitelist); windowless `B1-WarpersAndBleeders.ps1` PASS (48 and 42 checks), negative control 17 of 40 FAIL. Full test suite green. Not checked: the warp-out effect in the partner's game |
 | 2026-11-03 | G3 | 3a + 3b done, 3c not built: the Sea Emperor's platform waits until both players stand in its trigger box (measured: 50 x 15 x 70 m turned 151 degrees; `StoryGateArea` got an optional yaw), each game starts its own platform; the incubator hatches once both used it (carrier hatches, partner confirms and hears the soundscape and music). 3c: the partner's game never gets a cure ball (its copies of the babies never visit the mother: `SeaEmperorBaby_Start_Patch` skips any baby with a parent, and spawned entities sit under their cell root), so a "both click" gate would deadlock; findings and a plan (fix the baby chain windowed, then gate; fallback: a presence gate) in G3. Bridge `sounds` records 2D one-shots. README row | L1 area/rules/texts; L2 `StoryGateTest` Sea Emperor and hatching; windowless `G3-SeaEmperorTogether.ps1` PASS (31 checks, incl. S12 in game: cured offline, rejoins cured); negative control 14 of 26 fail. Windowed not run |
-| 2026-11-03 | G3c + FIX_SPEC S17 | Done (branch `feat/4-g3c-cure`): the partner's copies of the Sea Emperor babies now visit their mother, leave and drop cure balls in the partner's game (S17: the Start patch skipped any baby with a parent; copies get their egg's id, stay hidden during the local hatching, follow their own cinematic; a teleported baby is destroyed on the server and the other games). The cure waits until both took a ball (`CURE`, `ALL_READY`), each with their own cure scene; a relayed cure waits for the own scene; offline partner: locked, `storygate release cure`. README rows | L1 rule + texts, L2 `Cure_StartsWhenBothTookABall_ALonePlayerIsLockedUntilReleased`; windowless `G3c-CureTogether.ps1` PASS (30), negative control 7 of 17 fail (earlier variant 7 of 30); `G3-SeaEmperorTogether.ps1` PASS (33, S12 with the release). `dotnet test` 516 pass. Windowed check of the partner's babies pending |
+| 2026-11-03 | G3c + FIX_SPEC S17 | Done (branch `feat/4-g3c-cure`): the partner's copies of the Sea Emperor babies now visit their mother, leave and drop cure balls in the partner's game (S17: the Start patch skipped any baby with a parent; copies get their egg's id, stay hidden during the local hatching, follow their own cinematic; a teleported baby is destroyed on the server and the other games). The cure waits until both took a ball (`CURE`, `ALL_READY`), each with their own cure scene; a relayed cure waits for the own scene; offline partner: locked, `storygate release cure`. README rows | L1 rule + texts, L2 `Cure_StartsWhenBothTookABall_ALonePlayerIsLockedUntilReleased`; windowless `G3c-CureTogether.ps1` PASS (32), negative control 7 of 17 fail (earlier variant 7 of 30); `G3-SeaEmperorTogether.ps1` PASS (33, S12 with the release). `dotnet test` 516 pass. Windowed check of the partner's babies pending |

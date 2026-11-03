@@ -104,7 +104,7 @@ public static class SeaEmperorBabies
 
     private static IEnumerator SwimOnceHatched(SeaEmperorBaby baby, IncubatorEgg egg)
     {
-        List<Renderer> hidden = [.. baby.GetComponentsInChildren<Renderer>().Where(renderer => renderer.enabled)];
+        List<Renderer> hidden = [.. baby.GetComponentsInChildren<Renderer>(true).Where(renderer => renderer.enabled)];
         hidden.ForEach(renderer => renderer.enabled = false);
         float giveUpAt = Time.time + HATCH_WAIT_SECONDS;
         while (egg && IsHatchingLocally(egg) && Time.time < giveUpAt)
