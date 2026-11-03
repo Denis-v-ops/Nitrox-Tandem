@@ -35,6 +35,8 @@ public class RemotePlayer : INitroxPlayer
     private readonly FMODWhitelist fmodWhitelist;
     private List<IEquipmentVisibilityHandler> equipmentVisibilityHandlers = [];
     private PlayerTool? armsConfiguredFor;
+    /// <summary>The partner's own arm states (not a cinematic's) as last received, see <see cref="SetArmState" />.</summary>
+    private readonly Dictionary<string, bool> armStates = [];
 
     public PlayerContext PlayerContext { get; }
     public GameObject? Body { get; private set; }
@@ -79,7 +81,12 @@ public class RemotePlayer : INitroxPlayer
     /// </summary>
     public void ClearInCinematic()
     {
+        if (InCinematicEntityId == null)
+        {
+            return;
+        }
         InCinematicEntityId = null;
+        RestoreArmStates();
     }
 
     public readonly Event<RemotePlayer> PlayerDeathEvent = new();
@@ -433,6 +440,7 @@ public class RemotePlayer : INitroxPlayer
         ArmsController.SetWorldIKTarget(null, null);
         // The animator reset cleared holding_tool, and the world-target reconfigure above drops the tool's IK
         armsConfiguredFor = null;
+        armStates.Clear();
     }
 
     public void Destroy()
@@ -478,23 +486,49 @@ public class RemotePlayer : INitroxPlayer
     /// <summary>
     ///     <b>The one place that writes arm and hand states on this body</b> (COOP_FEATURES_SPEC R2b): the synced
     ///     <see cref="ArmStates" /> (tool use, PDA, surface swimming, falls, <c>holding_tool</c>) and the held tool's
-    ///     <c>holding_&lt;tool&gt;</c> and <c>using_tool_first</c> flags. A lock that must hold the body's pose (a cinematic,
-    ///     upstream PR #2859; the downed pose, T1) goes here, as one check, not at each caller.
-    ///     The downed pose needs none: it stops the body's animator (<see cref="DownedPose" />), and the writes must still
-    ///     land so the arms are right after a revive (a downed player's light stays drawn). #2859's cinematic lock can
-    ///     test <see cref="IsPoseLocked" /> here if it must drop them.
+    ///     <c>holding_&lt;tool&gt;</c> and <c>using_tool_first</c> flags, and a cinematic's own <c>cinematics_enabled</c> and
+    ///     <c>using_tool_first</c> (upstream #2859, COOP_FEATURES_SPEC R1b).
+    ///     <para />
+    ///     While a cinematic poses the body (<see cref="InCinematic" />), the partner's own states are kept but not written,
+    ///     so a state change on their side (a tool put away, the surface left) can't pull the arms out of the cinematic's
+    ///     pose; <see cref="ClearInCinematic" /> writes the kept ones back. They are kept rather than dropped because the
+    ///     partner's game sends a state only when it changes. The downed pose (T1) holds none back: it stops the body's
+    ///     animator (<see cref="DownedPose" />), and the arms must be right after a revive (a downed player's light stays drawn).
     ///     <para />
     ///     A change of <c>holding_tool</c> or of a <c>holding_&lt;tool&gt;</c> flag also points the arms and hands at the
     ///     drawn tool (<see cref="ArmsController.Reconfigure" />), as <c>ArmsController.Update</c> does for the local player.
     /// </summary>
-    public void SetArmState(string parameter, bool value)
+    /// <param name="cinematic">The write belongs to the cinematic playing on the body: it always lands and isn't kept.</param>
+    public void SetArmState(string parameter, bool value, bool cinematic = false)
     {
+        if (!cinematic)
+        {
+            armStates[parameter] = value;
+            if (InCinematic)
+            {
+                return;
+            }
+        }
+
         AnimationController[parameter] = value;
 
         if (parameter.StartsWith("holding_", System.StringComparison.Ordinal))
         {
             ReconfigureArms();
         }
+    }
+
+    private void RestoreArmStates()
+    {
+        if (!AnimationController)
+        {
+            return;
+        }
+        foreach (KeyValuePair<string, bool> armState in armStates)
+        {
+            AnimationController[armState.Key] = armState.Value;
+        }
+        ReconfigureArms();
     }
 
     /// <summary>

@@ -45,7 +45,7 @@ internal sealed class PlayerCinematicControllerCallProcessor(PlayerManager playe
         }
 
         // Without this the remote player's position moves but their pose never leaves the locomotion blend tree (looks like floating).
-        remotePlayer.AnimationController["cinematics_enabled"] = packet.StartPlaying;
+        remotePlayer.SetArmState("cinematics_enabled", packet.StartPlaying, cinematic: true);
 
         if (packet.StartPlaying)
         {
@@ -74,7 +74,7 @@ internal sealed class PlayerCinematicControllerCallProcessor(PlayerManager playe
             return;
         }
 
-        remotePlayer.AnimationController["cinematics_enabled"] = packet.StartPlaying;
+        remotePlayer.SetArmState("cinematics_enabled", packet.StartPlaying, cinematic: true);
 
         if (!packet.StartPlaying)
         {
@@ -116,7 +116,7 @@ internal sealed class PlayerCinematicControllerCallProcessor(PlayerManager playe
         // Apply parameters to the cinematic animator
         if (cinematicController.animator != null)
         {
-            foreach (var param in animationParameters)
+            foreach (KeyValuePair<string, bool> param in animationParameters)
             {
                 if (param.Key == "first_use" || param.Key == "cured")
                 {
@@ -125,13 +125,17 @@ internal sealed class PlayerCinematicControllerCallProcessor(PlayerManager playe
             }
         }
 
-        // Apply parameters to the remote player's animator
+        // Apply parameters to the remote player's animator; using_tool_first is also an arm state (R2b), so it goes through SetArmState
         Animator playerAnimator = remotePlayer.Body.GetComponentInChildren<Animator>();
         if (playerAnimator && playerAnimator.gameObject.activeInHierarchy)
         {
-            foreach (var param in animationParameters)
+            foreach (KeyValuePair<string, bool> param in animationParameters)
             {
-                if (param.Key == "using_tool_first" || param.Key == "cured")
+                if (param.Key == "using_tool_first")
+                {
+                    remotePlayer.SetArmState(param.Key, param.Value, cinematic: true);
+                }
+                else if (param.Key == "cured")
                 {
                     SafeAnimator.SetBool(playerAnimator, param.Key, param.Value);
                 }

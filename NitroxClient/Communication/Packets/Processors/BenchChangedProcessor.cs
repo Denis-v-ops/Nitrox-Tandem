@@ -49,7 +49,7 @@ internal sealed class BenchChangedProcessor(PlayerManager remotePlayerManager) :
         {
             remotePlayer.ClearInCinematic();
         }
-        remotePlayer.AnimationController["cinematics_enabled"] = isCinematicActive;
+        remotePlayer.SetArmState("cinematics_enabled", isCinematicActive, cinematic: true);
         remotePlayer.AnimationController[sitAnimation] = benchChanged.ChangeState == BenchChanged.BenchChangeState.SITTING_DOWN;
         remotePlayer.AnimationController[standAnimation] = benchChanged.ChangeState == BenchChanged.BenchChangeState.STANDING_UP;
 

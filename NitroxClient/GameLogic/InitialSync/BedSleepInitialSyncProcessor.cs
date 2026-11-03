@@ -35,7 +35,7 @@ public sealed class BedSleepInitialSyncProcessor : InitialSyncProcessor
                 continue;
             }
 
-            remotePlayer.AnimationController["cinematics_enabled"] = true;
+            remotePlayer.SetArmState("cinematics_enabled", true, cinematic: true);
             remotePlayer.AnimationController[controller.playerViewAnimationName] = true;
             remotePlayer.SetInCinematic(simulatedEntity.Id);
             bed.gameObject.EnsureComponent<BedRemotePositioner>().Begin(remotePlayer, controller);
