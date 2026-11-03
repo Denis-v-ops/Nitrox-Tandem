@@ -401,38 +401,127 @@ admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProc
   - L3: both aboard, both get `launchStarted`. Needs a fixture with a built rocket.
 - **Size:** S–M.
 
-### G3: Sea Emperor, hatching and the cure
+### G3: Sea Emperor, hatching and the cure — 3a and 3b done 2026-11-03 (branch `feat/4-g3-sea-emperor`); 3c not built (the partner gets no cure ball)
 
-Three beats. Size L in total.
+Three beats. Size L in total. Planned as below; what was built and found follows.
 
-- **3a, meeting the Emperor:**
-  - There's no click to gate. `PrecursorAquariumPlatformTrigger.OnTriggerEnter` (`game:` 46) starts the Emperor's
-    animation, and the dialog runs from animation events (H).
-  - Gate the trigger: hold until both players are inside the platform volume, then start the same animator state on both.
-  - The trigger won't fire again while a player stays inside it, so the start must drive the animator directly.
-  - Goal `Precursor_Prison_Aquarium_EmperorLog1` (H: that it's `onDialog1Goal`).
-  - **Today:** the telepathy effect plays for the partner wherever they are, and nothing else is synced.
-  - **Since D5a:** the `Emperor_Telepathic_Contact1-3` lines and the Precursor logs on `LocationGoalData` count as
-    "your own firsts", so each player hears them from their own visit (principle 4). The gate for 3a must not rely on the
-    partner's game having played them.
-- **3b, hatching:**
-  - `Incubator.OnHandClick` (`game:` 126), hooked into the existing patch before its lock request.
-  - Only the player carrying the enzymes hatches; the partner confirms by clicking the incubator.
-  - The hatch already shows for both. The hatching music only plays for the clicker (`game:` 140-141), so play it for both
-    on start.
-- **3c, the cure:**
-  - `EnzymeBall.OnHandClick` (`game:` 85-108): both click a ball, then both cures start together.
-  - Nitrox has no `EnzymeBall` or `DropEnzymes` code today.
-  - **The offline-partner part is already fixed** (FIX_SPEC S12, 2026-11-02): the server now applies the completed
-    infection goals on join (`InfectionStory`).
-    - What remains for G3: today an online partner is cured remotely and instantly, with no cinematic
-      (`game:StoryGoalCustomEventHandler.cs:171-174`), and their cure balls stop working (`game:EnzymeBall.cs:53-59,87`).
-    - The gate gives both players their own cure moment.
-  - Each game spawns its own cure ball (`DropEnzymes.SpawnCureBallAsync`). Whether the partner even sees one is (H).
-- **Tests:**
-  - L2: the gate flows.
-  - L3: a fixture inside the containment facility; both end at infection 0. Plus the offline-cure regression: cure with B
-    offline (gate released by admin), B rejoins cured.
+- **3a, meeting the Emperor:** gate `PrecursorAquariumPlatformTrigger.OnTriggerEnter` (`game:` 46) until both players are
+  inside the platform volume, then start the same animator state on both. The trigger won't fire again while a player
+  stays inside, so the start drives the platform directly. The gate must not rely on the partner's game having played
+  the `Emperor_Telepathic_Contact1-3` lines (D5a: "own firsts").
+- **3b, hatching:** `Incubator.OnHandClick` (`game:` 126), in the existing patch before its lock request. Only the player
+  carrying the enzymes hatches; the partner confirms by clicking the incubator; the hatching music plays for both.
+- **3c, the cure:** `EnzymeBall.OnHandClick` (`game:` 85-108): both click a ball, then both cures start together, each with
+  their own cinematic. The offline-partner part is FIX_SPEC S12 (done 2026-11-02).
+
+**Fixture (read in game windowless 2026-11-03, game 83031):** no story goal is needed. The game's own teleport spots
+reach everything: `warp aquarium` (320, -1466, -436) lies inside the platform's trigger (teleporting there fires it),
+`warp incubator` (278, -1611, -371), `warp antechamber` (335, -1444, -470) is above the platform. The incubator is
+powered with `item precursorioncrystal` and a click on its `CrystalTerminal`, hatched with `item hatchingenzymes`.
+Without the no-oxygen cheat a player drowns down there within a minute (seen). Recipe in
+`tools/scenarios/G3-SeaEmperorTogether.ps1`.
+
+**3a built:**
+- **The trigger:** a `BoxCollider` 50 x 15 x 70 m centred at (315.89, -1470.5, -438.566), turned 151 degrees about the
+  vertical (read with the bridge; its axis-aligned `Collider.bounds` are far larger, x 277..355, z -481..-396, so the
+  rotation matters: a point inside those bounds was outside the box by `BoxCollider.ClosestPoint`). `StoryGateArea` got an
+  optional `YawDegrees` (0 = as before) and `StoryGateArea.Box(name, center, size, yaw)`; the rule is
+  `StoryGateRules.AquariumPlatform`, checked against the measured points in L1. The trigger animates two animators
+  (the Emperor `Leviathan_prison_rig`, `AlwaysAnimate`, and the moving platform) with the bool `at_platform`.
+- **Rule:** `SEA_EMPEROR` = `ONE_READY_ALL_PRESENT` in the platform box, ready expiry 5 s.
+- **Game side:** `PrecursorAquariumPlatformTrigger_OnTriggerEnter_Patch` lets through what the game wouldn't start anyway
+  (already triggered, a trigger collider, not the local player) and, once the Emperor's first words are complete
+  (`Precursor_Prison_Aquarium_EmperorLog1` = `SeaEmperor.onDialog1Goal.key`, read in game), everything: the meeting has
+  happened (e.g. released for one player) and the platform plays as in single player. Otherwise it adds
+  `SeaEmperorPlatformGate` to the trigger and returns false. That component checks twice a second whether the local
+  player is inside the trigger's (turned) box: inside, it renews the ready (`StoryGates.Hold` with the new optional
+  `repeatStatus: false`, so a player standing still isn't shown the status every 4 s); outside, it withdraws it. The
+  renewal is needed because the server checks positions it got from `PlayerMovement`, which can arrive after the ready;
+  a ready from a player the server still sees outside is dropped. On start, each game that holds runs
+  `SeaEmperorPlatformGate.StartPlatform`, the body of `OnTriggerEnter` (`triggered`, `at_platform` on the animators,
+  walls after 20 s, end after 34 s). A game whose trigger hadn't fired yet when the start came asks again when it fires,
+  and the server starts it again at once (the other game holds nothing then and ignores it).
+- **Texts** (en/de): `Nitrox_StoryGateSeaEmperorWait` "Waiting for *name* to join you on the platform…",
+  `..SeaEmperorJoin` "*name* is waiting for you on the aquarium platform".
+- **Findings:** the Emperor's animation events do fire in windowless games (its animator is `AlwaysAnimate`): the dialog
+  goal completed about 27 s after the trigger. **Today (before G3):** the first player on the platform starts the
+  Emperor alone, and the partner's game plays the Emperor's words wherever the partner is (Bob heard
+  `Precursor_Prison_Aquarium_EmperorLog1` at the escape pod): the goal is relayed and the PDA line plays. With the gate
+  both are on the platform when it plays. While held, the invisible walls (`precursor_prison_walls`) stay as they are
+  before the Emperor comes.
+
+**3b built:**
+- **Rule:** `HATCHING` keeps `ALL_READY` (2 min, no area): the click proves presence. Either player may click first.
+- **Game side:** `Incubator_OnHandClick_Patch` holds every click on an incubator the game would hatch now (powered, not
+  hatched). On start, the player carrying the enzymes goes on as before (lock request, `IncubatorMetadata`, the game's
+  own `OnHandClick` with its soundscape and music); a player without enzymes (the partner who confirmed) waits up to 20 s
+  for the hatch to arrive through `IncubatorMetadataProcessor` and then plays the hatching soundscape at the incubator and
+  the hatching music, which the game plays only for the clicker (`game:Incubator.cs` 140-141) and Nitrox doesn't relay
+  (`hatch_music` and `hatch_eggs` are not whitelisted). If both carried enzymes, the one who loses the lock hears it the
+  same way.
+- **Texts:** `Nitrox_StoryGateHatchingWait` "Waiting for *name* to use the incubator too…", `..HatchingJoin` "*name* is
+  ready to hatch the eggs: use the incubator too".
+- **Bridge:** `Utils_PlayFMODAsset_Patch` records the 2D one-shots (`Utils.PlayFMODAsset(FMODAsset)`, which start their
+  event themselves) in the bridge's `sounds` (Debug only), so the music is checkable.
+- **Finding:** on the partner's game the hatch comes through `IncubatorMetadataProcessor`, which also calls
+  `SetPowered(true)` again, so the partner hears the incubator's power-up sound a second time (seen; harmless, left).
+
+**3c not built: the partner's game never gets a cure ball.** (H) answered (bridge reads, windowless, and code):
+- Each game spawns its own cure balls: `DropEnzymes.SpawnCureBallAsync` instantiates the ball locally, without a Nitrox
+  id; the partner sees none of the other game's balls (seen).
+- The balls come from the babies after they visited their mother: `SeaEmperorBaby.SwimToMother` → `SeaEmperor.Update`
+  (all 5 babies arrived, or 40 s) → `StartBabyInteraction` → each baby's cinematic → `OnCinematicModeEnd` →
+  `SwimToTeleporter` sets `dropEnzymes.enabled` → `DropEnzymes.Update` every 7-13 s → the baby's `Burp_ball` animation →
+  its animation events `SpawnCureBall`/`ReleaseCureBall`.
+- On the partner's game the babies are the simulating game's networked copies, and `SeaEmperorBaby_Start_Patch` sends a
+  baby to its mother only when it has no parent; `DefaultWorldEntitySpawner` (57-59) parents every spawned world entity
+  to its cell root. Seen on Bob's game: `parent` `CellRoot(Clone)`, `babyId` -1, no swim target, `DropEnzymes.enabled`
+  false, `SeaEmperor.main.GetBabies()` empty. So the partner's babies never visit the mother and never drop a ball: a
+  "both click a ball" gate would hold the first player forever, worse than today (today the partner is cured at once by
+  the relayed `Infection_Progress5`, without the cinematic; seen windowless).
+- Windowless, the chain stops earlier on both games: the egg hatch animation never ends (`IncubatorEggAnimation`
+  `animationActive` stays true; its end is an animation event), so the babies stay in the eggs and Bob's game keeps its 5
+  temporary babies next to the 5 networked ones. The scenario spawns a ball through a baby's own
+  `DropEnzymes.SpawnCureBall`/`ReleaseSpawnedCureBall`. The cure cinematic itself does end windowless (within 30 s), and
+  `EnzymeBall.onPlayerCuredGoal.key` is `Infection_Progress5` (read in game).
+- **Plan:** (1) fix the baby chain on the partner's game: `SeaEmperorBaby_Start_Patch` should skip only a baby inside an
+  `IncubatorEgg`, not any baby with a parent; then check *windowed* that the partner's babies (positions driven by the
+  simulating game, the swim and cinematic run locally) reach the mother, leave and drop balls on the partner's game
+  (needs windowed games: every link is an animation event). (2) Then the gate: Prefix on `EnzymeBall.OnHandClick` (no
+  `GUIHand`; the click reaches it through the ball's `GenericHandTarget`), only while `!playerCured`, `ALL_READY`; the
+  held resume must check the ball is still alive (`EnzymeBall.OnTriggerEnter` destroys a ball an infected creature
+  touches). Known then: the first player to finish relays `Infection_Progress5`, which zeroes the partner's infection a
+  moment before his own cinematic ends (cosmetic). **Fallback** if (1) is too hard: `CURE` as `ONE_READY_ALL_PRESENT` in an
+  aquarium area, so the cure at least waits until the partner is there (the partner is still cured by the relayed goal,
+  without a cinematic). Needs a decision.
+- `CURE` keeps the generic `ALL_READY` line in `StoryGateRules.For`; nothing sends it.
+
+**Tests:**
+- L1: `StoryGateStateTest.AquariumPlatform_IsTheTurnedTriggerBox_AsMeasuredInGame` (the measured points, the
+  antechamber outside, the box height), `Area_WithoutYaw_IsAxisAligned_TurnedMovesTheCorners`,
+  `Rules_SeaEmperorNeedsBothOnThePlatform_HatchingIsAClick`; `StoryGatesTest.SeaEmperor_AndHatching_SayWhereAndWhat`.
+- L2 `StoryGateTest`: `SeaEmperor_StartsWhenBothAreOnThePlatform` (Alice on the platform, Bob in the antechamber →
+  waiting for Bob; Bob on the platform and asks → start for both), `Hatching_WaitsUntilBothUsedTheIncubator_InAnyOrder`.
+- L3: windowless `tools/scenarios/G3-SeaEmperorTogether.ps1` **PASS (31 checks)**, 2026-11-03: Alice alone on the platform →
+  her platform doesn't start, no `at_platform`, the server waits for Bob, after 28 s the Emperor's first words have
+  played nowhere; Bob teleports onto the platform → both platforms start, `at_platform` on both Emperor animators, the
+  dialog goal completes on both and Bob's game plays the line once, the walls drop on both; at the incubator Alice
+  (enzymes) uses it alone → nothing hatches on either game, the enzymes stay, the server waits for Bob; Bob uses it → the
+  eggs hatch on both, the enzymes are used up, both games play `hatch_music` (Bob once) and Bob's the `hatch_eggs`
+  soundscape; then S12 in game: both infected, Bob quits, Alice takes a cure ball and is cured (`Infection_Progress5`,
+  infection 0), after a restart Bob rejoins at infection 0 with the goal. **Negative control** (the trigger patch removed,
+  `Incubator_OnHandClick_Patch` as on `coop`, `-SkipCure`): **14 of 26 checks fail** (the platform starts for Alice
+  alone, no gate waits, the dialog completes on both games and plays on Bob's at the escape pod; Bob's own Emperor never
+  gets `at_platform`, because his trigger restores itself as "done" from the relayed goal; the eggs hatch at Alice's
+  click alone; Bob hears neither the music nor the soundscape). The first run failed one check: the line waited in Bob's
+  PDA voice queue (the scenario now waits for it). The bridge `diff` shows the temporary babies on Bob's game as GHOSTs
+  after the hatch (a windowless leftover, see 3c), not checked.
+
+**Not verified:** anything windowed: the Emperor's arrival on screen, the messages, the music heard. Two players
+  reaching the platform in the same instant (each game holds, the first ask that finds both there starts both; code-read).
+  A player who leaves the platform while held withdraws the ready (code-read; the L1 area tests cover the box). The real
+  hand click on the incubator (the scenario uses the bridge's `use`, which calls `OnHandClick` as the local player).
+  Two players both carrying enzymes (the lock loser hears the hatch through the metadata; code-read).
 
 ### G4: Aurora drive core — done 2026-11-02 (branch `feat/2-g0-g4-story-gates`)
 - **There's no single click.** Players weld many radiation leaks, and the last weld calls `LeakingRadiation.NotifyLeaksFixed`
@@ -2143,3 +2232,4 @@ prices, "keeping it scary").
 | 2026-11-03 | Wave 2 suite | `tools/run-suite.ps1 -Windowless` on `coop` @ `72ca17ae` (wave 2 merged: G0, G4, D5b, T3, D2, R2b, B4, S6 fix): 31 of 36 PASS. S1 (one desync reading) and S2-MapRoom (another run's game still held the patcher DLL) passed on re-run. S14 and D4 each missed one creature target-pick check (`sandshark-AB`, `crabsquid-AB`; the crabsquid one also misses on later runs): flaky AI target choice, follow-up. **T4 failed 14 of 56:** T3's Give opened the transfer screen when the crew member aimed past the pilot at the helm screen, so every helm click went nowhere; fixed (no Give while the partner pilots or sits in a vehicle), T4 then 56/56 | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave2` |
 | 2026-11-03 | Wave 3 merge | Merged S16 + S16b/c (leviathan sync), B3, T1 + D3, P1 + P2 and the T4 fix; re-ran the affected scenarios windowless on the merged build: T1 73, B3 38, P2 33, S1 62, S2-MapRoom 38, S16 14 (incl. the roam case), S14 65/66 and D4 94/95 (the target-pick flakes above). **P1 failed 6 of 33** after the merge: S16's new out-of-cell hand-over skipped P1's keep-with-holder rule; fixed, P1 then 33/33. Build green, 505 tests pass. **T1 explosions (decided 2026-11-03):** a crashfish explosion or fire puts the player down (rescuable); only the Cyclops' destruction, heat/lava and drowning kill outright. §2, §2.2, T1 and §11 updated | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave3`, `wave3-fixes` |
 | 2026-11-03 | B1 (warpers, bleeders) | Done: only the game that simulates a warper spawner (utility whitelist) spawns its warper, registers it and marks it spawned; the other games link it to their spawner; the warp-out is sent when it starts and played everywhere. Bleeders on the movement whitelist. Findings: a late warp-out packet, and a duplicate warper when the server sent one back to its own game (ghosts). Bleeder attach on the partner stays open (FIX_SPEC S15d, M: the body collider is a trigger), warp ball too (S15c) | L2 `WarperSpawnerTest` (2, fail without the whitelist); windowless `B1-WarpersAndBleeders.ps1` PASS (48 and 42 checks), negative control 17 of 40 FAIL. Full test suite green. Not checked: the warp-out effect in the partner's game |
+| 2026-11-03 | G3 | 3a + 3b done, 3c not built: the Sea Emperor's platform waits until both players stand in its trigger box (measured: 50 x 15 x 70 m turned 151 degrees; `StoryGateArea` got an optional yaw), each game starts its own platform; the incubator hatches once both used it (carrier hatches, partner confirms and hears the soundscape and music). 3c: the partner's game never gets a cure ball (its copies of the babies never visit the mother: `SeaEmperorBaby_Start_Patch` skips any baby with a parent, and spawned entities sit under their cell root), so a "both click" gate would deadlock; findings and a plan (fix the baby chain windowed, then gate; fallback: a presence gate) in G3. Bridge `sounds` records 2D one-shots. README row | L1 area/rules/texts; L2 `StoryGateTest` Sea Emperor and hatching; windowless `G3-SeaEmperorTogether.ps1` PASS (31 checks, incl. S12 in game: cured offline, rejoins cured); negative control 14 of 26 fail. Windowed not run |

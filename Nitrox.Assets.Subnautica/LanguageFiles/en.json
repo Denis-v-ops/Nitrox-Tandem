@@ -141,5 +141,9 @@
     "Nitrox_Waiting": "Waiting in join queue…",
     "Nitrox_WaitingPassword": "Waiting for server password input…",
     "Nitrox_WaitingUserInput": "Waiting for user input…",
-    "Nitrox_WorldSettling": "Awaiting World Settling…"
+    "Nitrox_WorldSettling": "Awaiting World Settling…",
+    "Nitrox_StoryGateHatchingJoin": "{PLAYERS} is ready to hatch the eggs: use the incubator too",
+    "Nitrox_StoryGateHatchingWait": "Waiting for {PLAYERS} to use the incubator too…",
+    "Nitrox_StoryGateSeaEmperorJoin": "{PLAYERS} is waiting for you on the aquarium platform",
+    "Nitrox_StoryGateSeaEmperorWait": "Waiting for {PLAYERS} to join you on the platform…"
 }

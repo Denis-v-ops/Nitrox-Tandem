@@ -139,5 +139,9 @@
     "Nitrox_Waiting": "Warte in der Beitrittswarteschlange…",
     "Nitrox_WaitingPassword": "Warte auf Eingabe des Server Passworts…",
     "Nitrox_WaitingUserInput": "Warte auf Nutzereingaben…",
-    "Nitrox_WorldSettling": "Warte auf das Laden der Welt…"
+    "Nitrox_WorldSettling": "Warte auf das Laden der Welt…",
+    "Nitrox_StoryGateHatchingJoin": "{PLAYERS} ist bereit, die Eier auszubrüten: benutze den Inkubator auch",
+    "Nitrox_StoryGateHatchingWait": "Warte, bis {PLAYERS} den Inkubator auch benutzt…",
+    "Nitrox_StoryGateSeaEmperorJoin": "{PLAYERS} wartet auf der Plattform im Aquarium auf dich",
+    "Nitrox_StoryGateSeaEmperorWait": "Warte, bis {PLAYERS} zu dir auf die Plattform kommt…"
 }

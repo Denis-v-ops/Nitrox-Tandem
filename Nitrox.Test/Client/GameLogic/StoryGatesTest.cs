@@ -29,6 +29,17 @@ public class StoryGatesTest
     }
 
     [TestMethod]
+    public void SeaEmperor_AndHatching_SayWhereAndWhat()
+    {
+        StoryGateStatus platform = new(StoryGateKind.SEA_EMPEROR, ["Alice"], ["Bob"], false);
+        StoryGates.FormatStatus(platform, "Alice", english).Should().Be("Waiting for Bob to join you on the platform…");
+        StoryGates.FormatStatus(platform, "Bob", english).Should().Be("Alice is waiting for you on the aquarium platform");
+        StoryGateStatus hatching = new(StoryGateKind.HATCHING, ["Bob"], ["Alice"], false);
+        StoryGates.FormatStatus(hatching, "Bob", english).Should().Be("Waiting for Alice to use the incubator too…");
+        StoryGates.FormatStatus(hatching, "Alice", english).Should().Be("Bob is ready to hatch the eggs: use the incubator too");
+    }
+
+    [TestMethod]
     public void OtherGates_UseTheGenericTexts()
     {
         StoryGateStatus status = new(StoryGateKind.DISABLE_GUN, ["Alice"], ["Bob"], false);

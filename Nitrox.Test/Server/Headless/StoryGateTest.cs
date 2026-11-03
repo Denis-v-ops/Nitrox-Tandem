@@ -128,6 +128,47 @@ public class StoryGateTest
     }
 
     [TestMethod]
+    public async Task SeaEmperor_StartsWhenBothAreOnThePlatform()
+    {
+        await using ServerHarness server = await ServerHarness.StartAsync("L2-StoryGateSeaEmperor");
+        FakePlayer alice = await server.JoinAsync("Alice");
+        FakePlayer bob = await server.JoinAsync("Bob");
+        NitroxVector3 platform = new(320, -1466, -436); // the game's "aquarium" teleport spot, inside the trigger
+        await MoveAsync(server, alice, platform);
+        await MoveAsync(server, bob, new NitroxVector3(335, -1444, -470)); // the antechamber, above the platform
+
+        alice.Send(new StoryGateReady(StoryGateKind.SEA_EMPEROR, true));
+        StoryGateStatus waiting = await bob.WaitForAsync<StoryGateStatus>(status => status.Kind == StoryGateKind.SEA_EMPEROR);
+        waiting.ReadyNames.Should().Equal("Alice");
+        waiting.MissingNames.Should().Equal("Bob");
+
+        // Bob steps onto the platform; his own game asks too, and that ask finds both there.
+        await MoveAsync(server, bob, platform + new NitroxVector3(0, 0, -4));
+        bob.Send(new StoryGateReady(StoryGateKind.SEA_EMPEROR, true));
+        await alice.WaitForAsync<StoryGateStart>(start => start.Kind == StoryGateKind.SEA_EMPEROR);
+        await bob.WaitForAsync<StoryGateStart>(start => start.Kind == StoryGateKind.SEA_EMPEROR);
+    }
+
+    [TestMethod]
+    public async Task Hatching_WaitsUntilBothUsedTheIncubator_InAnyOrder()
+    {
+        await using ServerHarness server = await ServerHarness.StartAsync("L2-StoryGateHatching");
+        FakePlayer alice = await server.JoinAsync("Alice");
+        FakePlayer bob = await server.JoinAsync("Bob");
+
+        // The partner without the enzymes may confirm first.
+        bob.Send(new StoryGateReady(StoryGateKind.HATCHING, true));
+        StoryGateStatus waiting = await alice.WaitForAsync<StoryGateStatus>(status => status.Kind == StoryGateKind.HATCHING);
+        waiting.ReadyNames.Should().Equal("Bob");
+        waiting.MissingNames.Should().Equal("Alice");
+        alice.ReceivedOf<StoryGateStart>().Should().BeEmpty();
+
+        alice.Send(new StoryGateReady(StoryGateKind.HATCHING, true));
+        await alice.WaitForAsync<StoryGateStart>(start => start.Kind == StoryGateKind.HATCHING);
+        await bob.WaitForAsync<StoryGateStart>(start => start.Kind == StoryGateKind.HATCHING);
+    }
+
+    [TestMethod]
     public async Task OptionOff_StartsAtOnce()
     {
         await using ServerHarness server = await ServerHarness.StartAsync("L2-StoryGateOff");

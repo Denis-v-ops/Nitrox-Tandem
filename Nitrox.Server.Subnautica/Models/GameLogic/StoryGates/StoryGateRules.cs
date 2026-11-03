@@ -19,13 +19,34 @@ internal enum StoryGateRule
     ONE_READY_ALL_PRESENT
 }
 
-/// <summary>An axis-aligned box in world coordinates, checked against the positions players last reported.</summary>
-internal sealed record StoryGateArea(string Name, NitroxVector3 Min, NitroxVector3 Max)
+/// <summary>A box in world coordinates, checked against the positions players last reported.</summary>
+/// <param name="YawDegrees">
+///     The box turned by this angle around the vertical axis through its center, like a Unity transform with the euler angles
+///     (0, yaw, 0): <paramref name="Min" /> and <paramref name="Max" /> are the box before turning. 0 = axis-aligned.
+/// </param>
+internal sealed record StoryGateArea(string Name, NitroxVector3 Min, NitroxVector3 Max, float YawDegrees = 0)
 {
-    public bool Contains(NitroxVector3 position) =>
-        position.X >= Min.X && position.X <= Max.X &&
-        position.Y >= Min.Y && position.Y <= Max.Y &&
-        position.Z >= Min.Z && position.Z <= Max.Z;
+    /// <summary>A box like a Unity <c>BoxCollider</c>: world center, size and the transform's yaw.</summary>
+    public static StoryGateArea Box(string name, NitroxVector3 center, NitroxVector3 size, float yawDegrees) =>
+        new(name, center - size / 2f, center + size / 2f, yawDegrees);
+
+    public bool Contains(NitroxVector3 position)
+    {
+        if (YawDegrees != 0)
+        {
+            // Turn the position back by the yaw around the center (Unity: world = rotation * local, y up, left-handed).
+            NitroxVector3 center = (Min + Max) / 2f;
+            double yaw = YawDegrees * Math.PI / 180;
+            float dx = position.X - center.X;
+            float dz = position.Z - center.Z;
+            position = new NitroxVector3(center.X + (float)(dx * Math.Cos(yaw) - dz * Math.Sin(yaw)),
+                                         position.Y,
+                                         center.Z + (float)(dx * Math.Sin(yaw) + dz * Math.Cos(yaw)));
+        }
+        return position.X >= Min.X && position.X <= Max.X &&
+               position.Y >= Min.Y && position.Y <= Max.Y &&
+               position.Z >= Min.Z && position.Z <= Max.Z;
+    }
 }
 
 /// <param name="ReadyTimeout">
@@ -51,6 +72,13 @@ internal static class StoryGateRules
     /// </summary>
     public static readonly StoryGateArea DriveCoreRoom = new("drive core room", new NitroxVector3(844, -22, -14), new NitroxVector3(888, 9, 25));
 
+    /// <summary>
+    ///     The Sea Emperor's platform in the aquarium of the Primary Containment Facility: the game's own trigger volume
+    ///     (<c>PrecursorAquariumPlatformTrigger</c>'s <c>BoxCollider</c>, size 50 x 15 x 70, turned 151 degrees), read in
+    ///     game through the dev bridge 2026-11-03 (game 83031). Points were checked with <c>BoxCollider.ClosestPoint</c>.
+    /// </summary>
+    public static readonly StoryGateArea AquariumPlatform = StoryGateArea.Box("aquarium platform", new NitroxVector3(315.89f, -1470.5f, -438.566f), new NitroxVector3(50, 15, 70), 151);
+
     private static readonly TimeSpan clickTimeout = TimeSpan.FromMinutes(2);
 
     public static StoryGateDefinition For(StoryGateKind kind) =>
@@ -60,6 +88,8 @@ internal static class StoryGateRules
             StoryGateKind.SUNBEAM_RADIO => new(kind, StoryGateRule.ONLINE_ONLY, TimeSpan.FromSeconds(30)),
             // The welder renews its ready while it keeps welding the last leak.
             StoryGateKind.DRIVE_CORE => new(kind, StoryGateRule.ONE_READY_ALL_PRESENT, TimeSpan.FromSeconds(5), DriveCoreRoom),
+            // G3a: a player on the platform renews the ready every second (SeaEmperorPlatformGate); the Emperor comes once both are on it.
+            StoryGateKind.SEA_EMPEROR => new(kind, StoryGateRule.ONE_READY_ALL_PRESENT, TimeSpan.FromSeconds(5), AquariumPlatform),
             _ => new(kind, StoryGateRule.ALL_READY, clickTimeout)
         };
 }
