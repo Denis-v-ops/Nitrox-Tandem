@@ -70,7 +70,9 @@ internal static class SimulationWhitelist
         TechType.Peeper.ToDto(),
         TechType.Jumper.ToDto(),
         TechType.Constructor.ToDto(),
-        TechType.PipeSurfaceFloater.ToDto()
+        TechType.PipeSurfaceFloater.ToDto(),
+        // COOP_FEATURES_SPEC B1: without a simulating player a bleeder has no AI at all
+        TechType.Bleeder.ToDto()
     ];
 
     /// <summary>
@@ -79,6 +81,8 @@ internal static class SimulationWhitelist
     /// </summary>
     public static readonly HashSet<NitroxTechType> UtilityWhitelist = new()
     {
-        TechType.CrashHome.ToDto()
+        TechType.CrashHome.ToDto(),
+        // COOP_FEATURES_SPEC B1: only the game that simulates a warper spawner spawns its warper (WarperSpawner_Update_Patch)
+        TechType.WarperSpawner.ToDto()
     };
 }

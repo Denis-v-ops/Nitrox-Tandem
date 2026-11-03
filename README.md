@@ -50,6 +50,7 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
 | **Creatures** | A leviathan (or any creature) that swims away from one player towards the other is now run by the game of the player it is with; before, the first player's game kept running it from hundreds of metres away | new | In game (Reaper) + headless + negative control |
 | **Creatures** | Leviathans and other creatures are where your partner sees them: they no longer drift a few metres and then jump, and a leviathan you swim up to appears where it is instead of up to 30 m off | new | In game (Reaper, Reefback) + headless + negative control |
 | **Creatures** | Eggs in an alien containment no longer vanish when they hatch: each egg gives exactly one creature for both players, also in a tank split off by deconstructing part of a stacked one | [#2538](https://github.com/SubnauticaNitrox/Nitrox/issues/2538) | In game + headless + negative control |
+| **Creatures** | Warpers are the same for both of you: each warper spawner sends out one warper that you both see and that warps out for both of you, instead of different warpers in each game. Bleeders now swim about as in single player; before, no game ran them. A bleeder still latches on only to the player whose game runs it, not yet to the partner | new | In game + headless + negative control |
 
 ### Co-op features
 
