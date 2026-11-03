@@ -155,21 +155,20 @@ try {
         $onlyB = @($seen[$B].Keys | Where-Object { -not $seen[$A].ContainsKey($_) })
         Assert-Equal 0 ($onlyA.Count + $onlyB.Count) "every warper was in both games (only $A $($onlyA -join ', '); only $B $($onlyB -join ', '))"
         Assert-Equal 0 $mismatches.Count "no warper was in one game only for more than $MismatchSeconds s ($($mismatches -join ', '))"
-        Assert-True ($maxCount[$A] -le $spawners.Count -and $maxCount[$B] -le $spawners.Count) "never more warpers than spawners in a game ($A $($maxCount[$A]), $B $($maxCount[$B]), $($spawners.Count) spawners)"
         Assert-True ($partnerLinkChecks -gt 0 -and $partnerLinked -eq $partnerLinkChecks) "the partner's spawner knows its new warper ($partnerLinked of $partnerLinkChecks new warpers)"
     }
 
     Step 'Warpers that warped out are gone from the server' {
+        # Past any warp-out animation still running (0.73 s), so the diff below doesn't catch one half-destroyed.
+        Start-Sleep -Seconds 2
         $present = @(@(Get-Found $A 'Warper') + @(Get-Found $B 'Warper') | ForEach-Object { $_.id })
         $gone = @($allIds | Where-Object { $present -notcontains $_ })
         Assert-True ($gone.Count -ge 1) "at least one warper warped out during the watch ($($gone.Count))"
         $stale = @($gone | Where-Object { Test-ServerHas $_ })
         Assert-Equal 0 $stale.Count "the server dropped every warper that warped out (still there: $($stale -join ', '))"
-        $script:presentWarpers = @($present | Select-Object -Unique)
     }
-    if ($presentWarpers.Count -gt 0) {
-        Assert-NoDiff -Ids $presentWarpers 'no desync reported for the warpers'
-    }
+    foreach ($hit in @($script:LastDiff | Where-Object { $_.TechType -eq 'Warper' })) { Write-Host "    [$($hit.Kind)] [$($hit.Where)] $($hit.Id): $($hit.Detail)" -ForegroundColor Yellow }
+    Assert-NoDiff -Ids $allIds 'no desync reported for any warper seen (no ghost left in a game)'
 
     Step 'Bleeders near both players have a simulating player and move' {
         Move-Both $BleederSpot

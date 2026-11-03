@@ -1,6 +1,11 @@
 using System.Reflection;
 using Nitrox.Model.DataStructures;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.Spawning.Metadata;
+using NitroxClient.MonoBehaviours;
 using UnityEngine;
 
 namespace NitroxPatcher.Patches.Dynamic;
@@ -28,6 +33,17 @@ public sealed partial class WarperSpawner_Update_Patch : NitroxPatch, IDynamicPa
             return;
         }
         // Update just spawned this warper (Object.Instantiate + WarpIn)
-        Resolve<Items>().Dropped(__instance.warper.gameObject, TechType.Warper);
+        GameObject warperObject = __instance.warper.gameObject;
+        NitroxId warperId = NitroxEntity.GenerateNewId(warperObject);
+        int level = warperObject.TryGetComponent(out LargeWorldEntity largeWorldEntity) ? (int)largeWorldEntity.cellLevel : 0;
+        Optional<EntityMetadata> metadata = Resolve<EntityMetadataManager>().Extract(warperObject);
+        WorldEntity warperEntity = new(warperObject.transform.ToWorldDto(), level, warperObject.GetComponent<UniqueIdentifier>().classId, false, warperId,
+                                       TechType.Warper.ToDto(), metadata.OrNull(), null, []);
+
+        Entities entities = Resolve<Entities>();
+        // This game has it already: when the server sends it back (its cell becomes visible again), it must update this
+        // warper, not spawn a second one with the same id (seen in game at the edge of the loaded cells)
+        entities.MarkAsSpawned(warperEntity);
+        entities.BroadcastEntitySpawnedByClient(warperEntity);
     }
 }
