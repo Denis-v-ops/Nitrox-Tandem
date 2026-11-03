@@ -22,6 +22,7 @@ public sealed partial class AttachAndSuck_SetDetached_Patch : NitroxPatch, IDyna
         if (!Resolve<Bleeders>().IsSimulatedHere(__instance))
         {
             __instance.active = false;
+            Bleeders.SetFollowingRemotePoses(__instance, true);
         }
     }
 }

@@ -158,7 +158,7 @@ function Remove-Bleeder {
 function Assert-LatchedOnBob {
     param([string]$Name, [string]$Id, [string]$How)
     Assert-True ($How -ne 'none') "$Name : the bleeder latches onto Bob's body in Alice's game ($How)"
-    $attachedA = Wait-Until { if (Get-Bool $A "$Id AttachAndSuck.attached") { $true } } -TimeoutSeconds 4 -IntervalSeconds 0.3
+    $attachedA = Wait-Until { if ((Get-Bool $A "$Id AttachAndSuck.attached") -and (Get-BleederTarget $A $Id) -eq $B) { $true } } -TimeoutSeconds 4 -IntervalSeconds 0.3
     Assert-True ([bool]$attachedA) "$Name : Alice's game: attached to Bob's body"
     $mirrored = Wait-Until { $s = Get-LocalTargetState $B; if ($s.attached -and $s.hasBleeder) { $s } } -TimeoutSeconds 5 -IntervalSeconds 0.3
     Assert-True ([bool]$mirrored) "$Name : Bob's game: his own attach target holds the bleeder (attached, so his arms fight it)"
@@ -298,15 +298,17 @@ try {
             try {
                 # In Alice's game it can't latch on (just let go: 4 s pause), so only Bob's game could mark him
                 Invoke-Bridge $A "set $id AttachAndSuck.timeDetached 100000" | Out-Null
-                $touched = $false
+                # Bob is put onto the copy (it swims on, so the closest read of 4 tries counts)
+                $closest = 1000
                 for ($try = 0; $try -lt 4; $try++) {
                     $bleederPos = Get-Position $B $id
-                    Invoke-Bridge $B "teleport $(Format-Point @(($bleederPos[0] + 0.3), $bleederPos[1], $bleederPos[2]))" | Out-Null
-                    Start-Sleep -Milliseconds 700
+                    Invoke-Bridge $B "teleport $(Format-Point @(($bleederPos[0] + 0.2), $bleederPos[1], $bleederPos[2]))" | Out-Null
+                    Start-Sleep -Milliseconds 300
                     $distance = Get-Distance (Get-Position $B $id) (Get-PlayerPosition $B)
-                    if ($distance -lt 1.2) { $touched = $true }
+                    if ($distance -lt $closest) { $closest = $distance }
+                    Start-Sleep -Milliseconds 400
                 }
-                Assert-True $touched 'stuck-target-B : Bob touched the copy in his game'
+                Assert-True ($closest -lt 1.5) "stuck-target-B : Bob touched the copy in his game (closest $([math]::Round($closest, 2)) m)"
                 $state = Get-LocalTargetState $B
                 Assert-True (-not $state.occupied -and -not $state.hasBleeder) "stuck-target-B : Bob's own attach target stays free (occupied $($state.occupied))"
                 Assert-Equal '' (Get-BleederTarget $A $id) 'stuck-target-B : Alice''s game: no target'

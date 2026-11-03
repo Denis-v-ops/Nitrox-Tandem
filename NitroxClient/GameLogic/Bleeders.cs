@@ -203,6 +203,21 @@ public class Bleeders
             attachAndSuck.GetComponent<Rigidbody>().isKinematic = true;
             attachAndSuck.GetComponent<Collider>().enabled = false;
             attachAndSuck.active = true;
+            // The simulating game's poses (where it saw the player a moment ago) would put the copy back off the player
+            // every physics step until Update moves it on again
+            SetFollowingRemotePoses(attachAndSuck, false);
+        }
+    }
+
+    /// <summary>
+    ///     A copy that is mirrored on a player follows that player, not the simulating game's poses; it goes back to them
+    ///     when it lets go (<c>AttachAndSuck_SetDetached_Patch</c>).
+    /// </summary>
+    public static void SetFollowingRemotePoses(AttachAndSuck attachAndSuck, bool follow)
+    {
+        if (attachAndSuck.TryGetComponent(out RemotelyControlled remotelyControlled))
+        {
+            remotelyControlled.enabled = follow;
         }
     }
 
