@@ -1018,7 +1018,7 @@ Branch `fix/s16bc-creature-replication` (on top of the S16 probe branch).
 
 **Before/after** (L3 `S16-LeviathanSync.ps1 -Strict`, windowless, Crash Zone Reaper and a Reefback; before = the S16
 probe's runs above, same code path for replication; after = runs 2, 4 and 5 on this branch; errors are what a player
-sees, without a time shift; a *snap* is a step beyond what the original moved meanwhile, over one or two frames):
+sees, without a time shift; a *snap* is a step beyond what the original moved meanwhile, over one or two frames; the before snaps were raw one-frame steps, but the original moved only about 0.2 m per frame there, so they are the same quantity):
 
 | Case | Before (S16 probe) | After |
 |---|---|---|
@@ -1051,7 +1051,7 @@ metres away, where its game may lack terrain colliders (S16 case 5 saw that at 7
 terrain it collides with. A 350 ms frame on the watching game still shows the creature where it was when that frame
 began, up to 5 m behind at the end of it (every object stands still during such a frame); the next frame catches up.
 
-**Not verified:** packet loss and latency (localhost; a lost pose is replaced by the next one 0.1–0.5 s later, and the
+**Not verified:** case 5 (`roam`, the creature swimming out of the simulator's cells) wasn't run on this branch: it now relies on the 2 s far-tier poses reaching `CreatureMovementsProcessor` instead of the 1–5 s `GoTo` packets; the L2 `CreatureLeavesSimulatorTest` covers its server half with `CreatureMovements`. Packet loss and latency (localhost; a lost pose is replaced by the next one 0.1–0.5 s later, and the
 copy keeps extrapolating for up to 1 s), two PCs (clock sync: an error in `RealTimeElapsed` shifts the copy by speed ×
 error), many players, a Reaper chasing or grabbing (`-Chase` not run; S14's Reaper case bit), walking creatures (Sea
 Treader, crabs; from code they take the same path), creatures in alien containment, windowed games.
