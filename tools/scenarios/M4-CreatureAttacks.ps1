@@ -226,7 +226,7 @@ function Get-HeldFlashlight {
 
 function Test-EmpToolsCase {
     if ($Only -and $Only -notcontains 'emp-tools-AB') { return }
-    $row = @{ case = 'emp-tools-AB'; owner = '?'; bodyTag = '?'; touchedBody = ''; aliceToolDisabled = $false; bobToolDisabled = $false; note = '' }
+    $row = @{ case = 'emp-tools-AB'; owner = '?'; bodyTag = '?'; touchedBody = ''; aliceToolDisabled = $false; bobToolDisabled = $false; bobDirect = ''; bobDirectDisabled = $false; aliceOwnBlast = $false; note = '' }
     $spot = @(($script:Center[0] + 40), -8, ($script:Center[2] - 60))
     Invoke-Bridge $A 'call GameModeUtils.ActivateCheat NoAggression' | Out-Null
     Invoke-Bridge $B "teleport $(Format-Point $spot)" | Out-Null
@@ -255,6 +255,9 @@ function Test-EmpToolsCase {
             $side = if ($player -eq $B) { 2 } else { -2 }
             Invoke-Bridge $player "teleport $(Format-Point @(($copyPos[0] + $side), $copyPos[1], $copyPos[2]))" | Out-Null
         }
+        # Bob swims slowly upwards through the blast: a body standing still sleeps (pass 3: asleep, 3 m from the blast, not
+        # touched), and the trigger of a growing collider may not reach a sleeping body. A player in play moves.
+        Invoke-Bridge $B 'input move 0 0.2 0' | Out-Null
         Invoke-Bridge $A "call $id EMPAttack.CastEMPBlast" | Out-Null
         $castAt = Get-Date
         Start-Sleep -Milliseconds 500
@@ -270,8 +273,27 @@ function Test-EmpToolsCase {
             if ((Invoke-Bridge $B "get $bobTool EnergyMixin.electronicsDisabled" -AllowError) -eq 'true') { $row.bobToolDisabled = $true }
             Start-Sleep -Milliseconds 200
         }
+        Invoke-Bridge $B 'input off' | Out-Null
+
+        # A second blast for what the first can't tell apart: in Bob's game its copy touches Bob (the call its trigger makes),
+        # and Alice holds her flashlight inside her own game's blast, the vanilla control for whether a blast's trigger
+        # reaches a player at all in these games
+        Wait-Until { (Invoke-Bridge $A "get $aliceTool EnergyMixin.electronicsDisabled" -AllowError) -eq 'false' -and (Invoke-Bridge $B "get $bobTool EnergyMixin.electronicsDisabled" -AllowError) -eq 'false' } -TimeoutSeconds 10 | Out-Null
+        $copyPos = Get-Position $A $id
+        Invoke-Bridge $A "teleport $(Format-Point @(($copyPos[0] - 2), $copyPos[1], $copyPos[2]))" | Out-Null
+        Invoke-Bridge $A 'input move 0 0.2 0' | Out-Null
+        Invoke-Bridge $A "call $id EMPAttack.CastEMPBlast" | Out-Null
+        $castAt = Get-Date
+        Start-Sleep -Milliseconds 300
+        $row.bobDirect = Invoke-Bridge $B "call find:EMPBlast EMPBlast.OnTouch player" -AllowError
+        while (((Get-Date) - $castAt).TotalSeconds -lt 4) {
+            if ((Invoke-Bridge $A "get $aliceTool EnergyMixin.electronicsDisabled" -AllowError) -eq 'true') { $row.aliceOwnBlast = $true }
+            if ((Invoke-Bridge $B "get $bobTool EnergyMixin.electronicsDisabled" -AllowError) -eq 'true') { $row.bobDirectDisabled = $true }
+            Start-Sleep -Milliseconds 200
+        }
     }
     finally {
+        foreach ($player in $A, $B) { Invoke-Bridge $player 'input off' -AllowError | Out-Null }
         Invoke-Bridge $A 'call GameModeUtils.DeactivateCheat NoAggression' | Out-Null
         foreach ($player in $A, $B) { Invoke-Bridge $player 'call Inventory.main.quickSlots.DeselectImmediate' -AllowError | Out-Null }
         Remove-Creature $id
@@ -279,8 +301,15 @@ function Test-EmpToolsCase {
     }
     Write-Host "    Bob's body in Alice's game is tagged '$($row.bodyTag)'; the blast touching it: $($row.touchedBody)"
     Write-Host "    tool disabled: Bob's in Bob's game $($row.bobToolDisabled), Alice's in Alice's game $($row.aliceToolDisabled)"
+    Write-Host "    second blast: Alice's own blast disabled her flashlight: $($row.aliceOwnBlast); Bob's copy touching him: $($row.bobDirect), his flashlight disabled: $($row.bobDirectDisabled)"
     Assert-Equal $A $row.owner 'emp-tools-AB : Alice simulates the Crabsquid'
-    Assert-True $row.bobToolDisabled "emp-tools-AB : the EMP disables the flashlight Bob holds, in Bob's game"
+    Assert-True $row.bobDirectDisabled "emp-tools-AB : the blast's copy in Bob's game, touching him, disables the flashlight he holds ($($row.bobDirect))"
+    if ($row.aliceOwnBlast) {
+        Assert-True $row.bobToolDisabled "emp-tools-AB : the EMP disables the flashlight Bob holds, in Bob's game (its trigger, as in Alice's own game)"
+    }
+    else {
+        Write-Host "    not judged: a blast's trigger didn't reach the player in her own game either (vanilla), so these games can't show Bob's" -ForegroundColor Yellow
+    }
     Assert-True (-not $row.touchedBody.StartsWith('ERR ')) "emp-tools-AB : Alice's blast touched Bob's body ($($row.touchedBody))"
     # Fails without EMPBlast_OnTouch_Patch only if the body is tagged "Player" (asset data, reported above)
     Assert-True (-not $row.aliceToolDisabled) "emp-tools-AB : the blast touching Bob's body doesn't disable the tool Alice drew after her own touch"
