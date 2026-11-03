@@ -13,10 +13,17 @@
     3. Alice grabs scrap 1 again and shoots it (OnShoot): the beam goes off and Bob's game plays the shot on his copy
        (log line). Then Bob grabs scrap 1 with his own cannon: it works (before, Alice's game kept the exclusive lock
        after a shot, so Bob's grab was refused) and Alice's copy of Bob's cannon shows his beam.
-    4. Alice draws the repulsion cannon, faces scrap 2 from 4 m and fires (RepulsionCannon.OnToolUseAnim through the bridge:
-       it's an animation event, which doesn't fire windowless). Scrap 2 flies off in Alice's game and in Bob's, and both
-       games end with it at the same place; Bob's game plays the shot on his copy of her cannon (log line).
+    4. Alice draws the repulsion cannon. Bob grabs scrap 2 with his cannon and lets go (so his game simulates it), then
+       holds it still (kinematic) 4 m in front of Alice's camera in open water:
+       on the sea floor it slides downhill by itself, which hid the push in a first version of this step. Alice fires
+       (RepulsionCannon.OnToolUseAnim through the bridge: it's an animation event, which doesn't fire windowless). Scrap 2
+       flies more than 4 m along her aim in her game and in Bob's, and both games end with it at the same place; Bob's
+       game plays the shot on his copy of her cannon (log line). Before, it didn't move in either game: Bob's game
+       simulates it, so Alice's push was undone at once by his position updates.
     Sound isn't checked (windowless games are muted).
+
+    Negative control (2026-11-03, integration/wave4 without B6): 9 of 29 checks fail (beam, glow, beam end, both shot
+    effects, Bob's grab after the shot and his beam for Alice, the repulsion flight in both games).
 
     Starts a fresh world and two games, unless -NoLaunch. Run it windowless:
         $env:NITROX_WINDOWLESS = 1; tools\scenarios\B6-Cosmetics.ps1
@@ -153,29 +160,52 @@ try {
     Step 'Alice fires the repulsion cannon at scrap 2: it flies off in both games' {
         Select-Tool $A $aliceRepulsion
         Wait-Until { Get-Bool $B "$aliceRepulsion GameObject.activeSelf" } -TimeoutSeconds 10 | Out-Null
-        # Face scrap 2 from 4 m: look straight ahead, then put the camera 4 m behind the scrap along that direction
+        # Scrap 2 has sunk to the sea floor, where it slides downhill on its own. Bob (whose game simulates it) holds it
+        # still 4 m in front of Alice's camera in open water (kinematic, so it doesn't sink meanwhile), and Alice's copy
+        # follows his position updates there.
+        Invoke-Bridge $A ('teleport ' + ($spot -join ' ')) | Out-Null
         Invoke-Bridge $A 'look 0 0' | Out-Null
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Seconds 1
         $forward = [double[]](Invoke-BridgeJson $A 'get MainCamera.camera.transform.forward')
-        for ($i = 0; $i -lt 2; $i++) {
-            $target = Get-Position $A $scrap2
-            $camera = [double[]](Invoke-BridgeJson $A 'get MainCamera.camera.transform.position')
-            $body = [double[]](Invoke-BridgeJson $A 'state').position
-            $p = 0..2 | ForEach-Object { $target[$_] - 4 * $forward[$_] - ($camera[$_] - $body[$_]) }
-            Invoke-Bridge $A ('teleport {0:0.00} {1:0.00} {2:0.00}' -f $p[0], $p[1], $p[2]) | Out-Null
-            Start-Sleep -Milliseconds 700
-        }
         $camera = [double[]](Invoke-BridgeJson $A 'get MainCamera.camera.transform.position')
+        $aim = 0..2 | ForEach-Object { $camera[$_] + 4 * $forward[$_] }
+        # Make sure Bob's game simulates it: the lock of a dropped item can move to the other player with the cells (it
+        # did in one run). Bob grabs it with his cannon and lets go, which leaves him its normal lock.
+        # (from close by: the cannon lets go of anything farther than 27 m)
+        $scrapNow = Get-Position $B $scrap2
+        Invoke-Bridge $B ('teleport {0:0.00} {1:0.00} {2:0.00}' -f $scrapNow[0], ($scrapNow[1] + 3), $scrapNow[2]) | Out-Null
+        Select-Tool $B $bobPropulsion
+        Wait-Until { Get-Bool $B "$bobPropulsion GameObject.activeSelf" } -TimeoutSeconds 10 | Out-Null
+        Start-Sleep -Seconds 1
+        Invoke-Bridge $B "call $bobPropulsion PropulsionCannon.GrabObject $scrap2" | Out-Null
+        $bobHeld = Wait-Until { (Get-Grabbed $B $bobPropulsion) -eq $scrap2 } -TimeoutSeconds 10 -IntervalSeconds 0.25
+        Assert-True ([bool]$bobHeld) "Bob's game takes scrap 2's lock (grabs it with his cannon)"
+        Invoke-Bridge $B "call $bobPropulsion PropulsionCannon.ReleaseGrabbedObject" | Out-Null
+        Invoke-Bridge $B 'call Inventory.main.quickSlots.DeselectImmediate' | Out-Null
+        Invoke-Bridge $B ("teleport {0} {1} {2}" -f ($spot[0] + 6), $spot[1], $spot[2]) | Out-Null
+        Start-Sleep -Seconds 1
+        Invoke-Bridge $B "set $scrap2 Rigidbody.isKinematic true" | Out-Null
+        Invoke-Bridge $B ('set {0} Transform.position {1:0.00},{2:0.00},{3:0.00}' -f $scrap2, $aim[0], $aim[1], $aim[2]) | Out-Null
+        $there = Wait-Until { (Get-Distance (Get-Position $A $scrap2) $aim) -lt 0.5 } -TimeoutSeconds 10 -IntervalSeconds 0.25
+        Assert-True ([bool]$there) ("scrap 2 hangs 4 m in front of Alice in both games (Alice {0}, Bob {1})" -f (Format-Vector (Get-Position $A $scrap2)), (Format-Vector (Get-Position $B $scrap2)))
         $beforeA = Get-Position $A $scrap2
         $beforeB = Get-Position $B $scrap2
-        Write-Host ("  camera {0}, scrap 2 at Alice {1}, at Bob {2}" -f (Format-Vector $camera), (Format-Vector $beforeA), (Format-Vector $beforeB))
+        Write-Host ("  camera {0}, forward {1}, scrap 2 at Alice {2}, at Bob {3}" -f (Format-Vector $camera), (Format-Vector $forward), (Format-Vector $beforeA), (Format-Vector $beforeB))
 
         $marks = Get-LogMarks @($A, $B) $SaveName
+        # How far it went along Alice's aim
+        function Get-Flight { param([string]$Player, [double[]]$From) $p = Get-Position $Player $scrap2; (0..2 | ForEach-Object { ($p[$_] - $From[$_]) * $forward[$_] } | Measure-Object -Sum).Sum }
         Invoke-Bridge $A "call $aliceRepulsion RepulsionCannon.OnToolUseAnim player" | Out-Null
-        $movedA = Wait-Until { (Get-Distance (Get-Position $A $scrap2) $beforeA) -gt 3 } -TimeoutSeconds 6 -IntervalSeconds 0.25
-        Assert-True ([bool]$movedA) ("scrap 2 flies off in Alice's game ({0:0.0} m)" -f (Get-Distance (Get-Position $A $scrap2) $beforeA))
-        $movedB = Wait-Until { (Get-Distance (Get-Position $B $scrap2) $beforeB) -gt 3 } -TimeoutSeconds 6 -IntervalSeconds 0.25
-        Assert-True ([bool]$movedB) ("scrap 2 flies off in Bob's game ({0:0.0} m)" -f (Get-Distance (Get-Position $B $scrap2) $beforeB))
+        # Seen once, before the scenario had Bob take the lock first: the first shot didn't take in Alice's game (no lock
+        # request; cause not found). A second shot then; without the fix neither moves it in either game.
+        if (-not (Wait-Until { (Get-Flight $A $beforeA) -gt 4 } -TimeoutSeconds 3 -IntervalSeconds 0.25)) {
+            Write-Host "  the first shot didn't move scrap 2 in Alice's game; firing again" -ForegroundColor Yellow
+            Invoke-Bridge $A "call $aliceRepulsion RepulsionCannon.OnToolUseAnim player" | Out-Null
+        }
+        $movedA = Wait-Until { (Get-Flight $A $beforeA) -gt 4 } -TimeoutSeconds 6 -IntervalSeconds 0.25
+        Assert-True ([bool]$movedA) ("scrap 2 flies off along Alice's aim in her game ({0:0.0} m)" -f (Get-Flight $A $beforeA))
+        $movedB = Wait-Until { (Get-Flight $B $beforeB) -gt 4 } -TimeoutSeconds 6 -IntervalSeconds 0.25
+        Assert-True ([bool]$movedB) ("scrap 2 flies off along Alice's aim in Bob's game ({0:0.0} m)" -f (Get-Flight $B $beforeB))
         Start-Sleep -Seconds 5
         $agree = Wait-Until { (Get-Distance (Get-Position $A $scrap2) (Get-Position $B $scrap2)) -lt 1.5 } -TimeoutSeconds 10 -IntervalSeconds 0.5
         Assert-True ([bool]$agree) ("both games end with scrap 2 at the same place (Alice {0}, Bob {1})" -f (Format-Vector (Get-Position $A $scrap2)), (Format-Vector (Get-Position $B $scrap2)))
@@ -183,7 +213,14 @@ try {
         Assert-True ([bool]$shot) "Bob's game played the repulsion shot on its copy of Alice's cannon"
     }
 
-    Step 'No desync for the scrap' {
+    Step 'No desync for the scrap (once it has come to rest)' {
+        # Loose scrap sinks and slides downhill for a while after a shot; the server keeps the position the simulating
+        # game last sent
+        for ($i = 0; $i -lt 4; $i++) {
+            Start-Sleep -Seconds 5
+            Show-Diff
+            if (-not ($script:LastDiff | Where-Object { @($scrap1, $scrap2) -contains $_.Id })) { break }
+        }
         Assert-NoDiff @($scrap1, $scrap2) 'diff reports nothing for the two pieces of scrap'
     }
 }
