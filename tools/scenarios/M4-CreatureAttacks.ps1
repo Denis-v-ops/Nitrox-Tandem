@@ -248,6 +248,13 @@ function Test-EmpToolsCase {
         $row.bodyTag = (Invoke-Bridge $A "get $($script:PlayerIds[$B]) GameObject.tag" -AllowError).Trim().Trim('"')
         # Diagnostics for a miss: a sleeping body may not get a trigger from a new collider, and the copy may be cast elsewhere
         $row.note = "Bob's body asleep: $(Invoke-Bridge $B 'call player Rigidbody.IsSleeping' -AllowError)"
+        # Each game casts the blast at its own copy, and the Crabsquid swims (Bob was 6 m from his copy's blast otherwise):
+        # each player 2 m from the copy in their own game, right before the cast
+        foreach ($player in $B, $A) {
+            $copyPos = Get-Position $player $id
+            $side = if ($player -eq $B) { 2 } else { -2 }
+            Invoke-Bridge $player "teleport $(Format-Point @(($copyPos[0] + $side), $copyPos[1], $copyPos[2]))" | Out-Null
+        }
         Invoke-Bridge $A "call $id EMPAttack.CastEMPBlast" | Out-Null
         $castAt = Get-Date
         Start-Sleep -Milliseconds 500
@@ -317,9 +324,17 @@ function Test-CrashBlastVehicleCase {
     A natural sulfur plant near the pod: Alice looks around a ring of spots. Returns the home's id and position.
 #>
 function Find-CrashHome {
-    $spots = @(@(0, 0)) + @(0..7 | ForEach-Object { $angle = [math]::PI * 2 * $_ / 8; @((90 * [math]::Cos($angle)), (90 * [math]::Sin($angle))) })
-    foreach ($offset in $spots) {
-        Invoke-Bridge $A "teleport $(Format-Point @(($script:Center[0] + $offset[0]), -8, ($script:Center[2] + $offset[1])))" | Out-Null
+    # First just above the one found in the scenario worlds' seed (95311395, server.cfg), whose cell is at the edge of
+    # what loads from the surface; then the pod and a ring around it
+    $spots = [System.Collections.Generic.List[double[]]]::new()
+    $spots.Add([double[]]@(-48, -79.5, 246.7))
+    $spots.Add([double[]]@($script:Center[0], -8, $script:Center[2]))
+    foreach ($i in 0..7) {
+        $angle = [math]::PI * 2 * $i / 8
+        $spots.Add([double[]]@(($script:Center[0] + 90 * [math]::Cos($angle)), -8, ($script:Center[2] + 90 * [math]::Sin($angle))))
+    }
+    foreach ($spot in $spots) {
+        Invoke-Bridge $A "teleport $(Format-Point $spot)" | Out-Null
         $found = Wait-Until { (Invoke-BridgeJson $A 'find CrashHome 5') | Where-Object { $_.id -match '^[0-9a-f-]{36}$' } | Select-Object -First 1 } -TimeoutSeconds 8
         if ($found) {
             return @{ Id = $found.id; Position = [double[]](Invoke-BridgeJson $A "entity $($found.id)").position }
