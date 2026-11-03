@@ -35,7 +35,7 @@ param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 'm2-story-progress',
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
 $A = 'Alice'
 $B = 'Bob'
-$rig = Get-NitroxRig
+$rigInfo = Get-NitroxRig
 $doorGoal = 'M2TestDoorKey'
 $pairId = 'm2test'
 $pairGoal = "Nitrox_TeleporterActive:$pairId"
@@ -63,10 +63,10 @@ function Get-ServerSubRoot {
 # The next three come from M3-JoinSaveSafety.ps1: a game that dual-client.ps1 started, killed and started again.
 function Get-GameProcess {
     param([string]$Player)
-    $state = Get-Content $rig.StateFile -Raw | ConvertFrom-Json
+    $state = Get-Content $rigInfo.StateFile -Raw | ConvertFrom-Json
     $game = Get-CimInstance Win32_Process -Filter "Name = 'Subnautica.exe'" |
         Where-Object { $state.ProcessIds -contains $_.ProcessId -and $_.CommandLine -match "--instantlaunch `"$Player`"" } | Select-Object -First 1
-    if (-not $game) { throw "No running game of $Player started by dual-client.ps1 (rig $($rig.Number))" }
+    if (-not $game) { throw "No running game of $Player started by dual-client.ps1 (rig $($rigInfo.Number))" }
     $commandLine = $game.CommandLine.Trim()
     $arguments = if ($commandLine.StartsWith('"')) { $commandLine.Substring($commandLine.IndexOf('"', 1) + 1).Trim() } else { $commandLine.Substring($commandLine.IndexOf(' ') + 1).Trim() }
     [pscustomobject]@{ Id = $game.ProcessId; Exe = $game.ExecutablePath; Arguments = $arguments }
@@ -85,9 +85,9 @@ function Start-GameAgain {
     $env:SteamAppId = '264710'
     $env:SteamGameId = '264710'
     $process = Start-Process -FilePath $Game.Exe -ArgumentList $Game.Arguments -WorkingDirectory (Split-Path $Game.Exe) -PassThru
-    $state = Get-Content $rig.StateFile -Raw | ConvertFrom-Json
+    $state = Get-Content $rigInfo.StateFile -Raw | ConvertFrom-Json
     $state.ProcessIds = @($state.ProcessIds) + $process.Id
-    $state | ConvertTo-Json | Set-Content $rig.StateFile
+    $state | ConvertTo-Json | Set-Content $rigInfo.StateFile
     $process.Id
 }
 
@@ -197,7 +197,7 @@ try {
         Assert-Equal $podId (Get-ServerSubRoot $aliceId) 'Alice is still in the pod on the server'
     }
 
-    if ($SkipLoading -or -not ($rig.Windowless -or $rig.Number -gt 0)) {
+    if ($SkipLoading -or -not ($rigInfo.Windowless -or $rigInfo.Number -gt 0)) {
         Write-Host 'Skipping the loading step (needs windowless games or a rig > 0, or -SkipLoading was given)' -ForegroundColor Yellow
     }
     else {

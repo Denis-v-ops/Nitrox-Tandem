@@ -114,7 +114,7 @@ function New-Cyclops {
     Invoke-Bridge $A 'console sub cyclops' | Out-Null
     $sub = Wait-Until { @(Invoke-BridgeJson $A 'find SubRoot') | Where-Object { $_.name -like 'Cyclops*' -and $_.id -match '^[0-9a-f-]{36}$' -and $before -notcontains $_.id } | Select-Object -First 1 } -TimeoutSeconds 60
     if (-not $sub) { throw 'no Cyclops spawned' }
-    Invoke-Bridge $B ('teleport ' + (Format-Position @($At[0] + 5, $At[1], $At[2]))) | Out-Null
+    Invoke-Bridge $B ('teleport ' + (Format-Position @(($At[0] + 5), $At[1], $At[2]))) | Out-Null
     if (-not (Wait-Until { Invoke-BridgeJson $B "entity $($sub.id)" } -TimeoutSeconds 60)) { throw "Bob doesn't have Cyclops $($sub.id)" }
     Start-Sleep -Seconds 3
     $sub.id
@@ -157,7 +157,7 @@ try {
     Start-ScenarioGames -Players $A, $B -SaveName $SaveName -NoLaunch:$NoLaunch
 
     Step 'A moonpool with a docked Seamoth' {
-        $script:base = Get-OrBuildDockedSeamoth $A $B
+        $script:base = Get-OrBuildDockedSeamoth $A $B -Modules @('vehiclehullmodule1')
         Write-Host "  base $($base.BaseId), bay $($base.DockId), Seamoth $($base.SeamothId), power cell $($base.PowerCellId)"
         Assert-True ([bool]$base.PowerCellId) 'the server has the Seamoth with a power cell'
     }
@@ -177,7 +177,7 @@ try {
 
     Step 'Bob undocks the Seamoth himself (the lock Alice was granted is free again)' {
         Invoke-Bridge $B 'use find:DockedVehicleHandTarget' | Out-Null
-        $piloting = Wait-Until { (Get-Mode $B) -eq 'Piloting' } -TimeoutSeconds 20 -IntervalSeconds 0.5
+        $piloting = Wait-Until { (Get-Mode $B) -eq 'LockedPiloting' } -TimeoutSeconds 20 -IntervalSeconds 0.5
         Assert-True ([bool]$piloting) 'Bob pilots the Seamoth out of the bay'
         $opened = Wait-Until { (Invoke-Bridge $A "get $($base.DockId) VehicleDockingBay.vehicle_docked_param") -eq 'false' } -TimeoutSeconds 10
         Assert-True ([bool]$opened) "Alice's game replays Bob's undocking"
@@ -256,7 +256,7 @@ try {
         $removed = Wait-Until { -not (Get-BridgeEntities 'server').Entities[$looseId] } -TimeoutSeconds 10
         Assert-True ([bool]$removed) 'the server removed it'
         $mark = Get-ServerLogMark
-        Invoke-Bridge $B ('teleport ' + (Format-Position @($LooseSpot[0] + 3, $LooseSpot[1], $LooseSpot[2]))) | Out-Null
+        Invoke-Bridge $B ('teleport ' + (Format-Position @(($LooseSpot[0] + 3), $LooseSpot[1], $LooseSpot[2]))) | Out-Null
         Start-Sleep -Seconds 10
         $stale = @(Get-ServerLogLines $mark "Removing stale entry of $looseId")
         Assert-Equal 0 $stale.Count "the server had no stale cell entry left for it when Bob loaded the cell"
@@ -304,7 +304,7 @@ try {
             $alive = Wait-Until { (Get-Number $player 'player LiveMixin.health') -gt 0 -and (Invoke-Bridge $player 'get player Player.cinematicModeActive') -eq 'false' } -TimeoutSeconds 60
             Assert-True ([bool]$alive) "$player is alive and free to move"
         }
-        $script:secondId = New-Cyclops @($CyclopsArea[0] + 120, $CyclopsArea[1], $CyclopsArea[2])
+        $script:secondId = New-Cyclops @(($CyclopsArea[0] + 120), $CyclopsArea[1], $CyclopsArea[2])
         $owner = Get-LockOwner $secondId
         Assert-True ($owner -in $A, $B) "a player holds the second Cyclops ($owner)"
         $stayer = if ($owner -eq $A) { $B } else { $A }

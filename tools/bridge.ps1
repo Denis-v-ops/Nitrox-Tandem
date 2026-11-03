@@ -191,6 +191,9 @@ function Test-MetadataEqual {
     # (B3-BasePowerPersists.ps1); here only the rest of the metadata is compared.
     $A = $A -replace "`"Power`":($number|null)", '"Power":#'
     $B = $B -replace "`"Power`":($number|null)", '"Power":#'
+    # A vector's Normalized is derived from X, Y and Z, and the game writes it in its own culture ("[0,47, ...]")
+    $A = $A -replace '"Normalized":"[^"]*"', '"Normalized":#'
+    $B = $B -replace '"Normalized":"[^"]*"', '"Normalized":#'
     if ($A -eq $B) { return $true }
     if (($A -replace $number, '#') -ne ($B -replace $number, '#')) { return $false }
     $numbersA = [regex]::Matches($A, $number)

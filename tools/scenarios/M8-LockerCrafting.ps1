@@ -57,32 +57,47 @@ function Get-ServerIds {
 #>
 function New-RoomModule {
     param([string]$Player, [string]$TechType, [double[]]$Pitches)
-    foreach ($yaw in 0, 90, 180, 270, 45, 135, 225, 315) {
-        foreach ($pitch in $Pitches) {
-            Enter-S7Base $Player
+    $middle = [double[]]($S7.Inside -split ' ')
+    $lastTarget = ''
+    # From the middle, and 2.5 m toward where the camera looks: a wall module's ray only reaches placeMaxDistance
+    # (Builder.CheckAsSubModule), and the middle may be farther from the walls
+    $attempts = foreach ($yaw in 0, 90, 180, 270, 45, 135, 225, 315) { foreach ($step in 0, 2.5) { foreach ($pitch in $Pitches) { , @($yaw, $step, $pitch) } } }
+    foreach ($attempt in $attempts) {
+        $yaw, $step, $pitch = $attempt
+        Enter-S7Base $Player
+        Invoke-Bridge $Player ('look {0} {1}' -f (Format-BridgeNumber $yaw), (Format-BridgeNumber $pitch)) | Out-Null
+        if ($step -gt 0) {
+            $forward = @([regex]::Matches((Invoke-Bridge $Player 'get MainCamera.camera.transform.forward' -AllowError), '-?\d+(\.\d+)?(E[-+]?\d+)?') | ForEach-Object { [double]::Parse($_.Value, [Globalization.CultureInfo]::InvariantCulture) })
+            $flat = if ($forward.Count -eq 3) { [math]::Sqrt($forward[0] * $forward[0] + $forward[2] * $forward[2]) } else { 0 }
+            if ($flat -lt 0.1) { continue }
+            Invoke-Bridge $Player ('teleport {0} {1} {2}' -f (Format-BridgeNumber ($middle[0] + $step * $forward[0] / $flat)), (Format-BridgeNumber $middle[1]), (Format-BridgeNumber ($middle[2] + $step * $forward[2] / $flat))) | Out-Null
+            Invoke-Bridge $Player "call Player.main.SetCurrentSub $($S7.Base) true" | Out-Null
             Invoke-Bridge $Player ('look {0} {1}' -f (Format-BridgeNumber $yaw), (Format-BridgeNumber $pitch)) | Out-Null
-            Start-Sleep -Milliseconds 500
-            $before = @((Invoke-BridgeJson $Player 'find Constructable 15') | ForEach-Object { $_.id })
-            Invoke-Bridge $Player 'call Builder.End' | Out-Null
-            Invoke-Bridge $Player "call Builder.BeginAsync $TechType" | Out-Null
-            $canPlace = Wait-Until { (Invoke-Bridge $Player 'get Builder.canPlace') -eq 'true' } -TimeoutSeconds 4 -IntervalSeconds 0.5
-            if (-not $canPlace) { continue }
-            Assert-Equal 'true' (Invoke-Bridge $Player 'call Builder.TryPlace') "$Player placed $TechType (look $yaw/$pitch)"
-            Invoke-Bridge $Player 'call Builder.End' | Out-Null
-            $ghost = Wait-Until {
-                @(Invoke-BridgeJson $Player 'find Constructable 15') | Where-Object { $_.id -match '^[0-9a-f-]{36}$' -and $before -notcontains $_.id } | Select-Object -First 1
-            } -TimeoutSeconds 10 -IntervalSeconds 0.5
-            if (-not $ghost) { throw "No new Constructable with an id after placing $TechType" }
-            for ($i = 0; $i -lt 300; $i++) {
-                if ((Invoke-Bridge $Player "get $($ghost.id) Constructable.constructed" -AllowError) -ne 'false') { break }
-                Invoke-Bridge $Player "call $($ghost.id) Constructable.Construct" -AllowError | Out-Null
-            }
-            Write-Host "  built $TechType ($($ghost.id)) looking $yaw/$pitch"
-            return $ghost.id
         }
+        Start-Sleep -Milliseconds 500
+        $before = @((Invoke-BridgeJson $Player 'find Constructable 15') | ForEach-Object { $_.id })
+        Invoke-Bridge $Player 'call Builder.End' | Out-Null
+        Invoke-Bridge $Player "call Builder.BeginAsync $TechType" | Out-Null
+        $canPlace = Wait-Until { (Invoke-Bridge $Player 'get Builder.canPlace') -eq 'true' } -TimeoutSeconds 4 -IntervalSeconds 0.5
+        if (-not $canPlace) {
+            $lastTarget = "look $yaw/$pitch, $step m: placementTarget $(Invoke-Bridge $Player 'get Builder.placementTarget' -AllowError)"
+            continue
+        }
+        Assert-Equal 'true' (Invoke-Bridge $Player 'call Builder.TryPlace') "$Player placed $TechType (look $yaw/$pitch)"
+        Invoke-Bridge $Player 'call Builder.End' | Out-Null
+        $ghost = Wait-Until {
+            @(Invoke-BridgeJson $Player 'find Constructable 15') | Where-Object { $_.id -match '^[0-9a-f-]{36}$' -and $before -notcontains $_.id } | Select-Object -First 1
+        } -TimeoutSeconds 10 -IntervalSeconds 0.5
+        if (-not $ghost) { throw "No new Constructable with an id after placing $TechType" }
+        for ($i = 0; $i -lt 300; $i++) {
+            if ((Invoke-Bridge $Player "get $($ghost.id) Constructable.constructed" -AllowError) -ne 'false') { break }
+            Invoke-Bridge $Player "call $($ghost.id) Constructable.Construct" -AllowError | Out-Null
+        }
+        Write-Host "  built $TechType ($($ghost.id)) looking $yaw/$pitch"
+        return $ghost.id
     }
     Invoke-Bridge $Player 'call Builder.End' | Out-Null
-    throw "$Player can't place $TechType anywhere in the room"
+    throw "$Player can't place $TechType anywhere in the room (last try: $lastTarget)"
 }
 
 <#

@@ -27,8 +27,8 @@ param([switch]$NoLaunch, [switch]$Keep, [string]$SaveName = 'm3-join-safety')
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
 $A = 'Alice'
 $B = 'Bob'
-$rig = Get-NitroxRig
-$saveDir = Join-Path $rig.SavesDir $SaveName
+$rigInfo = Get-NitroxRig
+$saveDir = Join-Path $rigInfo.SavesDir $SaveName
 
 function Get-ServerPlayer {
     param([string]$Name)
@@ -40,10 +40,10 @@ function Get-ServerPlayer {
 #>
 function Get-GameProcess {
     param([string]$Player)
-    $state = Get-Content $rig.StateFile -Raw | ConvertFrom-Json
+    $state = Get-Content $rigInfo.StateFile -Raw | ConvertFrom-Json
     $game = Get-CimInstance Win32_Process -Filter "Name = 'Subnautica.exe'" |
         Where-Object { $state.ProcessIds -contains $_.ProcessId -and $_.CommandLine -match "--instantlaunch `"$Player`"" } | Select-Object -First 1
-    if (-not $game) { throw "No running game of $Player started by dual-client.ps1 (rig $($rig.Number))" }
+    if (-not $game) { throw "No running game of $Player started by dual-client.ps1 (rig $($rigInfo.Number))" }
     $commandLine = $game.CommandLine.Trim()
     $arguments = if ($commandLine.StartsWith('"')) { $commandLine.Substring($commandLine.IndexOf('"', 1) + 1).Trim() } else { $commandLine.Substring($commandLine.IndexOf(' ') + 1).Trim() }
     [pscustomobject]@{ Id = $game.ProcessId; Exe = $game.ExecutablePath; Arguments = $arguments }
@@ -69,9 +69,9 @@ function Start-GameAgain {
     $env:SteamAppId = '264710'
     $env:SteamGameId = '264710'
     $process = Start-Process -FilePath $Game.Exe -ArgumentList $Game.Arguments -WorkingDirectory (Split-Path $Game.Exe) -PassThru
-    $state = Get-Content $rig.StateFile -Raw | ConvertFrom-Json
+    $state = Get-Content $rigInfo.StateFile -Raw | ConvertFrom-Json
     $state.ProcessIds = @($state.ProcessIds) + $process.Id
-    $state | ConvertTo-Json | Set-Content $rig.StateFile
+    $state | ConvertTo-Json | Set-Content $rigInfo.StateFile
     $process.Id
 }
 
@@ -82,7 +82,7 @@ function Get-ServerLogSince {
 }
 
 try {
-    if (-not ($rig.Windowless -or $rig.Number -gt 0)) {
+    if (-not ($rigInfo.Windowless -or $rigInfo.Number -gt 0)) {
         throw 'Run windowless ($env:NITROX_WINDOWLESS=1) or on a rig > 0: this scenario restarts one game itself, which the launcher mode cannot.'
     }
     Start-ScenarioGames -Players $A, $B -SaveName $SaveName -NoLaunch:$NoLaunch

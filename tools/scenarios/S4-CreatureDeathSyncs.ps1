@@ -139,7 +139,8 @@ try {
     }
 
     Step 'Alice dies and respawns' {
-        Invoke-Bridge $A 'call Player.main.liveMixin.Kill' | Out-Null
+        # Heat: any other kill only downs her (COOP_FEATURES_SPEC T1, DownedRules.GoesDown)
+        Invoke-Bridge $A 'call Player.main.liveMixin.Kill Heat' | Out-Null
         $dead = Wait-Until { (Invoke-Bridge $A 'call Player.main.liveMixin.IsAlive') -eq 'false' } -TimeoutSeconds 5 -IntervalSeconds 0.3
         Assert-True ([bool]$dead) "$A died"
         Start-Sleep -Seconds 2

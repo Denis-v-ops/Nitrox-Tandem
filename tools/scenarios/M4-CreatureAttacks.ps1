@@ -89,6 +89,8 @@ function Test-ReaperGrabCase {
     param([string]$SeamothId)
     if ($Only -and $Only -notcontains 'reaper-grab-AB') { return }
     $row = @{ case = 'reaper-grab-AB'; owner = '?'; how = ''; aliceHolds = $false; bobHolds = $false; drops = @(); doubleDrop = $false; aliceReleased = $null; bobReleased = $null; note = '' }
+    # The no-damage cheat zeroes vehicle damage too (DamageSystem.CalculateDamage): off in the pilot's game
+    Set-Vulnerable $B $true
     $grab = Start-ReaperGrab $SeamothId $row
     try {
         # The grip: every drop of the Seamoth's health in Bob's game, healed back before it gets low
@@ -116,6 +118,7 @@ function Test-ReaperGrabCase {
         Invoke-Bridge $A 'call GameModeUtils.DeactivateCheat NoAggression' | Out-Null
         Remove-Creature $grab.ReaperId
         Set-SeamothFull $B $SeamothId | Out-Null
+        Set-Vulnerable $B $false
         [void]$script:Rows.Add([pscustomobject]$row)
     }
     Write-Host "    held: Alice $($row.aliceHolds), Bob $($row.bobHolds); grip drops in Bob's game: $($row.drops -join ' '); let go after: Alice $($row.aliceReleased) s, Bob $($row.bobReleased) s"
