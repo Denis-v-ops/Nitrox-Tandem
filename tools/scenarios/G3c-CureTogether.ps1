@@ -28,10 +28,16 @@
        shows infection 0 while its own cure cinematic still plays.
     6. The babies reach the teleporter on Alice's game and teleport: the server and Bob's game drop them.
 
+    -Natural (for windowed games): the game plays those links itself; the scenario only waits for them, and also checks
+    that Bob's copies are hidden while his game plays the hatching, and prints how long the hatching took.
+
     Starts a fresh world and two games (windowless with $env:NITROX_WINDOWLESS = 1), unless -NoLaunch. Debug build
     (dual-client.ps1 -NoBuild is used, so build first).
 #>
-param([switch]$NoLaunch, [switch]$Keep)
+param([switch]$NoLaunch, [switch]$Keep,
+    # Windowed games fire the animation events themselves: don't drive the egg hatch end, the visit's end and the ball
+    # through the bridge, wait for the game instead (and check that the partner's copies are hidden while they hatch).
+    [switch]$Natural)
 
 . (Join-Path $PSScriptRoot 'ScenarioHelpers.ps1')
 $A = 'Alice'
@@ -118,13 +124,26 @@ try {
         $mismatch = @($script:babyIds | Where-Object { (Get-BabyField $A $_ 'SeaEmperorBaby.babyId') -ne (Get-BabyField $B $_ 'SeaEmperorBaby.babyId') })
         foreach ($id in $script:babyIds) { Write-Host "  baby $id id Alice $(Get-BabyField $A $id 'SeaEmperorBaby.babyId') Bob $(Get-BabyField $B $id 'SeaEmperorBaby.babyId')" }
         Assert-Equal 0 $mismatch.Count 'every baby has its egg''s id on Bob''s game too'
+        $hidden = @($script:babyIds | Where-Object { (Get-BabyField $B $_ 'Renderer.enabled') -eq 'false' })
+        Write-Host "  Bob's copies hidden while his game plays the hatching: $($hidden.Count) of 5"
+        if ($Natural) { Assert-Equal 5 $hidden.Count 'Bob''s copies are hidden while his game plays the hatching' }
+        $script:hatchedAt = Get-Date
     }
 
     Step 'The hatch animations end: the babies swim to their mother on both games' {
-        foreach ($player in $A, $B) {
-            0..4 | ForEach-Object { Invoke-Bridge $player "call find:Incubator Incubator.eggs[$_].animationController.OnHatchAnimationEnd" | Out-Null }
+        if ($Natural) {
+            $ended = Wait-Until { @(0..4 | Where-Object { (Invoke-Bridge $B "get find:Incubator Incubator.eggs[$_].animationController.animationActive") -eq 'true' }).Count -eq 0 } -TimeoutSeconds 90 -IntervalSeconds 1
+            Write-Host "  the hatching on Bob's game ended $([int]((Get-Date) - $script:hatchedAt).TotalSeconds) s after the babies were there"
+            Assert-True ([bool]$ended) 'the hatch animations ended on Bob''s game'
+        }
+        else {
+            foreach ($player in $A, $B) {
+                0..4 | ForEach-Object { Invoke-Bridge $player "call find:Incubator Incubator.eggs[$_].animationController.OnHatchAnimationEnd" | Out-Null }
+            }
         }
         Start-Sleep -Seconds 2
+        $shown = @($script:babyIds | Where-Object { (Get-BabyField $B $_ 'Renderer.enabled') -eq 'true' })
+        Assert-Equal 5 $shown.Count 'Bob''s copies are visible once his hatching ended'
         $temporary = @(Invoke-BridgeJson $B 'find SeaEmperorBaby 20' | Where-Object { $_ -and (-not $_.id -or $_.id.StartsWith('(')) })
         Assert-Equal 0 $temporary.Count 'Bob''s temporary hatching babies are gone'
         foreach ($player in $A, $B) {
@@ -142,7 +161,7 @@ try {
     }
 
     Step 'The visit ends: Bob''s babies leave and start dropping cure balls on his game too' {
-        foreach ($player in $A, $B) {
+        foreach ($player in @(if (-not $Natural) { $A, $B })) {
             # The visit's end is an animation event of the visit: only a baby that plays its visit gets it
             foreach ($id in $script:babyIds) {
                 if ((Get-BabyField $player $id 'SeaEmperorBabyCinematicController.currentCinematic') -match '\w') {
@@ -151,14 +170,24 @@ try {
             }
         }
         foreach ($player in $A, $B) {
+            Wait-Until { @($script:babyIds | Where-Object { (Get-BabyField $player $_ 'DropEnzymes.enabled') -eq 'true' }).Count -eq 5 } -TimeoutSeconds $(if ($Natural) { 120 } else { 1 }) -IntervalSeconds 2 | Out-Null
             $dropping = @($script:babyIds | Where-Object { (Get-BabyField $player $_ 'DropEnzymes.enabled') -eq 'true' })
             Assert-Equal 5 $dropping.Count "all five babies drop enzymes on $player's game"
         }
         # A ball on each game now, from the last baby to leave (they leave 5 s apart by id, and a ball still held when its
         # baby teleports goes with it): what the burp animation's events would do
         $script:last = $script:babyIds | Sort-Object { [int](Get-BabyField $A $_ 'SeaEmperorBaby.babyId') } | Select-Object -Last 1
-        $script:ballA = New-CureBall $A $script:last
-        $script:ballB = New-CureBall $B $script:last
+        if ($Natural) {
+            # The babies burp their balls themselves (DropEnzymes, every 7-13 s)
+            $foundA = Wait-Until { @(Invoke-BridgeJson $A 'find EnzymeBall 1') | Where-Object { $_ } | Select-Object -First 1 } -TimeoutSeconds 40
+            $foundB = Wait-Until { @(Invoke-BridgeJson $B 'find EnzymeBall 1') | Where-Object { $_ } | Select-Object -First 1 } -TimeoutSeconds 40
+            $script:ballA = if ($foundA) { [double[]]$foundA.position }
+            $script:ballB = if ($foundB) { [double[]]$foundB.position }
+        }
+        else {
+            $script:ballA = New-CureBall $A $script:last
+            $script:ballB = New-CureBall $B $script:last
+        }
         Write-Host "  cure balls: Alice's at $(if ($script:ballA) { Format-Vector $script:ballA }), Bob's at $(if ($script:ballB) { Format-Vector $script:ballB })"
         Assert-True ([bool]$script:ballA) 'a cure ball is there on Alice''s game'
         Assert-True ([bool]$script:ballB) 'and one on Bob''s'
