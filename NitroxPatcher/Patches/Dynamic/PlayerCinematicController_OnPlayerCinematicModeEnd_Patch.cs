@@ -32,6 +32,12 @@ public sealed partial class PlayerCinematicController_OnPlayerCinematicModeEnd_P
         int identifier = __instance.gameObject.GetHierarchyPath(entity.gameObject).GetHashCode();
         
         Resolve<PlayerCinematics>().EndCinematicMode(Resolve<LocalPlayer>().SessionId.Value, entity.Id, identifier, __instance.playerViewAnimationName);
-        Resolve<SimulationOwnership>().RequestSimulationLock(BedLockId.Resolve(entity, __instance), SimulationLockType.TRANSIENT);
+        // Give back only a lock the cinematic patches took (CinematicLocks): the same id can be the bench's, the helm's or a
+        // vehicle's lock, which their own code gives back. A bed side stays taken while its player lies there.
+        NitroxId lockId = BedLockId.Resolve(entity, __instance);
+        if (!CinematicLocks.IsBedLieDown(__instance) && CinematicLocks.Release(lockId))
+        {
+            Resolve<SimulationOwnership>().RequestSimulationLock(lockId, SimulationLockType.TRANSIENT);
+        }
     }
 }

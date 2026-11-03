@@ -17,7 +17,7 @@ public sealed partial class PlayerCinematicController_StartCinematicMode_Patch :
     private static readonly MethodInfo targetMethod = Reflect.Method((PlayerCinematicController t) => t.StartCinematicMode(default));
     private static bool skipPrefix;
 
-    public static bool Prefix(PlayerCinematicController __instance)
+    public static bool Prefix(PlayerCinematicController __instance, Player setplayer)
     {
         if (skipPrefix)
         {
@@ -25,6 +25,14 @@ public sealed partial class PlayerCinematicController_StartCinematicMode_Patch :
         }
 
         if (__instance.cinematicModeActive)
+        {
+            return true;
+        }
+
+        // Only the local player's own cinematics are synced. VehicleDockingBay.LateUpdate starts its docking cinematic with no
+        // player for a vehicle nobody pilots; the lock response below plays it with Player.main, which would pull the local
+        // player into it (COOP_FEATURES_SPEC R1b)
+        if (setplayer != Player.main)
         {
             return true;
         }
@@ -47,8 +55,8 @@ public sealed partial class PlayerCinematicController_StartCinematicMode_Patch :
 
         NitroxId lockId = BedLockId.Resolve(entity, __instance);
 
-        // Check if we already have the lock
-        if (Resolve<SimulationOwnership>().HasExclusiveLock(lockId))
+        // Check if we already have the lock, or if this cinematic needs none (CinematicLocks.UsesLock)
+        if (!CinematicLocks.UsesLock(entity) || Resolve<SimulationOwnership>().HasExclusiveLock(lockId))
         {
             multiplayerCinematicController.CallAllCinematicModeEnd();
             int identifier = __instance.gameObject.GetHierarchyPath(entity.gameObject).GetHashCode();
@@ -69,6 +77,7 @@ public sealed partial class PlayerCinematicController_StartCinematicMode_Patch :
     {
         if (lockAcquired)
         {
+            CinematicLocks.Taken(id);
             context.MultiplayerController.CallAllCinematicModeEnd();
             int identifier = context.Controller.gameObject.GetHierarchyPath(context.Entity.gameObject).GetHashCode();
             Dictionary<string, bool> animationParameters = CaptureAnimationParameters(context.Controller, context.Entity.gameObject);

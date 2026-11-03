@@ -40,8 +40,8 @@ public sealed partial class CinematicModeTriggerBase_OnHandClick_Patch : NitroxP
 
         NitroxId lockId = BedLockId.Resolve(entity, __instance.cinematicController);
 
-        // Check if we already have the lock
-        if (Resolve<SimulationOwnership>().HasExclusiveLock(lockId))
+        // Check if we already have the lock, or if this cinematic needs none (CinematicLocks.UsesLock)
+        if (!CinematicLocks.UsesLock(entity) || Resolve<SimulationOwnership>().HasExclusiveLock(lockId))
         {
             return true;
         }
@@ -58,6 +58,7 @@ public sealed partial class CinematicModeTriggerBase_OnHandClick_Patch : NitroxP
     {
         if (lockAcquired)
         {
+            CinematicLocks.Taken(id);
             skipPrefix = true;
             context.Trigger.OnHandClick(context.Hand);
             skipPrefix = false;

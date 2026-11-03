@@ -25,7 +25,11 @@ public sealed partial class Bed_ExitInUseMode_Patch : NitroxPatch, IDynamicPatch
 
         if (__instance.currentStandUpCinematicController.TryGetComponentInParent(out NitroxEntity entity, true))
         {
-            Resolve<SimulationOwnership>().RequestSimulationLock(BedLockId.Resolve(entity, __instance.currentStandUpCinematicController), SimulationLockType.TRANSIENT);
+            NitroxId lockId = BedLockId.Resolve(entity, __instance.currentStandUpCinematicController);
+            if (CinematicLocks.Release(lockId))
+            {
+                Resolve<SimulationOwnership>().RequestSimulationLock(lockId, SimulationLockType.TRANSIENT);
+            }
         }
     }
 }

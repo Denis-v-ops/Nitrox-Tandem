@@ -2,6 +2,7 @@ using System.Reflection;
 using NitroxClient.GameLogic;
 using NitroxClient.GameLogic.Simulation;
 using NitroxClient.MonoBehaviours;
+using NitroxClient.MonoBehaviours.CinematicController;
 using NitroxClient.MonoBehaviours.Gui.HUD;
 using Nitrox.Model.DataStructures;
 using UnityEngine;
@@ -45,8 +46,8 @@ public sealed partial class UseableDiveHatch_OnHandClick_Patch : NitroxPatch, ID
             return true;
         }
 
-        // Check if we already have the lock
-        if (Resolve<SimulationOwnership>().HasExclusiveLock(entity.Id))
+        // Check if we already have the lock, or if this hatch needs none (a base's or the Cyclops' hatch, CinematicLocks.UsesLock)
+        if (!CinematicLocks.UsesLock(entity) || Resolve<SimulationOwnership>().HasExclusiveLock(entity.Id))
         {
             return true;
         }
@@ -63,6 +64,7 @@ public sealed partial class UseableDiveHatch_OnHandClick_Patch : NitroxPatch, ID
     {
         if (lockAcquired)
         {
+            CinematicLocks.Taken(id);
             skipPrefix = true;
             context.Hatch.OnHandClick(context.Hand);
             skipPrefix = false;

@@ -28,7 +28,9 @@ public sealed class BedSleepInitialSyncProcessor : InitialSyncProcessor
         Bed[] beds = Object.FindObjectsOfType<Bed>();
         foreach (SimulatedEntity simulatedEntity in packet.InitialSimulationOwnerships)
         {
-            if (!remotePlayerManager.TryFind(simulatedEntity.SessionId, out RemotePlayer remotePlayer) ||
+            // A side is kept exclusive while its player lies there; the transient lock left behind after they got up is not a sleeper
+            if (simulatedEntity.LockType != SimulationLockType.EXCLUSIVE ||
+                !remotePlayerManager.TryFind(simulatedEntity.SessionId, out RemotePlayer remotePlayer) ||
                 !remotePlayer.Body || !remotePlayer.AnimationController ||
                 !TryFindSleepingSide(beds, simulatedEntity.Id, out Bed bed, out PlayerCinematicController controller))
             {
