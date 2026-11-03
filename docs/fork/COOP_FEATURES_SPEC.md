@@ -251,7 +251,7 @@ in R1b. **Done 2026-11-02:** no textual conflicts; the coupling and the decision
 
 **New save-format tags:** `EntityMetadata` uses up to 94 (S1 = 92, S5b = 93, S10 = 94). This spec reserves **95**
 (`CuddlefishMetadata`, P1) and **96–99** for later features. Any new entity or metadata type needs a `SaveLoadRoundTrip` test.
-B3 stores power as metadata on existing power-source entities; pick its tag from 96–99.
+B3 stores power as metadata on existing power-source entities: **96 is taken** (`PowerSourceMetadata`, B3); 97–99 are free.
 
 **Options this spec adds** (defaults follow the decisions in §1):
 
@@ -1752,16 +1752,46 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   the same finished knife in the escape pod's fabricator and get one between them (server too). Negative control on the
   unfixed client: 4 titanium paid and 2 knives (3 checks FAIL).
 
-#### B3: Base power (L)
-- **Today:** base power isn't synced and refills to full on every load: `InteriorPieceEntitySpawner.cs:81-84` and
-  `ModuleEntitySpawner.cs:36-40` say "TODO: Have synced/restored power" (#1811). Base oxygen depends on each game's own
+#### B3: Base power (L, done 2026-11-02)
+- **Today (before B3):** base power wasn't synced and refilled to full on every load: `InteriorPieceEntitySpawner` and
+  `ModuleEntitySpawner` said "TODO: Have synced/restored power" (#1811). Base oxygen depends on each game's own
   power state (`game:Player.cs:1434`), and S7 lets only the base's lock holder produce. So if the lock holder's game
   thinks the base is unpowered, filtration and the bioreactor stop for both players.
-- **Design:** the base's simulating player sends each power source's charge as metadata, throttled. Spawners apply the
-  stored value instead of filling to max; the other game only mirrors it.
-- **Nuclear reactor (S, H):** every game with the base loaded removes rods and adds depleted ones itself
-  (`game:BaseNuclearReactor.cs:279-331`, no Nitrox patch). Copy the bioreactor fix: only the producer swaps rods.
-- **Tests:** `SaveLoadRoundTrip` of stored power; L3: drain a base at night, restart, power is the same for both.
+- **Done:** new `PowerSourceMetadata(Power)`, **tag 96**, on the solar panel, bioreactor and nuclear reactor entities;
+  thermal plants already carry `ThermalPlantMetadata`, which got an optional `Power` (null in old saves and in the
+  temperature-only updates every nearby game sends). `BasePowerSync` (client) ticks from `PowerSource.UpdateConnectionCallback`
+  (`game:PowerSource.cs`, `InvokeRepeating` once a second): the **producer** (lock holder of the source's base, or of
+  the source itself when it stands alone, a global root of its own) sends a value when it changed by ≥ 1 % of the
+  maximum and the last send is ≥ 5 s old, and at once when the source becomes empty, non-empty or full (that's what
+  turns a base's power, and its air, on or off). The fastest change is a nuclear reactor's 4.2/s of 2500, so a saved
+  value is at most about 6 s or 1 % behind; an idle full base sends nothing. **The other games keep simulating** their
+  copy (generation and consumption are not stopped, so their base never goes dark between updates) and overwrite it
+  with each update. The server (`EntityMetadataUpdateProcessor`) takes power only from the lock holder of
+  `ParentId ?? Id` and merges thermal updates (temperature still a ratchet, power kept when an update has none).
+  Spawners use the stored value (`BasePowerSync.RestoredPower`), full when there is none: **old saves load as before.**
+  The bridge's `diff` ignores `"Power"` values (they move between updates); scenarios check power themselves.
+- **Nuclear reactor (S):** confirmed by code reading that every game with the base loaded removed rods and added
+  depleted ones itself (`game:BaseNuclearReactor.cs` `Update`/`ProducePower`/`AddDepletedRodToEquipmentAsync`, no
+  Nitrox patch; each swap was sent as `EntityDestroyed` + `PickupItem` + `EntitySpawnedByClient`, so each game added its
+  own depleted rod). `BaseNuclearReactor_ProducePower_Patch`, like the S7 bioreactor fix: only the producer runs it;
+  the other games return the requested energy while a rod is active.
+- **Verified (read in game 2026-11-02):** the `PowerSource` sits on the module's own object for the solar panel (max 75),
+  thermal plant (250), bioreactor (500) and nuclear reactor (2500). L1: `BasePowerSyncTest` (stored value, full when
+  none, throttle), `WorldServiceSaveLoadTest` (`SaveLoadRoundTrip` of every kind, a pre-B3 thermal plant JSON without
+  `Power` loads). L2 `BasePowerTest`: the lock holder's value is stored, relayed and in a late joiner's payload after a
+  restart, the partner's is ignored, thermal temperature and power merge (fails with the old processor); a depleted
+  rod's three packets leave one rod in the slot. L3 windowless `B3-BasePowerPersists.ps1` PASS (38 checks): the
+  producer's drained bioreactor reaches the server and the partner, a rod is used up once, the stored charge and the
+  rods are back in both games after a restart. **Negative control** on the unfixed build: 11 checks FAIL (no stored
+  power, the partner's game about 300 apart, 2 depleted rods on the server and in both games, refilled to about 495 of
+  500 after the restart). Not run in game: a thermal plant's or solar panel's sync (same code path; L2 covers the
+  thermal merge), a lock handover between the games, night-time drain. Read, not run: a module on a base exterior
+  stays under the base's transform when spawned (`ModuleEntitySpawner.MoveToGlobalRoot` → `game:LargeWorldEntity.cs`
+  `Start` only reparents an object without a parent), so the client's lock id (`SubRoot`) matches the server's
+  (`ParentId`).
+- **Known gaps:** what a non-producer's game consumes itself (e.g. the partner's fabricator) isn't taken from the shared
+  value (it is overwritten); the reactors' `_toConsume` (energy taken from the current rod/item) is neither synced nor
+  saved, as before; a base saved at 0 power is really unpowered for both players after loading (correct, but new).
 
 #### B4: Aurora fires (M, probe first)
 - **Today (H):** the fire code takes its id from `fire.transform.parent`, which fits the Cyclops layout
@@ -1877,3 +1907,4 @@ prices, "keeping it scary").
 | 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
 | 2026-11-02 | R2b | Done: nine arm states as `AnimChangeType` values (`using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump`, `diving`, `diving_land`, `holding_tool`), sent from the local arms animator on change (off after 0.15 s); every arm write on the partner's body through `RemotePlayer.SetArmState` (single entry point for #2859 and T1), which also calls `ArmsController.Reconfigure` on a tool change; server replays them to late joiners except the fall states; join payload pose is the underwater state only. Findings: `jump` is a per-frame state, not a trigger; `using_builder` has no writer in the game; opening the PDA puts the tool away. README row | L1 `ArmStatesTest`; L2 `PartnerArmStatesReplayTest` (fails on the old processor); L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks, incl. a rejoin; tool use driven on the sender's animator); unfixed `coop` FAIL (12 checks). Not verified: real tool input, the look of the poses, a fall onto land (windowed) |
 | 2026-11-02 | B4 | Done, no code change: dousing an Aurora fire already reaches the partner, the server and late joiners and stays out after a restart (Cyclops fire path: `FireDoused` with the parent id, server destroys the batch entity, parsed batches are saved) | L2 `AuroraFireTest` (fails without the server destroy); windowless `B4-AuroraFiresStayOut.ps1` PASS (12 checks) on unchanged `coop`, so no failing negative control. Not covered: half-doused health after a restart, the real extinguisher aim |
+| 2026-11-02 | B3 | Done: base power synced and saved (#1811). `PowerSourceMetadata` (tag 96) for solar panels and reactors, optional `Power` in `ThermalPlantMetadata`; `BasePowerSync` sends the lock holder's value (≥ 1 % change and 5 s, at once on empty/full), the other games keep simulating and take it over; server accepts power only from the lock holder and merges thermal updates; spawners restore the stored value (full when none, so old saves load as before); nuclear reactor rods swapped by the producer only (`BaseNuclearReactor_ProducePower_Patch`); `diff` ignores `"Power"`. README row | L1 `BasePowerSyncTest`, `WorldServiceSaveLoadTest` (round trip, pre-B3 JSON); L2 `BasePowerTest` (fails with the old processor); L3 windowless `B3-BasePowerPersists.ps1` PASS (38 checks); negative control on the unfixed build FAIL (11 checks). Not in game: thermal/solar sync, lock handover, night drain |
