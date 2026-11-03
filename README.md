@@ -14,121 +14,157 @@ mod for [Subnautica](https://unknownworlds.com/subnautica/). It focuses on one t
 > Please report problems with this fork **here**
 > ([issues](https://github.com/Denis-v-ops/Nitrox-Tandem/issues)), not on the Nitrox Discord or issue tracker.
 
-## What's different from official Nitrox
+## What Tandem adds to Nitrox
 
-Nitrox Tandem is based on Nitrox `master` (1.9.0.0 in development, snapshot of 2026-11-01). Everything Nitrox does,
-Tandem does too. On top of that:
+Tandem is based on Nitrox `master` (1.9.0.0 in development). Everything Nitrox does, Tandem does too. On top of that
+it brings two things:
 
-### Bug fixes for co-op story play
+1. **Dozens of bug fixes** for the desyncs that break a two-player story run: lost progress, things that only happen in
+   one player's game, and state that comes back wrong after a restart.
+2. **Co-op features** that make it feel like playing *together*, built around three ideas:
+   - **It stays scary.** Your partner is a faint signal, not a minimap dot. In caves and the deep the signal is lost,
+     and you find each other by sound and light.
+   - **Every help has a price.** Reviving, sharing air and hitching a ride all cost something. Creatures, resources and
+     fragments keep the game's own numbers.
+   - **The big story beats wait for both of you.** Nobody meets the Sea Emperor or watches the credits alone.
 
-Each fix is verified automatically: unit tests, headless server tests, and/or scripted two-client in-game scenarios.
-The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md).
+Every rule can be switched off in the server's `server.cfg`. The full list of features, prices and options is in
+[docs/fork/PLAYING.md](docs/fork/PLAYING.md).
 
-| Area | What's fixed | Upstream issue / PR | Verified |
-|---|---|---|---|
-| **Story** | When one player disables the alien gun, the partner's game now knows too, so the rocket can launch without relogging | [#2640](https://github.com/SubnauticaNitrox/Nitrox/issues/2640) | In game, plus a negative control (the test fails without the fix) |
-| **Story** | A partner who was offline when the other took the cure no longer stays infected forever | new | Headless server test + negative control |
-| **Story** | The Sea Emperor's babies visit their mother and drop cure balls in the partner's game too, not only in the game of the player who hatched them, and they're gone for good once they teleported away | new | In game (windowless) + negative control |
-| **Cyclops** | Damage points, leaks and fires are saved, shared and survive restarts, so no more phantom explosions or leaks that come back | [#2220](https://github.com/SubnauticaNitrox/Nitrox/issues/2220), [#2230](https://github.com/SubnauticaNitrox/Nitrox/issues/2230) (PR [#2881](https://github.com/SubnauticaNitrox/Nitrox/pull/2881)) | In game |
-| **Bases** | Repaired leaks stay repaired; the flood water level survives restarts | [#2769](https://github.com/SubnauticaNitrox/Nitrox/issues/2769) (PR [#2798](https://github.com/SubnauticaNitrox/Nitrox/pull/2798)), [#2808](https://github.com/SubnauticaNitrox/Nitrox/issues/2808) | In game |
-| **Bases** | Scanner room upgrades and camera drones are kept, with no more multiplying drones; charger and upgrade-slot items are safe during "resync" | [#2696](https://github.com/SubnauticaNitrox/Nitrox/issues/2696), [#2576](https://github.com/SubnauticaNitrox/Nitrox/issues/2576), [#2259](https://github.com/SubnauticaNitrox/Nitrox/issues/2259) | In game (partly) + headless |
-| **Bases** | The scanner room is shared: same resource, same blips, and broken outcrops disappear for both players | [#2410](https://github.com/SubnauticaNitrox/Nitrox/issues/2410), [#2046](https://github.com/SubnauticaNitrox/Nitrox/issues/2046), [#2151](https://github.com/SubnauticaNitrox/Nitrox/issues/2151) | In game |
-| **Bases** | Base power is shared and saved: solar panels, thermal plants and reactors keep their charge after a restart (no more free refill, and both players see the same power), and a nuclear reactor rod is used up once, not once per player | [#1811](https://github.com/SubnauticaNitrox/Nitrox/issues/1811) | In game + headless + negative control |
-| **Items** | The water filtration machine no longer overflows, and the bioreactor no longer overfills or loses items | [#2495](https://github.com/SubnauticaNitrox/Nitrox/issues/2495), [#2494](https://github.com/SubnauticaNitrox/Nitrox/issues/2494) | In game |
-| **Items** | Items moved into lockers no longer reappear as floating "ghost" items after a restart | [#2691](https://github.com/SubnauticaNitrox/Nitrox/issues/2691) | In game + headless |
-| **Items** | Empty tools no longer come back with a free full battery | [#2668](https://github.com/SubnauticaNitrox/Nitrox/issues/2668) (PR [#2809](https://github.com/SubnauticaNitrox/Nitrox/pull/2809)) | In game + negative control |
-| **Bases** | Two players building the same piece pay for it once: one builds, the other is told someone else is using it | new | In game + negative control |
-| **Bases** | A locker or charger that still holds items is no longer deleted when one player's game wrongly sees it empty; that player gets it back | new | Headless + negative control |
-| **Items** | Two players taking the same finished item out of a fabricator get one item between them, not one each | new | In game + negative control |
-| **World** | Some wreck objects were placed about 1.4 km from where they belong on the server; now they're correct | new | In game + headless |
-| **Creatures** | A creature killed by the player who isn't "simulating" it now dies for both players, too | [#2510](https://github.com/SubnauticaNitrox/Nitrox/issues/2510), [#1701](https://github.com/SubnauticaNitrox/Nitrox/issues/1701) (PRs [#2902](https://github.com/SubnauticaNitrox/Nitrox/pull/2902), [#2867](https://github.com/SubnauticaNitrox/Nitrox/pull/2867) with a fix) | In game |
-| **Player** | No more "swimming" inside the Cyclops or dry alien rooms in two confirmed cases: Cyclops colliders, and warping to a partner | [#2712](https://github.com/SubnauticaNitrox/Nitrox/issues/2712) | In game + negative control |
-| **Start** | New players reliably spawn inside the escape pod | [#2898](https://github.com/SubnauticaNitrox/Nitrox/issues/2898) (PR [#2899](https://github.com/SubnauticaNitrox/Nitrox/pull/2899)) | In game |
-| **Cyclops** | The partner sees the Cyclops drive smoothly: no falling behind after a stutter, no snap back when the other player takes the helm, no moving while leaving the helm. A passenger who rejoins is back inside, even if the sub drove on | [#2379](https://github.com/SubnauticaNitrox/Nitrox/issues/2379) | In game + headless, negative control for the rejoin |
-| **Creatures** | Aggressive creatures attack both players, not only the one whose game "simulates" them; crash fish explode for both | [#2781](https://github.com/SubnauticaNitrox/Nitrox/issues/2781) | In game + headless + negative control |
-| **Creatures** | A stalker that loses a tooth drops one tooth, not one in each player's game | new | In game + negative control |
-| **Creatures** | Creatures bite your Seamoth or Prawn suit even when your partner's game "simulates" them; before, a vehicle was safe from half the creatures around it | — | In game (Seamoth) + headless + negative control |
-| **Creatures** | A leviathan (or any creature) that swims away from one player towards the other is now run by the game of the player it is with; before, the first player's game kept running it from hundreds of metres away | new | In game (Reaper) + headless + negative control |
-| **Creatures** | Leviathans and other creatures are where your partner sees them: they no longer drift a few metres and then jump, and a leviathan you swim up to appears where it is instead of up to 30 m off | new | In game (Reaper, Reefback) + headless + negative control |
-| **Creatures** | Eggs in an alien containment no longer vanish when they hatch: each egg gives exactly one creature for both players, also in a tank split off by deconstructing part of a stacked one | [#2538](https://github.com/SubnauticaNitrox/Nitrox/issues/2538) | In game + headless + negative control |
-| **Creatures** | Warpers are the same for both of you: each warper spawner sends out one warper that you both see and that warps out for both of you, instead of different warpers in each game. Bleeders now swim about as in single player; before, no game ran them. | new | In game + headless + negative control |
-| **Creatures** | A bleeder latches onto either of you, not only onto the player whose game runs it: it sucks your blood, you both see it on you, it lets go when you get into a vehicle, go inside or go down, and you can fight it off yourself | new | In game + negative control |
-| **Creatures** | Warpers are the same for both of you: each warper spawner sends out one warper that you both see and that warps out for both of you, instead of different warpers in each game. Bleeders now swim about as in single player; before, no game ran them. A bleeder still latches on only to the player whose game runs it, not yet to the partner | new | In game + headless + negative control |
-| **Tools** | You see your partner's propulsion cannon beam on the object they hold, and their propulsion and repulsion cannon shots. A repulsion shot now pushes things in both games, not only in the shooter's, and after your partner shoots something away with the propulsion cannon you can grab it yourself | new | In game + negative control |
+## Co-op features
 
-### Co-op features
+### The story waits for both of you
+- **The Sunbeam radio** only plays while both of you are online, so the Sunbeam never arrives for one player alone.
+- **The Aurora's drive core:** the last leak only seals once both of you are in the drive core room.
+- **The Sea Emperor** comes to her platform once you both stand on it, and **the eggs** hatch once you've both used
+  the incubator.
+- **The cure:** her babies drop cure balls in both games, and each of you gets your own cure scene at the same moment.
+- **Disabling the gun:** you both use the terminal and see your own scene together.
+- **The rocket** only launches with both of you in the cockpit.
 
-Your partner shows up through the game's own messages and sounds, not a new HUD. Designed in
-[docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md).
+While one of you waits, the game says who it's waiting for and the partner sees that you're waiting. If a partner
+stops playing for good, an admin can let a single beat through (`storygate release <beat>`).
 
-| Feature | What you get | How to use it | Price or limit | Server option |
-|---|---|---|---|---|
-| **Sleeping together** | Lying down tells everyone who is still up: "1/2 players sleeping. Waiting for *name*…". The night passes once everyone is in bed | Use a bed | Nobody sleeps until everyone is in bed (as before) | None, always on |
-| **Hear your partner eat and drink** | The eating and drinking sounds play for your partner, from where you are | Eat or drink as usual | Only within about 10 m, and only when you're both in the same base or vehicle, or both outside | None, always on |
-| **Your own firsts** | The PDA describes a new place when *you* get there, not when your partner does from across the map, also days later after a rejoin. A data log your partner picks up reaches your PDA quietly and waits there to be read | Go there yourself; read found logs in your PDA | Places reached before this update stay shared. A delayed line pending when you quit plays again only after you return to where it started | `PartnerDiscoveriesSilent` (true) |
-| **Buddy breathing** | Give a partner who is running out of air some of yours, from your tank | Swim up to your partner while they're below 30 % air, look at them and hold the interact key | Slow and lossy: your partner gets half of what you give, so it slows drowning but doesn't refill. You need a tank and keep a reserve of about 15 s of your own air | `BuddyBreathingEfficiency` 0.5 (share of the air the partner gets) |
-| **Your partner's signal** | Your partner is a faint signal with their name and depth. Their name tag and vitals show only up close | Nothing to do; **Options → Nitrox → Your partner** sets the signal to Off, Faint or Always, and the name tag's range | Faint: no signal within 12 m or while you can see them; it fades in slowly with distance. The name tag shows within 12 m. A distress call (below) shows even with Off | None (your own setting) |
-| **Hear your partner get hurt and breathe** | Their pain sounds and their breathing from a tank play from their body | Nothing to do | Pain within about 30 m, breathing within about 20 m. No alert, no marker | None, always on |
-| **Their flare burns for you too** | A flare your partner throws is lit in your game as well, also when it lands far from you | Throw a flare as usual | You see it when you get close enough for the game to load it, as with your own | None, always on |
-| **The story waits for both of you: the Sunbeam radio** | The radio message that starts the Sunbeam countdown only plays while both of you are online, so the Sunbeam never arrives for one player alone. Until then the radio keeps blinking and says "Waiting for *name* to come online" | Play the radio message as usual | Only that one message waits; everything else, day and night included, goes on while you play alone | `StoryGatesEnabled` (true), `StoryGatePlayers` ("" = every saved player; better list your two names, e.g. `"Alice,Bob"`). Admin escape hatch if a partner stops playing for good: `storygate release sunbeam_radio` (and `storygate status`) |
-| **The story waits for both of you: the Aurora's drive core** | Weld the radiation leaks as you like; the last one only seals once both of you are in the drive core room, and then it seals for both at once | Weld the last leak while your partner comes in. Alone you see "Wait for *name* to finish the repair together"; your partner sees that you're waiting in the drive core room | The radiation keeps spreading until you finish it together | The same two options; `storygate release drive_core` lets the next weld through alone |
-| **Your partner looks right after you join** | When you join or rejoin, your partner stands or swims as they really do and holds what they hold | Nothing to do | — | None, always on |
-| **See what your partner is doing** | You see your partner scan, build, use the PDA, swim at the surface and jump, and hold their tool the way they do. Also right after you join | Nothing to do | — | None, always on |
-| **Cyclops crew** | One of you steers, the other runs sonar, shield, silent running, decoys and the cameras. The pilot's game follows what the co-pilot switches on, and the sub pays for it once | Stand behind the pilot and use the helm screen | Needs both of you in the Cyclops, and the co-pilot does nothing else meanwhile. Engine, speed and horn stay with the pilot | None, always on |
-| **Context pings** | Point and ping, and the marker says why: at a creature that hunts you it's a red "Danger!" (15 s); at something to pick up, break or drill it shows that item's icon (10 s); anywhere else it's a "Come here" beacon that stays until your partner gets there (at most 30 s). Pinging your partner says "Look! *name*". Pings aim past your own Seamoth or Prawn suit and, at the helm, past the Cyclops, and reach things right in front of you. Each game writes the text in its own language | **Middle mouse button**: ping what you look at. **H**: always "Come here". Both can be changed in the key bindings | Pings fade with the signal: when either of you is in a cave or the deep, a ping only shows within about 50 m of whoever sent it. Up to 3 pings each, 250 m range | `PartnerSignalInterference` (true) |
-| **Craft from your lockers** | The fabricator and modification station of a base, the moonpool's upgrade console and the Cyclops fabricator also use what's in the lockers of that base or Cyclops, after your own inventory. Recipes light up and the tooltip counts include the lockers. If your partner takes the last item first, the craft is cancelled and nothing is lost | Craft as usual | Lockers only: not planters, aquariums, trash cans, filtration machines, scanner rooms or a docked vehicle's storage. The Habitat Builder still uses only your inventory. Not yet tested in game | `CraftFromLockers` (true) |
-| **Hand items over** | Give your partner something from your inventory: it moves straight into theirs, battery and all | Swim up to your partner, look at them and press the interact key, then move items to their side as with a locker | Only from your inventory, nothing you wear, and only if they have room. You can't take anything from them; it's no more than dropping an item for them to pick up | None, always on |
-| **The deep cuts the line** | In caves, the Lost River, the lava zones, Precursor facilities and below 300 m, your partner's signal drops to a last contact: it stays where you lost them, flickers, and says how long ago ("last contact 2 min"). It comes back as soon as you're both out of there | Build relays: a beacon you place within about 150 m of you, or a powered scanner room within its scan range (300 m, more with range upgrades), carries your signal again | It works both ways: when either of you is down there, both lose the other. Up close nothing changes: you still see their name tag, their light and hear them. The partner signal setting "Always" ignores it | `PartnerSignalInterference` (true), `SignalInterferenceDepth` (300 m) |
-| **Rescue window** | At 0 health you go down instead of dying: the screen dims and pulses, a countdown runs, you can look around but not move or use anything. Your partner can get you back up before it runs out; if they don't, you die as usual and your things drop where you fell | Rescuer: swim up to your downed partner, look at them and hold the interact key for 6 s (about 20 health), or 2 s if you carry a first aid kit (50 health, the kit is used up) | 60 s on the first down, 30 s on the second, none on the third, until you sleep in a bed or go 15 min without going down. Your air keeps draining while you're down. Lava, heat, drowning and the Cyclops exploding still kill. No window when nobody else is up to help. Quit while down and you come back down, with the time you had left. A downed pilot is pushed out of the Seamoth or Prawn suit | `RescueWindowSeconds` (60, 0 = off), `RescueEscalation` (true). Admin: `rescue status`, `rescue rest <player>` |
-| **Distress call** | When your partner goes down, their signal turns red and shows the time left ("Alice · down · 42 s"), at any distance and even in caves and the deep. A short ping sounds with each update, and up close you hear them groan | Nothing to do: follow it | It only shows where they were at the last pulse, every 5 s, not a live track. It ends when they're up again or dead | The rescue window's options |
-| **A cuddlefish for both of you** | The cuddlefish follows whoever played with it last, and both of you see it swim with that player. Tell it to stay and it stays for both of you, also after a restart | Play with it or give it a command (follow/stay) as usual; to have it follow you, play with it | One cuddlefish follows one player at a time. While your partner is playing with it, you can't. For now you only see its tricks when it plays with you | None, always on |
-| **Context pings** | Point and ping, and the marker says why: at a creature that hunts you it's a red "Danger!" (15 s); at something to pick up, break or drill it shows that item's icon (10 s); anywhere else it's a "Come here" beacon that stays until your partner gets there (at most 30 s). Each game writes the text in its own language | **Middle mouse button**: ping what you look at. **H**: always "Come here". Both can be changed in the key bindings | Pings fade with the signal: when either of you is in a cave or the deep, a ping only shows within about 50 m of whoever sent it (this starts working with the planned "the deep cuts the line"). Up to 3 pings each, 250 m range | `PartnerSignalInterference` (true) |
-| **The story waits for both of you: the Sea Emperor and her eggs** | The Sea Emperor only comes to the platform in her aquarium once both of you stand on it, so you meet her and hear her together, not one of you from across the map. The eggs hatch once both of you have used the incubator, and both of you hear the hatching music | Step onto the platform; your partner sees "*name* is waiting for you on the aquarium platform". At the incubator, whoever carries the enzymes and the partner both use it, in any order | The first one on the platform waits there. The cure itself isn't shared yet: your partner is still cured at the same moment as you, without their own cure scene | The same two options; `storygate release sea_emperor` or `storygate release hatching` lets it happen for one player |
-| **The story waits for both of you: disabling the gun** | Once you're cured, each of you uses the alien terminal, and both of you see your own scene at the same moment. Before, the first player disabled the gun alone and the terminal never opened again for the other | Both stand at the terminal and use it. Alone you see "Waiting for *name* to use the terminal too"; your partner sees that you're at the terminal | Walking away from the terminal takes your turn back. Not cured yet? The terminal still turns you away as usual | `StoryGatesEnabled`, `StoryGatePlayers`; `storygate release disable_gun` lets the next use through alone |
-| **The story waits for both of you: the rocket launch** | Nobody watches the credits alone: the rocket takes off for both of you at the same moment, and only with both of you aboard | Both get into the cockpit and press launch. Alone you see "Waiting for *name* to board the cockpit and press launch" | Pressing launch only counts while you're in the cockpit; climb down and you have to press it again | The same options; `storygate release rocket_launch` |
-| **See each other sit, sleep and climb** | Your partner sits on benches and chairs, lies down in a bed and climbs the escape pod's hatches in front of you, instead of standing next to them. You can share a bed, one on each side. Each of you gets the escape pod's first-time hatch scene once, also after a rejoin | Use benches, beds and hatches as usual | One player per seat, bed side and pod hatch at a time: while your partner climbs the pod's ladder you see "Another player is interacting with that object" until they're through. You see their body move; the view stays their own | None, always on |
-| **See your partner's tools at work** | When your partner scans, you see the scan beam and hear it; when they build, their builder beams at the piece going up; when they weld or cut, you see the sparks and the cutter's glow, and hear the welder | Nothing to do | Sparks show while they hold the button, even with nothing in front of them. The Seaglide's propeller doesn't spin for you yet | None, always on |
-| **Hitch a ride on the Seamoth** | The Seamoth has one seat, so the second diver holds on to the outside of its hull and rides along. Both of you see the passenger holding on beside its left side | While your partner pilots the Seamoth, swim up to it, look at its hull and press the interact key ("Hold on"). Press **E** (exit) to let go | You're still in the water: your air keeps draining, creatures can still go for you, and you can't use tools while you hold on. You let go when you go down, your partner gets out, or the Seamoth docks or is destroyed. Seamoth only, one passenger | `SeamothHitch` (true) |
-| **The story waits for both of you: the cure** | The Sea Emperor's babies drop cure balls in both of your games, and the cure starts once both of you have taken one: each of you gets your own cure scene, at the same time | Take a cure ball near the babies; until your partner takes one too you see "Waiting for *name* to take a cure ball too…", and your partner sees that you're ready | The first one to take a ball waits by it (swim away and the wait ends). The babies drop balls while you watch them leave, as in single player. While your partner is offline the cure waits for them | The same two options; `storygate release cure` cures one player alone (your partner is then cured too when they come back) |
+### Help each other, at a price
+- **Rescue window:** at 0 health you go down instead of dying, and your partner has 60 s to get you back up (faster
+  with a first aid kit). The window shrinks each time you go down until you rest. Lava, heat, drowning and a
+  Cyclops explosion still kill.
+- **Distress call:** when your partner goes down, their signal turns red and shows the time left, at any distance.
+- **Buddy breathing:** give a partner who is running out of air some of yours. They get only half of it.
+- **Hand items over** straight from your inventory into theirs.
+- **Hitch a ride:** the Seamoth has one seat, so the second diver holds on to its hull. Your air keeps draining.
+- **Cyclops crew:** one steers, the other runs sonar, shield, silent running, decoys and cameras.
+- **Craft from your lockers:** base and Cyclops fabricators also use what's in their lockers.
+- **Sleeping together:** the night passes once everyone is in bed, and the game says who is still up.
 
-### For players
+### Find each other, and keep it scary
+- **Your partner's signal:** a faint marker with their name and depth that fades out when they're close or in sight.
+  Their name tag and vitals show only up close.
+- **The deep cuts the line:** in caves, the Lost River, the lava zones, alien facilities and below 300 m the signal
+  drops to a flickering "last contact". Beacons and scanner rooms relay it.
+- **Context pings** (middle mouse button): "Danger!" at a hunting creature, the item's icon at a resource, otherwise
+  "Come here".
+- **Hear your partner:** their eating and drinking, pain and breathing come from their body, close by only.
+- **Their flare burns in your game too.**
+- **Your own firsts:** the PDA describes a new place when *you* get there, not when your partner does across the map.
+
+### See each other
+- Your partner looks right the moment you join: how they stand or swim, and what they hold.
+- You see them scan, build, use the PDA, jump, sit on benches, lie in bed and climb the escape pod's hatches.
+- You see their tools at work: scanner and builder beams, welder sparks, the laser cutter's glow and the propulsion
+  and repulsion cannons.
+- **A cuddlefish for both of you:** it follows whoever played with it last, and both of you see it.
+- The game's own "Saving game" notice shows on both screens.
+
+## Bug fixes
+
+Each fix is verified automatically, usually with two real game clients running a scripted scenario that fails
+without the fix. Root causes and results: [docs/fork/FIX_SPEC.md](docs/fork/FIX_SPEC.md) and
+[docs/fork/MULTINAUGHTICA_SPEC.md](docs/fork/MULTINAUGHTICA_SPEC.md) (fixes taken over from the MultiNaughtica co-op
+fork).
+
+### Story and progress
+- Disabling the alien gun counts for both players, so the rocket can launch without relogging
+  ([#2640](https://github.com/SubnauticaNitrox/Nitrox/issues/2640)).
+- A partner who was offline when the other took the cure no longer stays infected forever.
+- The Sea Emperor's babies visit their mother and drop cure balls in both games, and they don't come back after a
+  restart.
+- Story goals that arrive while a game is still loading are no longer lost, and opened alien teleporters stay open.
+- A player who joins while the Aurora's leaks are only partly fixed gets the right radiation, and the "all leaks fixed"
+  story step still comes.
+- Two players building one rocket at the same moment don't lose a stage.
+
+### Joining, saves and the world
+- A new player reliably starts inside the escape pod
+  ([#2898](https://github.com/SubnauticaNitrox/Nitrox/issues/2898)), and respawning in the pod keeps them inside it.
+- The server makes a backup of the world every time it starts (the last 5 are kept).
+- A returning player who joins while the world is still loading is no longer treated as a new player.
+- A crash while joining, or a dropped connection, no longer blocks you from rejoining.
+- Remote players and vehicles no longer jitter more and more as a world gets older.
+- Some wreck objects were placed about 1.4 km from where they belong; now they're correct.
+
+### Cyclops and vehicles
+- Cyclops damage, leaks and fires are saved and shared, so no phantom explosions or leaks that come back
+  ([#2220](https://github.com/SubnauticaNitrox/Nitrox/issues/2220), [#2230](https://github.com/SubnauticaNitrox/Nitrox/issues/2230)).
+- A Cyclops destroyed by damage no longer blows up early in the partner's game.
+- The Cyclops drives smoothly for the passenger: no lagging behind, no snapping back when the helm changes hands
+  ([#2379](https://github.com/SubnauticaNitrox/Nitrox/issues/2379)). A passenger who rejoins is back inside.
+- No more "swimming" inside the Cyclops or dry alien rooms ([#2712](https://github.com/SubnauticaNitrox/Nitrox/issues/2712)).
+- Battery charge is saved exactly, including a battery that runs flat.
+
+### Bases and power
+- Base power is shared and saved: generators keep their charge after a restart, no free refill, and a reactor rod is
+  used up once, not once per player ([#1811](https://github.com/SubnauticaNitrox/Nitrox/issues/1811)).
+- Repaired leaks stay repaired, and the flood water level survives restarts
+  ([#2769](https://github.com/SubnauticaNitrox/Nitrox/issues/2769), [#2808](https://github.com/SubnauticaNitrox/Nitrox/issues/2808)).
+- The scanner room is shared: same resource, same blips, upgrades and drones kept, no multiplying drones, and broken
+  outcrops disappear for both players
+  ([#2410](https://github.com/SubnauticaNitrox/Nitrox/issues/2410), [#2696](https://github.com/SubnauticaNitrox/Nitrox/issues/2696),
+  [#2046](https://github.com/SubnauticaNitrox/Nitrox/issues/2046)).
+- Two players building the same piece pay for it once.
+
+### Items
+- No more duplicates: an empty tool doesn't come back with a full battery
+  ([#2668](https://github.com/SubnauticaNitrox/Nitrox/issues/2668)), and two players taking the same item out of a
+  fabricator get one between them.
+- No more losses: a locker that still holds items isn't deleted, and items in lockers don't reappear as floating
+  "ghosts" after a restart ([#2691](https://github.com/SubnauticaNitrox/Nitrox/issues/2691)). Items in chargers and
+  upgrade slots are safe during a "resync" ([#2576](https://github.com/SubnauticaNitrox/Nitrox/issues/2576)).
+- The water filtration machine no longer overflows, and the bioreactor no longer overfills or loses items
+  ([#2495](https://github.com/SubnauticaNitrox/Nitrox/issues/2495), [#2494](https://github.com/SubnauticaNitrox/Nitrox/issues/2494)).
+
+### Creatures
+Each creature is run by one player's game, and much went wrong for the other player. Now:
+- Creatures attack both of you, and bite your vehicles too, not only the one whose game runs them
+  ([#2781](https://github.com/SubnauticaNitrox/Nitrox/issues/2781)).
+- Damage from both players adds up, and a creature killed by either of you dies for both
+  ([#2510](https://github.com/SubnauticaNitrox/Nitrox/issues/2510)).
+- Leviathans are where your partner sees them, and a creature that swims over to the other player is handed to that
+  player's game.
+- A Reaper grabbing a vehicle, a Crabsquid's EMP and a bleeder latching on happen in both games.
+- Warpers are the same for both of you, and crash fish no longer disappear
+  ([#2673](https://github.com/SubnauticaNitrox/Nitrox/issues/2673)).
+- Eggs in an alien containment hatch into exactly one creature
+  ([#2538](https://github.com/SubnauticaNitrox/Nitrox/issues/2538)). A stalker drops one tooth, not one per player.
+
+### Comfort
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
   snapshot are zipped to `%APPDATA%\Nitrox\reports`. Attach the zips from both PCs to an issue here.
-- **The launcher knows it's Tandem.** It shows "Nitrox Tandem" in the window title and in game, sends crash reports to
-  this repo, and never offers to "update" to official Nitrox. That would remove these fixes and can't load your
-  Tandem world.
-- **Small comforts:**
-  - The game's own "Saving game" notice shows on both screens while the server saves the world (the autosave or
-    `/save`).
-  - Crafting stations in a base or Cyclops also use its lockers (see "Craft from your lockers" above).
-  - Pings aim past your own Seamoth, Prawn suit or, at the helm, the Cyclops, and reach things right in front of you
-    (see "Context pings" above).
+- **The launcher knows it's Tandem.** It shows "Nitrox Tandem" and never offers to "update" to official Nitrox,
+  which would remove these fixes and couldn't load your Tandem world.
 
-### Planned co-op features
-Not built yet; designed in [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md). The idea: Subnautica
-stays lonely, scary and hard, just shared.
-- **It stays scary.** In caves and the deep the partner's signal is lost, and you find each other by sound and light.
-- **Every help has a price.** Like the rescue window and buddy breathing above. Creatures, resources and fragments keep
-  the game's own numbers.
-- **The big story beats wait for both of you.**
-- **Each rule gets a switch** in the server's `server.cfg`.
+## Planned
 
-What's planned:
 - **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner.
 
-### For developers
-- An agent- and human-friendly guide to the codebase: [AGENTS.md](AGENTS.md).
-- **A dev bridge** to drive and inspect running game clients from the shell, plus a desync detector (`tools\bridge.ps1`).
-- **A one-command two-client test rig** (`tools\dual-client.ps1`), with scripted scenarios in `tools\scenarios`.
-- **Headless server tests:** a real server in-process with simulated players. Tests run in seconds; no game window.
-- Every upstream issue triaged for co-op story play: [docs/fork/ISSUE_TRIAGE.md](docs/fork/ISSUE_TRIAGE.md).
+The design for everything above and what comes next: [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md).
 
 ## Compatibility — read before playing
 
 - **Everyone must run the same Nitrox Tandem build:** the server and every player. Mixing builds, or mixing Tandem
   with official Nitrox, doesn't work.
-- **Official Nitrox can't load worlds saved with Tandem.** Tandem stores extra data (Cyclops damage and fires, base
-  flood levels, scanner rooms).
+- **Official Nitrox can't load worlds saved with Tandem.** Tandem saves extra data (Cyclops damage, base power and
+  floods, scanner rooms, story gates, and more).
 - **Opening an existing official Nitrox world in Tandem hasn't been tested yet.** Back up first:
   `%APPDATA%\Nitrox\saves`.
 - Game requirements are the same as Nitrox: a current Subnautica (Steam, Epic, …), not the legacy branch.
@@ -152,11 +188,13 @@ The branch to use is `coop` (the default). `master` mirrors official Nitrox.
 ## How it's developed
 
 - Nitrox Tandem is developed with heavy AI assistance ([Claude Code](https://claude.com/claude-code)).
-- Because nobody play-tests each fix by hand, every change has to pass automated checks:
-  - unit and headless server tests;
-  - scripted scenarios with two real game clients;
-  - where possible, a "negative control" showing the test fails without the fix.
-- How that works: [docs/fork/TESTING.md](docs/fork/TESTING.md).
+- Nobody play-tests each fix by hand, so every change has to pass automated checks: unit tests, headless server tests
+  with simulated players, and scripted scenarios with two real game clients. Where possible, a "negative control"
+  shows the test fails without the fix.
+- For developers: [AGENTS.md](AGENTS.md) is the guide to the codebase. [docs/fork/TESTING.md](docs/fork/TESTING.md)
+  covers the two-client test rig (`tools\dual-client.ps1`), the dev bridge that drives running games from the shell
+  and detects desyncs (`tools\bridge.ps1`), and the scenarios in `tools\scenarios`. Every upstream issue is triaged
+  for co-op story play in [docs/fork/ISSUE_TRIAGE.md](docs/fork/ISSUE_TRIAGE.md).
 - Fixes that could help everyone may be offered back to upstream as separate, small pull requests. Those follow
   Nitrox's [contribution rules](CONTRIBUTING.md), including declaring AI use.
 
@@ -164,7 +202,7 @@ The branch to use is `coop` (the default). `master` mirrors official Nitrox.
 
 - **Nitrox** is the work of the [Nitrox team and contributors](https://github.com/SubnauticaNitrox/Nitrox/graphs/contributors).
   Tandem only builds on top of it. Several fixes here are open upstream pull requests by community contributors, merged
-  early (linked above).
+  early, and some come from the MultiNaughtica co-op fork.
 - **For Nitrox itself** (installation, the official Discord, translations), see the
   [official repository](https://github.com/SubnauticaNitrox/Nitrox) and [nitrox.rux.gg](https://nitrox.rux.gg).
 - **License:** [GNU GPL v3](LICENSE.txt), same as Nitrox.
