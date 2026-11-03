@@ -92,7 +92,8 @@ internal sealed class EntitySimulation : ISessionCleaner
             {
                 continue;
             }
-            if (!simulationOwnershipData.TryToAcquire(entity.Id, simulatingPlayer, DEFAULT_ENTITY_SIMULATION_LOCKTYPE))
+            if (!simulationOwnershipData.TryToAcquire(entity.Id, simulatingPlayer, DEFAULT_ENTITY_SIMULATION_LOCKTYPE) &&
+                !TryTakeOverFromBlindOwner(entity, simulatingPlayer))
             {
                 continue;
             }
@@ -165,6 +166,51 @@ internal sealed class EntitySimulation : ISessionCleaner
 
         simulatedEntity = null;
         return false;
+    }
+
+    /// <summary>
+    ///     FIX_SPEC S16: an entity that moved out of its simulating player's loaded cells (a leviathan swimming away from
+    ///     them) goes to a player who has its cell loaded. The lock otherwise only moves when the simulating player's own
+    ///     cells unload (<see cref="FillWithRemovedCells" />), which misses an entity that left those cells first. The
+    ///     simulating game then either puts it to sleep with an unloaded cell (it freezes for the partner) or, when its
+    ///     batch isn't loaded there at all, keeps running it as an <c>OutOfCellEntity</c>: hundreds of metres away, at the
+    ///     lowest level of detail and without terrain colliders, while the partner who is next to it only watches. If
+    ///     nobody has its cell loaded, the owner keeps it.
+    /// </summary>
+    public bool TryHandOverFromBlindOwner(WorldEntity entity, Player owner, [NotNullWhen(true)] out SimulatedEntity? simulatedEntity)
+    {
+        simulatedEntity = null;
+        if (entity is GlobalRootEntity || owner.HasCellLoaded(entity.AbsoluteEntityCell) ||
+            !simulationOwnershipData.TryGetLock(entity.Id, out SimulationOwnershipData.PlayerLock playerLock) ||
+            playerLock.Player != owner || playerLock.LockType != SimulationLockType.TRANSIENT)
+        {
+            return false;
+        }
+        List<Player> loadingPlayers = playerManager.GetConnectedPlayersExcept(owner).Where(player => player.HasCellLoaded(entity.AbsoluteEntityCell)).ToList();
+        if (loadingPlayers.Count == 0 || !simulationOwnershipData.RevokeIfOwner(entity.Id, owner))
+        {
+            return false;
+        }
+        logger.ZLogDebug($"{entity.Id} ({entity.TechType}) left {owner.Name}'s loaded cells, handing its simulation over");
+        return TryAssignEntityToPlayers(loadingPlayers, entity, out simulatedEntity);
+    }
+
+    /// <summary>
+    ///     FIX_SPEC S16: a player who loads the cell of an entity whose transient lock is held by someone who doesn't have
+    ///     that cell loaded (it moved there while nobody else had it) takes it over.
+    /// </summary>
+    private bool TryTakeOverFromBlindOwner(WorldEntity entity, Player newOwner)
+    {
+        if (entity is GlobalRootEntity ||
+            !simulationOwnershipData.TryGetLock(entity.Id, out SimulationOwnershipData.PlayerLock playerLock) ||
+            playerLock.Player == newOwner || playerLock.LockType != SimulationLockType.TRANSIENT ||
+            playerLock.Player.HasCellLoaded(entity.AbsoluteEntityCell) || !newOwner.HasCellLoaded(entity.AbsoluteEntityCell) ||
+            !simulationOwnershipData.RevokeIfOwner(entity.Id, playerLock.Player))
+        {
+            return false;
+        }
+        logger.ZLogDebug($"{newOwner.Name} takes over {entity.Id} ({entity.TechType}), which left {playerLock.Player.Name}'s loaded cells");
+        return simulationOwnershipData.TryToAcquire(entity.Id, newOwner, DEFAULT_ENTITY_SIMULATION_LOCKTYPE);
     }
 
     public bool ShouldSimulateEntity(WorldEntity entity)

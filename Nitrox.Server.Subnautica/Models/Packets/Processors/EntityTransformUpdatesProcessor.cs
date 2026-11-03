@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities;
 using Nitrox.Server.Subnautica.Models.GameLogic;
@@ -7,8 +8,10 @@ using Nitrox.Server.Subnautica.Models.Packets.Core;
 
 namespace Nitrox.Server.Subnautica.Models.Packets.Processors;
 
-internal sealed class EntityTransformUpdatesProcessor(PlayerManager playerManager, WorldEntityManager worldEntityManager, SimulationOwnershipData simulationOwnershipData) : IAuthPacketProcessor<EntityTransformUpdates>
+internal sealed class EntityTransformUpdatesProcessor(PlayerManager playerManager, WorldEntityManager worldEntityManager, SimulationOwnershipData simulationOwnershipData, EntitySimulation entitySimulation)
+    : IAuthPacketProcessor<EntityTransformUpdates>
 {
+    private readonly EntitySimulation entitySimulation = entitySimulation;
     private readonly PlayerManager playerManager = playerManager;
     private readonly SimulationOwnershipData simulationOwnershipData = simulationOwnershipData;
     private readonly WorldEntityManager worldEntityManager = worldEntityManager;
@@ -16,8 +19,13 @@ internal sealed class EntityTransformUpdatesProcessor(PlayerManager playerManage
     public async Task Process(AuthProcessorContext context, EntityTransformUpdates packet)
     {
         Dictionary<Player, List<EntityTransformUpdates.EntityTransformUpdate>> visibleUpdatesByPlayer = InitializeVisibleUpdateMapWithOtherPlayers(context.Sender);
-        AssignVisibleUpdatesToPlayers(context.Sender, packet.Updates, visibleUpdatesByPlayer);
+        List<SimulatedEntity> handOvers = [];
+        AssignVisibleUpdatesToPlayers(context.Sender, packet.Updates, visibleUpdatesByPlayer, handOvers);
         await SendUpdatesToPlayersAsync(context, visibleUpdatesByPlayer);
+        if (handOvers.Count > 0)
+        {
+            await context.SendToAllAsync(new SimulationOwnershipChange(handOvers));
+        }
     }
 
     private Dictionary<Player, List<EntityTransformUpdates.EntityTransformUpdate>> InitializeVisibleUpdateMapWithOtherPlayers(Player simulatingPlayer)
@@ -33,7 +41,8 @@ internal sealed class EntityTransformUpdatesProcessor(PlayerManager playerManage
         return visibleUpdatesByPlayer;
     }
 
-    private void AssignVisibleUpdatesToPlayers(Player sendingPlayer, List<EntityTransformUpdates.EntityTransformUpdate> updates, Dictionary<Player, List<EntityTransformUpdates.EntityTransformUpdate>> visibleUpdatesByPlayer)
+    private void AssignVisibleUpdatesToPlayers(Player sendingPlayer, List<EntityTransformUpdates.EntityTransformUpdate> updates, Dictionary<Player, List<EntityTransformUpdates.EntityTransformUpdate>> visibleUpdatesByPlayer,
+                                               List<SimulatedEntity> handOvers)
     {
         foreach (EntityTransformUpdates.EntityTransformUpdate update in updates)
         {
@@ -56,6 +65,12 @@ internal sealed class EntityTransformUpdatesProcessor(PlayerManager playerManage
                 {
                     playerUpdates.Value.Add(update);
                 }
+            }
+
+            // FIX_SPEC S16: it moved out of the sender's loaded cells into a partner's
+            if (entitySimulation.TryHandOverFromBlindOwner(worldEntity, sendingPlayer, out SimulatedEntity? handOver))
+            {
+                handOvers.Add(handOver);
             }
         }
     }

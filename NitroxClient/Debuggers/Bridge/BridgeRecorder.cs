@@ -158,6 +158,16 @@ internal sealed class BridgeRecorder : MonoBehaviour
                 Track(ms, "kinematic", rigidbody.isKinematic.ToString());
                 Track(ms, "interpolation", rigidbody.interpolation.ToString());
             }
+            // Creatures (S16): put to sleep with their cell, moved by another game's packets, level of detail
+            Track(ms, "active", target.activeInHierarchy.ToString());
+            if (target.TryGetComponent(out Creature _))
+            {
+                Track(ms, "remote", target.GetComponent<RemotelyControlled>() ? "True" : "False");
+                if (target.TryGetComponent(out BehaviourLOD lod))
+                {
+                    Track(ms, "lod", lod.current.ToString());
+                }
+            }
             if (target.TryGetComponent(out WorldForces worldForces))
             {
                 Track(ms, "worldForces", worldForces.enabled.ToString());
