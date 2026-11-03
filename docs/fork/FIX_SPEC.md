@@ -1026,11 +1026,11 @@ sees, without a time shift; a *snap* is a step beyond what the original moved me
 | Reaper, B simulates, A watches | 2.7–4.3 m mean, max 8.3–26.7 m, 5–16 snaps a minute up to 10.7 m | **0.37–0.51 m mean**, max 2.0–2.3 m; once 5.1 m (below), **no snap** (0.9 m) |
 | Reaper, late arrival | spawned 1.7–34.2 m off, up to 36 m in the first 20 s | **spawned 0.6–1.5 m off** (0.5–1.1 s after arriving), 0.36–0.41 m mean, max 1.7–2.3 m, no snap |
 | Reaper, hand-over (S16) | lock in 0.5 s, step 0.09–0.16 m | lock in 0.5 s, step 0.12–0.47 m, keeps swimming |
-| Reefback, both near / late arrival | 0.8 m mean, max 5.8 m, a 5.7 m snap / spawned 1.3 m off | 0.05 m mean, max 0.6 m (a natural 362 ms frame included) / spawned 0.3 m off, 0.005 m mean |
+| Reefback, both near / late arrival | 0.8 m mean, max 5.8 m, a 5.7 m snap / spawned 1.3 m off | 0.007–0.05 m mean, max 0.6 m (a natural and a forced 350 ms frame included) / spawned 0.1–0.3 m off, 0.005 m mean |
 
 **Bandwidth** (counters `EntityPositionBroadcaster.CreaturePacketsSent`/`CreatureMovementsSent`, read in each
-measurement window): the simulating game sent 36–64 creature poses a second in 9–20 packets, about 2–5 KB/s of
-upload, while it simulated 41–158 moving entities (around the Reaper and the Reefback; 10 of those poses a second are the Reaper's).
+measurement window): the simulating game sent 36–64 creature poses a second in 9–23 packets, about 2–5 KB/s of
+upload, while it simulated 41–216 moving entities (around the Reaper and the Reefback; 10 of those poses a second are the Reaper's).
 The server forwards only what the partner can see. The old `GoTo` packets (one per creature every 1–5 s) weren't measured.
 
 **Verification:**
