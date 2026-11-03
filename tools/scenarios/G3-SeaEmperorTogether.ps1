@@ -26,7 +26,10 @@
        (Infection_Progress5). After a restart Bob rejoins cured. The cure itself isn't gated (see COOP_FEATURES_SPEC G3c:
        the partner's game never gets a cure ball).
 
-    Negative control (2026-11-03): with the two G3 patches as on coop before G3, see COOP_FEATURES_SPEC G3.
+    Passed windowless 2026-11-03 (31 checks). Negative control the same day, with the platform trigger patch removed and
+    Incubator_OnHandClick_Patch as on coop before G3 (-SkipCure): 14 of 26 checks fail (the platform starts for Alice
+    alone and Bob hears the Emperor at the pod, Bob's own Emperor never arrives, the eggs hatch at Alice's click alone,
+    Bob hears no hatching music or soundscape).
 
     Starts a fresh world and two games (windowless with $env:NITROX_WINDOWLESS = 1), unless -NoLaunch. Debug build
     (dual-client.ps1 -NoBuild is used, so build first).
@@ -110,8 +113,10 @@ try {
         Assert-True (Get-AtPlatform $B) 'and on Bob''s'
         $spoke = Wait-Until { (Test-Goal $A $DialogGoal) -and (Test-Goal $B $DialogGoal) } -TimeoutSeconds 60
         Assert-True ([bool]$spoke) "the Emperor's first words ($DialogGoal) completed on both games"
-        Assert-True ((Get-LinePlays $A $DialogGoal) -ge 1) 'Alice''s game played the line'
-        Assert-Equal 1 (Get-LinePlays $B $DialogGoal) 'Bob''s game played the line once, on the platform'
+        # The line may wait in the PDA voice queue behind a line about the place (D5a: each player's own).
+        $played = Wait-Until { (Get-LinePlays $A $DialogGoal) -ge 1 -and (Get-LinePlays $B $DialogGoal) -ge 1 } -TimeoutSeconds 90 -IntervalSeconds 3
+        Assert-True ([bool]$played) 'both games played the line'
+        Assert-Equal 1 (Get-LinePlays $B $DialogGoal) 'Bob''s game played it once, on the platform'
         $wallsDown = Wait-Until { (Invoke-Bridge $A "get $Platform PrecursorAquariumPlatformTrigger.invisibleWalls.activeSelf") -eq 'false' -and (Invoke-Bridge $B "get $Platform PrecursorAquariumPlatformTrigger.invisibleWalls.activeSelf") -eq 'false' } -TimeoutSeconds 30
         Assert-True ([bool]$wallsDown) 'the invisible walls dropped on both games'
     }

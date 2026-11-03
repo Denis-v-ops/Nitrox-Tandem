@@ -77,6 +77,7 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **Distress call** | When your partner goes down, their signal turns red and shows the time left ("Alice · down · 42 s"), at any distance and even in caves and the deep. A short ping sounds with each update, and up close you hear them groan | Nothing to do: follow it | It only shows where they were at the last pulse, every 5 s, not a live track. It ends when they're up again or dead | The rescue window's options |
 | **A cuddlefish for both of you** | The cuddlefish follows whoever played with it last, and both of you see it swim with that player. Tell it to stay and it stays for both of you, also after a restart | Play with it or give it a command (follow/stay) as usual; to have it follow you, play with it | One cuddlefish follows one player at a time. While your partner is playing with it, you can't. For now you only see its tricks when it plays with you | None, always on |
 | **Context pings** | Point and ping, and the marker says why: at a creature that hunts you it's a red "Danger!" (15 s); at something to pick up, break or drill it shows that item's icon (10 s); anywhere else it's a "Come here" beacon that stays until your partner gets there (at most 30 s). Each game writes the text in its own language | **Middle mouse button**: ping what you look at. **H**: always "Come here". Both can be changed in the key bindings | Pings fade with the signal: when either of you is in a cave or the deep, a ping only shows within about 50 m of whoever sent it (this starts working with the planned "the deep cuts the line"). Up to 3 pings each, 250 m range | `PartnerSignalInterference` (true) |
+| **The story waits for both of you: the Sea Emperor and her eggs** | The Sea Emperor only comes to the platform in her aquarium once both of you stand on it, so you meet her and hear her together, not one of you from across the map. The eggs hatch once both of you have used the incubator, and both of you hear the hatching music | Step onto the platform; your partner sees "*name* is waiting for you on the aquarium platform". At the incubator, whoever carries the enzymes and the partner both use it, in any order | The first one on the platform waits there. The cure itself isn't shared yet: your partner is still cured at the same moment as you, without their own cure scene | The same two options; `storygate release sea_emperor` or `storygate release hatching` lets it happen for one player |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -95,8 +96,8 @@ stays lonely, scary and hard, just shared.
 - **Each rule gets a switch** in the server's `server.cfg`.
 
 What's planned:
-- **Story moments together:** disabling the gun, the Sea Emperor and the cure, and the rocket launch wait until both
-  players are there, like the drive core already does. Playing alone in between is fine.
+- **Story moments together:** disabling the gun, the cure (each with your own cure scene) and the rocket launch wait
+  until both players are there, like the drive core and the Sea Emperor already do. Playing alone in between is fine.
 - **Teamwork survival:** hitching a ride on the Seamoth.
 - **Cozy base life:** seeing each other sit, sleep and use things, and seeing the cuddlefish's tricks when it plays with
   your partner.
