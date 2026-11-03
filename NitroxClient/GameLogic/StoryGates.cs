@@ -46,7 +46,11 @@ public class StoryGates(IPacketSender packetSender, LocalPlayer localPlayer)
     ///     Holds the moment back and asks the server for it. <paramref name="resume" /> runs it when the server says it
     ///     may start; a later call replaces it.
     /// </summary>
-    public void Hold(StoryGateKind kind, Action resume)
+    /// <param name="repeatStatus">
+    ///     False for a hold that is renewed without the player doing anything (standing on a platform), so the last status
+    ///     isn't shown again every few seconds.
+    /// </param>
+    public void Hold(StoryGateKind kind, Action resume, bool repeatStatus = true)
     {
         held[kind] = resume;
         float now = Time.realtimeSinceStartup;
@@ -55,7 +59,7 @@ public class StoryGates(IPacketSender packetSender, LocalPlayer localPlayer)
             readySentAt[kind] = now;
             packetSender.Send(new StoryGateReady(kind, true));
         }
-        if (lastMessage.TryGetValue(kind, out (string Text, float ShownAt) message) && now - message.ShownAt >= STATUS_REPEAT_SECONDS)
+        if (repeatStatus && lastMessage.TryGetValue(kind, out (string Text, float ShownAt) message) && now - message.ShownAt >= STATUS_REPEAT_SECONDS)
         {
             Show(kind, message.Text);
         }
@@ -126,13 +130,25 @@ public class StoryGates(IPacketSender packetSender, LocalPlayer localPlayer)
         }
         if (status.ReadyNames?.Contains(localName, comparer) == true)
         {
-            string template = status.Kind == StoryGateKind.DRIVE_CORE ? translate("Nitrox_StoryGateDriveCoreWait") : translate("Nitrox_StoryGateWaitingFor");
+            string template = status.Kind switch
+            {
+                StoryGateKind.DRIVE_CORE => translate("Nitrox_StoryGateDriveCoreWait"),
+                StoryGateKind.SEA_EMPEROR => translate("Nitrox_StoryGateSeaEmperorWait"),
+                StoryGateKind.HATCHING => translate("Nitrox_StoryGateHatchingWait"),
+                _ => translate("Nitrox_StoryGateWaitingFor")
+            };
             return template.Replace("{PLAYERS}", missing);
         }
         if (status.MissingNames?.Contains(localName, comparer) == true)
         {
             string ready = string.Join(", ", status.ReadyNames ?? []);
-            string template = status.Kind == StoryGateKind.DRIVE_CORE ? translate("Nitrox_StoryGateDriveCoreJoin") : translate("Nitrox_StoryGatePartnerReady");
+            string template = status.Kind switch
+            {
+                StoryGateKind.DRIVE_CORE => translate("Nitrox_StoryGateDriveCoreJoin"),
+                StoryGateKind.SEA_EMPEROR => translate("Nitrox_StoryGateSeaEmperorJoin"),
+                StoryGateKind.HATCHING => translate("Nitrox_StoryGateHatchingJoin"),
+                _ => translate("Nitrox_StoryGatePartnerReady")
+            };
             return template.Replace("{PLAYERS}", ready);
         }
         return "";
