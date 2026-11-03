@@ -188,11 +188,12 @@ internal sealed class EntitySimulation : ISessionCleaner
     ///     batch isn't loaded there at all, keeps running it as an <c>OutOfCellEntity</c>: hundreds of metres away, at the
     ///     lowest level of detail and without terrain colliders, while the partner who is next to it only watches. If
     ///     nobody has its cell loaded, the owner keeps it.
+    ///     A following cuddlefish (<see cref="FollowsItsHolder" />, COOP_FEATURES_SPEC P1) stays with its holder.
     /// </summary>
     public bool TryHandOverFromBlindOwner(WorldEntity entity, Player owner, [NotNullWhen(true)] out SimulatedEntity? simulatedEntity)
     {
         simulatedEntity = null;
-        if (entity is GlobalRootEntity || owner.HasCellLoaded(entity.AbsoluteEntityCell) ||
+        if (entity is GlobalRootEntity || FollowsItsHolder(entity) || owner.HasCellLoaded(entity.AbsoluteEntityCell) ||
             !simulationOwnershipData.TryGetLock(entity.Id, out SimulationOwnershipData.PlayerLock playerLock) ||
             playerLock.Player != owner || playerLock.LockType != SimulationLockType.TRANSIENT)
         {
@@ -213,7 +214,7 @@ internal sealed class EntitySimulation : ISessionCleaner
     /// </summary>
     private bool TryTakeOverFromBlindOwner(WorldEntity entity, Player newOwner)
     {
-        if (entity is GlobalRootEntity ||
+        if (entity is GlobalRootEntity || FollowsItsHolder(entity) ||
             !simulationOwnershipData.TryGetLock(entity.Id, out SimulationOwnershipData.PlayerLock playerLock) ||
             playerLock.Player == newOwner || playerLock.LockType != SimulationLockType.TRANSIENT ||
             playerLock.Player.HasCellLoaded(entity.AbsoluteEntityCell) || !newOwner.HasCellLoaded(entity.AbsoluteEntityCell) ||
