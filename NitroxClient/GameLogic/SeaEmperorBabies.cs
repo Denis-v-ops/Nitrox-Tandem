@@ -22,10 +22,22 @@ public static class SeaEmperorBabies
     private const float EGG_MATCH_DISTANCE = 3f;
 
     /// <summary>
-    ///     How long a copy waits hidden for the local hatching of its egg to end before it swims anyway (the egg animation's
-    ///     end is an animation event, which windowless games don't fire).
+    ///     How long a copy waits hidden at most before it swims anyway (normally it goes when the simulating game's baby
+    ///     leaves its egg, see <see cref="HasLeft" />).
     /// </summary>
     private const float HATCH_WAIT_SECONDS = 60f;
+
+    /// <summary>
+    ///     Speed (m/s) of the simulating game's baby from which it counts as swimming: a baby in a cinematic (in its egg, at
+    ///     its mother) is kinematic and sends 0; one that swims to its mother or to the teleporter does about 4.
+    /// </summary>
+    private const float SWIMMING_SPEED = 1f;
+
+    /// <summary>
+    ///     A copy's visit at its mother lasts at least this long (s) before the simulating game's baby can end it: the last
+    ///     pose before the visit may still be one of the baby swimming in.
+    /// </summary>
+    private const float MIN_VISIT_SECONDS = 10f;
 
     /// <summary>A baby that is still in its egg: the egg animation (<c>IncubatorEggAnimation.OnHatchAnimationEnd</c>) sends it to its mother.</summary>
     public static bool IsInEgg(SeaEmperorBaby baby)
@@ -102,19 +114,65 @@ public static class SeaEmperorBabies
         return egg.IsInvoking(nameof(IncubatorEgg.HatchNow)) || (egg.animationController && egg.animationController.animationActive);
     }
 
+    /// <summary>
+    ///     The copy waits hidden until the hatching of its egg ended here, or the simulating game's baby left its egg. The egg
+    ///     and baby animators cull completely: a game whose player doesn't look at the eggs doesn't play the hatching (seen
+    ///     windowed 2026-11-03: two eggs still hatching after 90 s), while the simulating game's baby is already on its way.
+    ///     Then this game's hatching ends with it (the temporary baby goes, IncubatorEggAnimation_OnHatchAnimationEnd_Patch).
+    /// </summary>
     private static IEnumerator SwimOnceHatched(SeaEmperorBaby baby, IncubatorEgg egg)
     {
         List<Renderer> hidden = [.. baby.GetComponentsInChildren<Renderer>(true).Where(renderer => renderer.enabled)];
         hidden.ForEach(renderer => renderer.enabled = false);
         float giveUpAt = Time.time + HATCH_WAIT_SECONDS;
-        while (egg && IsHatchingLocally(egg) && Time.time < giveUpAt)
+        while (egg && IsHatchingLocally(egg) && !HasLeft(baby) && Time.time < giveUpAt)
         {
             yield return null;
         }
+        string why = !egg || !IsHatchingLocally(egg) ? "the local hatching ended" : HasLeft(baby) ? "its baby left the egg in the simulating game" : "gave up waiting";
+        if (egg && IsHatchingLocally(egg))
+        {
+            egg.CancelInvoke(nameof(IncubatorEgg.HatchNow));
+            if (egg.animationController && egg.animationController.animationActive)
+            {
+                egg.animationController.OnHatchAnimationEnd();
+            }
+        }
         hidden.Where(renderer => renderer).ToList().ForEach(renderer => renderer.enabled = true);
-        Log.Info($"[{nameof(SeaEmperorBabies)}] Baby {baby.GetId()} ({Describe(baby)}) swims to its mother after the local hatching{(Time.time >= giveUpAt ? " (gave up waiting)" : "")}");
+        if (!baby)
+        {
+            yield break;
+        }
+        Log.Info($"[{nameof(SeaEmperorBabies)}] Baby {baby.GetId()} ({Describe(baby)}) swims to its mother: {why}");
         baby.SwimToMother();
     }
+
+    /// <summary>
+    ///     Ends a copy's visit at its mother when the simulating game's baby has left (it swims to the teleporter), as the
+    ///     visit's animation event would (<c>SeaEmperorBabyCinematicController.OnCinematicModeEnd</c> → <c>SwimToTeleporter</c>
+    ///     → <c>DropEnzymes</c>). That event doesn't come while this player doesn't look at the babies (the animator culls
+    ///     completely), and the simulating game's teleport removes the copy.
+    /// </summary>
+    public static IEnumerator EndVisitWithSimulatingGame(SeaEmperorBaby baby, RemotelyControlled remotelyControlled)
+    {
+        float canEndAt = Time.time + MIN_VISIT_SECONDS;
+        // The baby is disabled while its cinematic plays (SeaEmperorBabyCinematicController.SetCinematicMode)
+        while (baby && !baby.enabled)
+        {
+            if (Time.time >= canEndAt && HasLeft(remotelyControlled))
+            {
+                Log.Info($"[{nameof(SeaEmperorBabies)}] Baby {baby.GetId()} ({Describe(baby)}) ends its visit: it left in the simulating game");
+                baby.cinematicController.OnCinematicModeEnd();
+                yield break;
+            }
+            yield return null;
+        }
+    }
+
+    private static bool HasLeft(SeaEmperorBaby baby) => baby && baby.TryGetComponent(out RemotelyControlled remotelyControlled) && HasLeft(remotelyControlled);
+
+    private static bool HasLeft(RemotelyControlled remotelyControlled) =>
+        remotelyControlled && remotelyControlled.HasCreatureMovement && remotelyControlled.CreatureVelocity.magnitude > SWIMMING_SPEED;
 
     private static string Describe(SeaEmperorBaby baby)
     {
