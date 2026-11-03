@@ -1539,9 +1539,12 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
       the three cinematic patches took themselves are given back.
     - A bed side was downgraded when the lie-down ended, so the partner could lie on the same side. It now stays
       exclusive until `Bed.ExitInUseMode`.
-    - Cinematics under a Cyclops, a base, a vehicle or a creature take no lock (`CinematicLocks.UsesLock`): those ids
-      are the helm/simulation locks. As merged, a ladder, hatch or docked Seamoth in the Cyclops would have been denied
-      while the partner steers (T4), and a base hatch would have locked the whole base and moved B3's power producer.
+    - Cinematics under a Cyclops, a base, a vehicle, a docking bay or a creature take no lock
+      (`CinematicLocks.UsesLock`): those ids are the helm/simulation locks. As merged, a ladder, hatch or docked Seamoth
+      in the Cyclops would have been denied while the partner steers (T4), and a base hatch would have locked the whole
+      base and moved B3's power producer. The Cyclops' docking bay has an id of its own; its docking cinematic starts
+      from `VehicleDockingBay.LateUpdate`, and the lock round trip held it back (seen windowless: S6 docked 1 of 5 times
+      and undocked none; passes again with the exemption).
       Cinematics left to other systems (`PlayerCinematics`' blacklist: the intro, a reaper's grab, bench and chair) take
       none either: the intro is under the escape pod, so two new players would have competed for the pod's lock.
     - The start patch synced cinematics started for another player or none (`VehicleDockingBay.LateUpdate` starts one
@@ -1555,6 +1558,12 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     `dayNightSpeed` to 79.2 until server time passes `skipModeEndTime` (396 game s) or the bed is left, and
     `ThermalPlant` (`game:ThermalPlant.cs:68`) and `FiltrationMachine` (`:234`) read it directly: 79× production in that
     game. Back to `coop`'s full replacement (no local skip; the server's `SleepManager` skips time for everyone).
+  - **Bench** (found on the rig): `Bench_OnHandClick_Patch` sent "sitting down" after the lock even when the game then
+    refused the sit (e.g. the player counted as in water); since #2859 that froze the partner's copy at the bench. Now
+    it's sent only if the sit cinematic started, else the seat lock goes back to transient. #2859 put the copy at the
+    seat's `player_target`, which in the watching game is in its rest pose (that game's seat isn't animated): 1.2 m below
+    the sitter (measured). A bench cinematic now lets movement packets place the body (`SetInCinematic(followsMovement)`);
+    the sitter's game sends where they sit once the sit-down cinematic ends.
   - `bridge.ps1 diff` leaves the pod's hatch lists out of the metadata comparison (each game reports only its own).
 - **Findings and decisions:**
   - Dropped guard in `MultiplayerCinematicController.CallStartCinematicMode` ("local player occupies the animator"):
@@ -1582,8 +1591,24 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     updates; fails with #2859's union merge: "Carol" kept); `CinematicLockTest` (per-side bed locks, the late joiner's
     payload, the side freed after getting up, fails without the server change; the cinematic call relayed with its
     parameters).
-  - L3: RESULTS
-- **Not verified:** NOTVERIFIED
+  - L3 windowless `tools/scenarios/R1b-SeeEachOtherSit.ps1` **PASS (41 checks, fresh world)** on the fixture `s7-machine-base`
+    (Alice builds a bench and a bed in its room): sit down and stand up 10 times, each time Bob's copy is held in the
+    cinematic with `cinematics_enabled` and `bench_sit`, within 0.5 m of where Alice sits (0.01 m), and lets go; Alice
+    never stays in cinematic mode, and the copy follows her again afterwards (#2287). Bed: Bob sees Alice lie down
+    (`bed_down_left`), no local time skip in Alice's game, Bob can't take her side, lies on the other one, both sleep,
+    get up, both copies let go and follow again. Escape pod top hatch: Bob is turned away while Alice is on the ladder,
+    then climbs; each copy is held during the other's climb. Windowless games fire no animation events, so a cinematic
+    that doesn't end on its own is ended through the bridge (`OnPlayerCinematicModeEnd`); the room is narrow, so the
+    scenario shifts the bed a few centimetres in both games until the game offers both sides. **Negative control** on
+    `coop` (without #2859): 14 of 40 fail (no held pose or `cinematics_enabled` for the bed and the pod, Bob lies down on
+    Alice's side, Bob isn't turned away at the ladder). Regression, windowless on this branch: S3 PASS (10), T1 PASS
+    (73), T4 PASS (56), S6 PASS (14, after the docking bay fix).
+- **Not verified:** anything windowed: how the poses look (bones don't move windowless), the bench seat height with
+  the movement-placed body, the sleep fade, choppy swimming or Cyclops stutter. The escape pod's first-use hatch
+  scenes (Debug builds skip the intro, which leaves both hatches used, H), so the per-player first use is covered by
+  L1/L2 only. A late joiner arriving while the partner sleeps (L2 covers the payload, not the pose). The gun terminal
+  (`using_tool_first`, `cured`) and story cinematics. Two players on one Cyclops or base hatch at once (no lock there,
+  H). A real exit-key stand-up (the scenario calls `Bench.ExitSittingMode`).
 
 ### R2: The partner's body reads right (from the basics sweep, §12.1)
 
@@ -2081,3 +2106,4 @@ prices, "keeping it scary").
 | 2026-11-03 | P1 | Done: playing with the cuddlefish or giving it a command takes its lock as exclusive (bench pattern) and drops back to a normal lock, so it follows whoever played with it last; `CuddlefishMetadata` (tag 95: follow/stay, farewell, water park state); only the simulating game warps it; a following cuddlefish keeps its holder out of their sight (server). Findings: a released cuddlefish is a cell entity; each game's copy warped to its own player; a stay was lost when the partner's game took the lock. README row | L1 save/load; L2 `CuddlefishLockTest` (out-of-sight test fails without the server change); windowless `P1-CuddlefishBoth.ps1` PASS (33 checks); negative control on the pre-P1 build: 14 fail. `dotnet test` 394 pass. Not in game: farewell, tank release with the fix, anything windowed (animations, tricks: R1b) |
 | 2026-11-03 | Wave 2 suite | `tools/run-suite.ps1 -Windowless` on `coop` @ `72ca17ae` (wave 2 merged: G0, G4, D5b, T3, D2, R2b, B4, S6 fix): 31 of 36 PASS. S1 (one desync reading) and S2-MapRoom (another run's game still held the patcher DLL) passed on re-run. S14 and D4 each missed one creature target-pick check (`sandshark-AB`, `crabsquid-AB`; the crabsquid one also misses on later runs): flaky AI target choice, follow-up. **T4 failed 14 of 56:** T3's Give opened the transfer screen when the crew member aimed past the pilot at the helm screen, so every helm click went nowhere; fixed (no Give while the partner pilots or sits in a vehicle), T4 then 56/56 | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave2` |
 | 2026-11-03 | Wave 3 merge | Merged S16 + S16b/c (leviathan sync), B3, T1 + D3, P1 + P2 and the T4 fix; re-ran the affected scenarios windowless on the merged build: T1 73, B3 38, P2 33, S1 62, S2-MapRoom 38, S16 14 (incl. the roam case), S14 65/66 and D4 94/95 (the target-pick flakes above). **P1 failed 6 of 33** after the merge: S16's new out-of-cell hand-over skipped P1's keep-with-holder rule; fixed, P1 then 33/33. Build green, 505 tests pass. **T1 explosions (decided 2026-11-03):** a crashfish explosion or fire puts the player down (rescuable); only the Cyclops' destruction, heat/lava and drowning kill outright. §2, §2.2, T1 and §11 updated | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave3`, `wave3-fixes` |
+| 2026-11-03 | R1b | Done: upstream #2859 merged, then: hatch use keyed on the player name (server adds the sender only; old saves load); #2859's `InCinematic` folded into `RemotePlayer.IsPoseLocked` (read by the animation controller, not assigned); its arm writes through `SetArmState` (own states held back during a cinematic, replayed after); lock lifecycle (only the cinematic patches' own locks given back, bed side kept until getting up, no lock under a Cyclops/base/vehicle/docking bay/creature or for blacklisted cinematics, only the local player's cinematics); bed: no local time skip, late joiner gets bed-side locks; bench: no sit sent when refused, seat from movement. Findings: session ids don't survive a save; as merged the helm, docking and intro would compete for locks; the copy sat 1.2 m low. README row | L1 save/load (fails on session ids) + old save; L2 `EscapePodHatchUseTest`, `CinematicLockTest` (each fails without its fix); windowless `R1b-SeeEachOtherSit.ps1` PASS (41 checks), negative control on `coop`: 14 of 40 fail; S3, T1, T4, S6 PASS. `dotnet test` 510 pass. Not windowed: poses, seat height, first-use pod scenes |
