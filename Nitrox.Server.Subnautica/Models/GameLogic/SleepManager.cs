@@ -69,6 +69,7 @@ internal sealed class SleepManager(IPacketSender packetSender, PlayerManager pla
     private async Task StartSleep()
     {
         isSleepInProgress = true;
+        SessionId[] sleepers = sessionIdsInBed.ToArray();
         sessionIdsInBed.Clear();
 
         try
@@ -76,6 +77,14 @@ internal sealed class SleepManager(IPacketSender packetSender, PlayerManager pla
             await Task.Delay(TimeSpan.FromSeconds(SLEEP_DURATION));
             await timeService.SkipTimeAsync(TimeSpan.FromSeconds(SLEEP_TIME_SKIP_SECONDS));
             await packetSender.SendPacketToAllAsync(new SleepComplete());
+            // A completed sleep is a rest: the rescue window is full again (COOP_FEATURES_SPEC T1)
+            foreach (SessionId sleeper in sleepers)
+            {
+                if (playerManager.TryGetPlayerBySessionId(sleeper, out Player? player))
+                {
+                    player.DownsSinceRest = 0;
+                }
+            }
         } finally
         {
             isSleepInProgress = false;

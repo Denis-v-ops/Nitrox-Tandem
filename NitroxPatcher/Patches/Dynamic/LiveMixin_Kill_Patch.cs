@@ -12,6 +12,20 @@ public sealed partial class LiveMixin_Kill_Patch : NitroxPatch, IDynamicPatch
 {
     internal static readonly MethodInfo TARGET_METHOD = Reflect.Method((LiveMixin t) => t.Kill(default));
 
+    /// <summary>
+    ///     The rescue window (COOP_FEATURES_SPEC T1): the one place a kill of the local player is turned into going down.
+    ///     <c>Kill</c> comes from <c>TakeDamage</c> at 0 health, from drowning (<c>Player.SuffocationDie</c>), the Cyclops
+    ///     explosion and the console; <see cref="RescueWindow.TryGoDown" /> decides which go through.
+    /// </summary>
+    public static bool Prefix(LiveMixin __instance, DamageType damageType)
+    {
+        if (!Player.main || __instance != Player.main.liveMixin)
+        {
+            return true;
+        }
+        return !Resolve<RescueWindow>().TryGoDown(damageType);
+    }
+
     public static void Postfix(LiveMixin __instance)
     {
         if (!Multiplayer.Main || !Multiplayer.Main.InitialSyncCompleted)

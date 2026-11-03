@@ -29,6 +29,7 @@ internal sealed class JoiningManager(
     EscapePodManager escapePodManager,
     EntityRegistry entityRegistry,
     SessionSettings sessionSettings,
+    RescueService rescueService,
     IOptions<SubnauticaServerOptions> options,
     ILogger<JoiningManager> logger)
     : ISessionCleaner
@@ -46,6 +47,7 @@ internal sealed class JoiningManager(
     private readonly EscapePodManager escapePodManager = escapePodManager;
     private readonly EntityRegistry entityRegistry = entityRegistry;
     private readonly SessionSettings sessionSettings = sessionSettings;
+    private readonly RescueService rescueService = rescueService;
 
     private readonly ThreadSafeQueue<SessionId> joinQueue = new();
     private readonly Lock queueLocker = new(); // Necessary to avoid race conditions between JoinQueueLoop and AddToJoinQueue
@@ -118,6 +120,8 @@ internal sealed class JoiningManager(
                     }
                     BroadcastPlayerJoined(player);
                     await ReplayOtherPlayersPoseAsync(player);
+                    // Downed partners, and this player's own window if they quit while down (COOP_FEATURES_SPEC T1)
+                    await rescueService.PlayerJoinedAsync(player);
                 }
             }
             catch (Exception e)

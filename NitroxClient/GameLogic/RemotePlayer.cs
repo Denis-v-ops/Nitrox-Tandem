@@ -63,6 +63,17 @@ public class RemotePlayer : INitroxPlayer
 
     public CyclopsPawn Pawn { get; set; }
 
+    /// <summary>
+    ///     The body lies in the downed pose (COOP_FEATURES_SPEC T1, <see cref="DownedPose" />).
+    /// </summary>
+    public bool IsDowned { get; private set; }
+
+    /// <summary>
+    ///     Something holds the body's pose, so movement must not drive its animator. Only the downed pose today; upstream
+    ///     #2859's cinematic lock belongs in this test too (COOP_FEATURES_SPEC R1b, A2).
+    /// </summary>
+    public bool IsPoseLocked => IsDowned;
+
     public RemotePlayer(PlayerContext playerContext, PlayerModelManager playerModelManager, PlayerVitalsManager playerVitalsManager, FMODWhitelist fmodWhitelist)
     {
         PlayerContext = playerContext;
@@ -160,7 +171,7 @@ public class RemotePlayer : INitroxPlayer
         SetPilotingChair(null);
 
         AnimationController.AimingRotation = aimingRotation;
-        AnimationController.UpdatePlayerAnimations = true;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         AnimationController.Velocity = MovementHelper.GetCorrectedVelocity(position, velocity, Body, Time.fixedDeltaTime);
 
         // If in a subroot the position will be relative to the subroot
@@ -187,7 +198,7 @@ public class RemotePlayer : INitroxPlayer
         SetVehicle(null);
 
         AnimationController.AimingRotation = localRotation;
-        AnimationController.UpdatePlayerAnimations = true;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         AnimationController.Velocity = (localPosition - Pawn.Handle.transform.localPosition) / Time.fixedDeltaTime;
 
         Pawn.Handle.transform.localPosition = localPosition;
@@ -349,6 +360,28 @@ public class RemotePlayer : INitroxPlayer
     }
 
     /// <summary>
+    ///     Lays the body down or lets it get up (COOP_FEATURES_SPEC T1). Its position still follows the player's movement
+    ///     packets: a downed player can be pushed out of a vehicle, and the rescuer has to find the body where it is.
+    /// </summary>
+    public void SetDownedPose(bool downed)
+    {
+        if (IsDowned == downed || !Body)
+        {
+            return;
+        }
+        IsDowned = downed;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
+        if (downed)
+        {
+            Body.EnsureComponent<DownedPose>().Begin(this);
+        }
+        else if (Body.TryGetComponent(out DownedPose pose))
+        {
+            pose.End();
+        }
+    }
+
+    /// <summary>
     /// Drops the remote player, swimming where he is. Resets its animator.
     /// </summary>
     public void ResetStates()
@@ -356,7 +389,7 @@ public class RemotePlayer : INitroxPlayer
         SetPilotingChair(null);
         SetVehicle(null);
         SetSubRoot(null);
-        AnimationController.UpdatePlayerAnimations = true;
+        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         AnimationController.Reset();
         ArmsController.SetWorldIKTarget(null, null);
         // The animator reset cleared holding_tool, and the world-target reconfigure above drops the tool's IK
@@ -408,6 +441,9 @@ public class RemotePlayer : INitroxPlayer
     ///     <see cref="ArmStates" /> (tool use, PDA, surface swimming, falls, <c>holding_tool</c>) and the held tool's
     ///     <c>holding_&lt;tool&gt;</c> and <c>using_tool_first</c> flags. A lock that must hold the body's pose (a cinematic,
     ///     upstream PR #2859; the downed pose, T1) goes here, as one check, not at each caller.
+    ///     The downed pose needs none: it stops the body's animator (<see cref="DownedPose" />), and the writes must still
+    ///     land so the arms are right after a revive (a downed player's light stays drawn). #2859's cinematic lock can
+    ///     test <see cref="IsPoseLocked" /> here if it must drop them.
     ///     <para />
     ///     A change of <c>holding_tool</c> or of a <c>holding_&lt;tool&gt;</c> flag also points the arms and hands at the
     ///     drawn tool (<see cref="ArmsController.Reconfigure" />), as <c>ArmsController.Update</c> does for the local player.
