@@ -1422,7 +1422,7 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
     containment, latency.
   - **Warpers** are worse: each game spawns its own warpers and warp balls (`game:WarperSpawner.cs:31-34`, no Nitrox
     hooks), so each player meets different warpers in the Lost River. **Bleeders** are never simulated, so they do
-    nothing for either player (H). Both are B1 (fixed 2026-11-03: the warp ball and a bleeder latching onto the partner stay open, FIX_SPEC S15c/S15d).
+    nothing for either player (H). Both are B1 (fixed 2026-11-03: a bleeder latches onto the partner since FIX_SPEC S15d; the warp ball stays open, S15c).
 - **Probe:** extend `tools/scenarios/S14-CreatureAggro.ps1` with one case per creature on the "not run" list, both lock
   directions, plus a bite on a vehicle. Keep S14's method: wait for a natural bite, force the contact only as a
   fallback.
@@ -2105,11 +2105,12 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   vent). Verified in the same scenario: four natural bleeders each have a lock holder, run their AI there
   (`SwimRandom`/`AvoidObstacles`), move 2-11 m in 6 s and agree between the games; the negative control: no lock
   holder. A natural attach on the simulating player wasn't seen in 40 s at 3 m (D4's spawned bleeder did attach).
-  **Attaching to the partner stays open (FIX_SPEC S15d, now M):** `AttachAndSuck.OnCollisionEnter` is a collision
-  callback, and the partner's body collider is a trigger (`RemotePlayer.cs`, `isTrigger = true`), so adding a
-  `BleederAttachTarget` to the body would do nothing; it needs a proximity attach in the simulating game, a relay of
-  `SuckBlood` (it passes no dealer, so S14's relay drops it), the detach rules the game checks only for `Player.main`
-  (in a base or vehicle, downed), and a way for the partner to knock it off in their own game.
+  **Attaching to the partner: done 2026-11-03 (FIX_SPEC S15d, branch `feat/4-s15d-bleeder-attach`).** The body's
+  collider is a trigger, so the game's collision attach never saw it: the body's own (copied) `BleederAttachTarget`
+  now takes the touch on the trigger in the simulating game, with `OnCollisionEnter`'s checks on the body's state; the
+  suck names the bleeder as dealer, so S14's relay carries it; it lets go when the partner is inside, in a vehicle or
+  downed. The other games mirror the attach on their copy (`BleederAttachChanged`), so the latched player's arms fight
+  it and their hits kill it for both. Windowless `S15d-BleederOnPartner.ps1` PASS (52 checks), negative control 21 FAIL.
 
 #### B2: Building and crafting without loss or dupes (S–M, done 2026-11-02)
 - **Non-empty storage (S, done):** when a module's constructed amount reached 0, the server removed the entity and its
@@ -2307,3 +2308,4 @@ prices, "keeping it scary").
 | 2026-11-03 | B1 (warpers, bleeders) | Done: only the game that simulates a warper spawner (utility whitelist) spawns its warper, registers it and marks it spawned; the other games link it to their spawner; the warp-out is sent when it starts and played everywhere. Bleeders on the movement whitelist. Findings: a late warp-out packet, and a duplicate warper when the server sent one back to its own game (ghosts). Bleeder attach on the partner stays open (FIX_SPEC S15d, M: the body collider is a trigger), warp ball too (S15c) | L2 `WarperSpawnerTest` (2, fail without the whitelist); windowless `B1-WarpersAndBleeders.ps1` PASS (48 and 42 checks), negative control 17 of 40 FAIL. Full test suite green. Not checked: the warp-out effect in the partner's game |
 | 2026-11-03 | G3 | 3a + 3b done, 3c not built: the Sea Emperor's platform waits until both players stand in its trigger box (measured: 50 x 15 x 70 m turned 151 degrees; `StoryGateArea` got an optional yaw), each game starts its own platform; the incubator hatches once both used it (carrier hatches, partner confirms and hears the soundscape and music). 3c: the partner's game never gets a cure ball (its copies of the babies never visit the mother: `SeaEmperorBaby_Start_Patch` skips any baby with a parent, and spawned entities sit under their cell root), so a "both click" gate would deadlock; findings and a plan (fix the baby chain windowed, then gate; fallback: a presence gate) in G3. Bridge `sounds` records 2D one-shots. README row | L1 area/rules/texts; L2 `StoryGateTest` Sea Emperor and hatching; windowless `G3-SeaEmperorTogether.ps1` PASS (31 checks, incl. S12 in game: cured offline, rejoins cured); negative control 14 of 26 fail. Windowed not run |
 | 2026-11-03 | G1 + G2 | Done: the gun terminal and the rocket launch wait for both players' clicks (`ALL_READY`), each game plays its own cinematic / launches its own player from its held click. Gun: Prefix on `PrecursorDisableGunTerminal.OnHandClick` only when cured (denied path ungated), `Cancel` on every `OnTerminalAreaExit`. Rocket: Prefix on `LaunchRocket.OnHandClick` before `SetLaunchStarted` (transpiler unchanged, delta -8); the rule gets the cockpit box of the server's `RocketBase` entity (measured 35.2 m above the rocket's root, ±7/±6/±7 m), so a click only counts while aboard; new server `RocketLaunchProcessor` relays the launch only after the gate started. Texts `Nitrox_StoryGateGun*`, `Nitrox_StoryGateRocket*` (en/de) | L1 `StoryGatesTest`; L2 `GunAndRocketGateTest` (6 tests; the no-relay test fails without the processor); windowless `G1G2-GunAndRocketTogether.ps1` PASS 29, negative control 6 FAIL (4 G1, 2 G2). Not driven: preflight checks (`forcerocketready`), the credits; not checked windowed |
+| 2026-11-03 | B1 (bleeders) / FIX_SPEC S15d | A bleeder latches onto the partner too: attach on the partner's body in the simulating game, suck relayed with the bleeder as dealer, lets go in a base, a vehicle or when downed; the attach is mirrored in the other games (arms fight it, hits kill it for both). Fixed a copy marking the partner's own attach target occupied for good. README rows updated | Windowless `S15d-BleederOnPartner.ps1` PASS (52 checks); negative control 21 of 52 FAIL; full test suite green. Windowed look and lock hand-over while attached not checked |

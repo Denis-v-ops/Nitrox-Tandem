@@ -94,6 +94,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<SimulationOwnership>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<ConstructionLocks>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Cuddlefish>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<Bleeders>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<LiveMixinManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Entities>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<MedkitFabricator>().InstancePerLifetimeScope();
