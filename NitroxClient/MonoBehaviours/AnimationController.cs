@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace NitroxClient.MonoBehaviours;
@@ -8,7 +9,16 @@ public class AnimationController : MonoBehaviour
     private const float SMOOTHING_SPEED = 4f;
     private Animator animator;
 
+    /// <summary>
+    ///     Movement drives the body's locomotion (false while it sits in a vehicle or at the helm). See also <see cref="IsPoseLocked" />.
+    /// </summary>
     public bool UpdatePlayerAnimations { get; set; } = true;
+
+    /// <summary>
+    ///     A pose lock that overrides <see cref="UpdatePlayerAnimations" />: the remote player's downed pose or cinematic
+    ///     (<c>RemotePlayer.IsPoseLocked</c>). Read every frame, not assigned, so no setter of the flag can unlock it.
+    /// </summary>
+    public Func<bool>? IsPoseLocked { get; set; }
     public Quaternion AimingRotation { get; set; }
     public Vector3 Velocity { get; set; }
     public Quaternion BodyRotation { get; set; }
@@ -25,7 +35,7 @@ public class AnimationController : MonoBehaviour
 
     public void FixedUpdate()
     {
-        if (UpdatePlayerAnimations)
+        if (UpdatePlayerAnimations && (IsPoseLocked == null || !IsPoseLocked()))
         {
             Vector3 rotationCorrectedVelocity = transform.rotation.GetInverse() * Velocity;
 

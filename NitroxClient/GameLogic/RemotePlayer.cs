@@ -58,20 +58,28 @@ public class RemotePlayer : INitroxPlayer
     public InfectedMixin InfectedMixin { get; private set; }
     public LiveMixin LiveMixin { get; private set; }
 
+    /// <summary>
+    ///     The entity (or bed side, <see cref="NitroxClient.MonoBehaviours.CinematicController.BedLockId" />) whose cinematic
+    ///     plays on this body (upstream #2859). Null when none does.
+    /// </summary>
     public NitroxId? InCinematicEntityId { get; private set; }
 
     public bool InCinematic => InCinematicEntityId != null;
 
+    /// <summary>
+    ///     A cinematic now poses this body: movement packets neither move it nor drive its animator (<see cref="IsPoseLocked" />).
+    /// </summary>
     public void SetInCinematic(NitroxId entityId)
     {
         InCinematicEntityId = entityId;
-        AnimationController.UpdatePlayerAnimations = false;
     }
 
+    /// <summary>
+    ///     The cinematic is over. The pose stays locked if the body is also downed (<see cref="IsPoseLocked" />).
+    /// </summary>
     public void ClearInCinematic()
     {
         InCinematicEntityId = null;
-        AnimationController.UpdatePlayerAnimations = true;
     }
 
     public readonly Event<RemotePlayer> PlayerDeathEvent = new();
@@ -86,10 +94,12 @@ public class RemotePlayer : INitroxPlayer
     public bool IsDowned { get; private set; }
 
     /// <summary>
-    ///     Something holds the body's pose, so movement must not drive its animator. Only the downed pose today; upstream
-    ///     #2859's cinematic lock belongs in this test too (COOP_FEATURES_SPEC R1b, A2).
+    ///     Something holds the body's pose, so movement must not drive its animator: the downed pose (T1) or a cinematic
+    ///     (upstream #2859, COOP_FEATURES_SPEC R1b). <see cref="AnimationController" /> tests it every frame, so clearing one
+    ///     of them can't free a pose the other still holds. Only a cinematic also stops movement packets from moving the
+    ///     body (<see cref="UpdatePosition" />): a downed body must follow its player (T1).
     /// </summary>
-    public bool IsPoseLocked => IsDowned;
+    public bool IsPoseLocked => IsDowned || InCinematic;
 
     public RemotePlayer(PlayerContext playerContext, PlayerModelManager playerModelManager, PlayerVitalsManager playerVitalsManager, FMODWhitelist fmodWhitelist)
     {
@@ -121,6 +131,7 @@ public class RemotePlayer : INitroxPlayer
         PlayerModel.GetComponent<ConditionRules>().enabled = false;
 
         AnimationController = PlayerModel.AddComponent<AnimationController>();
+        AnimationController.IsPoseLocked = () => IsPoseLocked;
 
         Transform inventoryTransform = new GameObject("Inventory").transform;
         inventoryTransform.SetParent(Body.transform);
@@ -194,7 +205,7 @@ public class RemotePlayer : INitroxPlayer
         SetPilotingChair(null);
 
         AnimationController.AimingRotation = aimingRotation;
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
+        AnimationController.UpdatePlayerAnimations = true;
         AnimationController.Velocity = MovementHelper.GetCorrectedVelocity(position, velocity, Body, Time.fixedDeltaTime);
 
         // If in a subroot the position will be relative to the subroot
@@ -221,7 +232,7 @@ public class RemotePlayer : INitroxPlayer
         SetVehicle(null);
 
         AnimationController.AimingRotation = localRotation;
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked && !InCinematic;
+        AnimationController.UpdatePlayerAnimations = true;
         AnimationController.Velocity = (localPosition - Pawn.Handle.transform.localPosition) / Time.fixedDeltaTime;
 
         Pawn.Handle.transform.localPosition = localPosition;
@@ -398,7 +409,6 @@ public class RemotePlayer : INitroxPlayer
             return;
         }
         IsDowned = downed;
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
         if (downed)
         {
             Body.EnsureComponent<DownedPose>().Begin(this);
@@ -418,7 +428,7 @@ public class RemotePlayer : INitroxPlayer
         SetVehicle(null);
         SetSubRoot(null);
         ClearInCinematic();
-        AnimationController.UpdatePlayerAnimations = !IsPoseLocked;
+        AnimationController.UpdatePlayerAnimations = true;
         AnimationController.Reset();
         ArmsController.SetWorldIKTarget(null, null);
         // The animator reset cleared holding_tool, and the world-target reconfigure above drops the tool's IK
