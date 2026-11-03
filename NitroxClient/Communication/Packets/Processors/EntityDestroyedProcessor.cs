@@ -126,7 +126,7 @@ public sealed class EntityDestroyedProcessor(Entities entities) : IClientPacketP
     }
 
     /// <summary>
-    ///     COOP_FEATURES_SPEC B1: a living warper warped out in the game that simulates it (Warper_EndWarpOut_Patch). It warps
+    ///     COOP_FEATURES_SPEC B1: a living warper started to warp out in the game that simulates it (Warper_WarpOut_Patch). It warps
     ///     out here too: the same animation and effect, and its spawner (if it is ours, see WarperEntitySpawner) restarts its
     ///     timer as it does in that game. A dead one (its corpse removed) is just destroyed.
     /// </summary>
