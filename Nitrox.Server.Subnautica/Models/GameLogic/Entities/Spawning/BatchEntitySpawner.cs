@@ -52,16 +52,10 @@ internal sealed class BatchEntitySpawner(
                 empty = [.. emptyBatches];
             }
 
-            return [.. batchLoadTasks.Keys.Except(empty)];
+            // Not the batches still generating or that failed: their entities aren't in the save (BatchLoadTasks)
+            return BatchLoadTasks.ListGenerated(batchLoadTasks, empty);
         }
-        set
-        {
-            batchLoadTasks.Clear();
-            foreach (NitroxInt3 batchId in value)
-            {
-                batchLoadTasks.TryAdd(batchId, new Lazy<Task<List<Entity>>>(() => Task.FromResult(new List<Entity>())));
-            }
-        }
+        set => BatchLoadTasks.Restore(batchLoadTasks, value);
     }
 
     private static readonly NitroxQuaternion prefabZUpRotation = NitroxQuaternion.FromEuler(new(-90f, 0f, 0f));
@@ -73,7 +67,7 @@ internal sealed class BatchEntitySpawner(
 
     public Task<List<Entity>> LoadUnspawnedEntitiesAsync(NitroxInt3 batchId, bool fullCacheCreation = false)
     {
-        return batchLoadTasks.GetOrAdd(batchId, id => new Lazy<Task<List<Entity>>>(() => LoadBatchInternalAsync(id, fullCacheCreation))).Value;
+        return BatchLoadTasks.GetOrStart(batchLoadTasks, batchId, id => LoadBatchInternalAsync(id, fullCacheCreation));
     }
 
     private async Task<List<Entity>> LoadBatchInternalAsync(NitroxInt3 batchId, bool fullCacheCreation)

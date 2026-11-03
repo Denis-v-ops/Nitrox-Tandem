@@ -23,4 +23,6 @@ public class CoopSettings
 
     /// <summary>If true, a player can hold on to the outside of a Seamoth the partner pilots (COOP_FEATURES_SPEC T5).</summary>
     public bool SeamothHitch;
+    /// <summary>If true, crafting stations of a base or Cyclops also use the items in its lockers (MULTINAUGHTICA_SPEC M8).</summary>
+    public bool CraftFromLockers;
 }

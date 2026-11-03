@@ -27,7 +27,11 @@ public class CyclopsMetadataExtractor : EntityMetadataExtractor<SubRoot, Cyclops
 
         LiveMixin liveMixin = gameObject.RequireComponent<LiveMixin>();
         float health = liveMixin.health;
-        bool isDestroyed = subRoot.subDestroyed || health <= 0f;
+        // DestroyCyclops schedules the model swap that sets subDestroyed 2.5 s later; an extraction in between (its power-down
+        // turns shield, sonar or silent running off, and their patches send the metadata) must not say "not destroyed"
+        CyclopsDestructionEvent destructionEvent = gameObject.GetComponentInChildren<CyclopsDestructionEvent>(true);
+        bool explosionStarted = destructionEvent && destructionEvent.IsInvoking(nameof(CyclopsDestructionEvent.SwapToDamagedModels));
+        bool isDestroyed = CyclopsDestructionRules.IsDestroyed(health, subRoot.subDestroyed, explosionStarted);
 
         return new(silentRunningOn, shieldOn, sonarOn, engineOn, (int)motorMode, health, isDestroyed);
     }

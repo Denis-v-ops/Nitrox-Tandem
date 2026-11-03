@@ -25,6 +25,13 @@ public class RadiationMetadata : EntityMetadata
         FixRealTime = fixRealTime;
     }
 
+    /// <summary>
+    ///     A leak only ever gains health (it's created at 0 and welded): an update that doesn't raise it is older than what is
+    ///     known (two players welding the same leak, an update still on its way) and would make a repaired leak leak again,
+    ///     and set its fix time back to "leaking" on the server (MULTINAUGHTICA_SPEC M2).
+    /// </summary>
+    public static bool IsProgress(float currentHealth, float newHealth) => newHealth > currentHealth;
+
     public override string ToString()
     {
         return $"[{nameof(RadiationMetadata)} Health: {Health}, FixRealTime: {FixRealTime}]";

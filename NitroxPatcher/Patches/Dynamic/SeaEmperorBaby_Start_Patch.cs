@@ -1,14 +1,17 @@
+using System.Collections;
 using System.Reflection;
 using NitroxClient.GameLogic;
+using UnityEngine;
 
 namespace NitroxPatcher.Patches.Dynamic;
 
 /// <summary>
 ///     A Sea Emperor baby that this game didn't hatch (the simulating game's networked baby, spawned here under a cell root)
 ///     has to swim to its mother here too, or this game's Emperor never plays the babies' visit and its babies never drop
-///     cure balls (FIX_SPEC S17, COOP_FEATURES_SPEC G3c). Babies still in an egg are left alone: the egg animation sends
-///     them (<c>IncubatorEggAnimation.OnHatchAnimationEnd</c>); so are the temporary babies of the local hatching and the
-///     game's own non-networked babies (<c>SeaEmperorBabiesSpawner</c>).
+///     cure balls (FIX_SPEC S17, COOP_FEATURES_SPEC G3c, MULTINAUGHTICA_SPEC M2). Babies still in an egg are left alone: the
+///     egg animation sends them (<c>IncubatorEggAnimation.OnHatchAnimationEnd</c>); so are the temporary babies of the local
+///     hatching and the game's own non-networked babies (<c>SeaEmperorBabiesSpawner</c>). A baby whose cell loads before the
+///     Emperor's waits for her (up to <see cref="EMPEROR_WAIT_SECONDS" />).
 /// </summary>
 /// <remarks>
 ///     Before, any baby with a parent was skipped, but <c>DefaultWorldEntitySpawner</c> parents every spawned world entity
@@ -17,24 +20,55 @@ namespace NitroxPatcher.Patches.Dynamic;
 /// </remarks>
 public sealed partial class SeaEmperorBaby_Start_Patch : NitroxPatch, IDynamicPatch
 {
+    private const float EMPEROR_WAIT_SECONDS = 60f;
+
     private static readonly MethodInfo TARGET_METHOD = Reflect.Method((SeaEmperorBaby t) => t.Start());
 
     public static void Postfix(SeaEmperorBaby __instance)
     {
-        if (!SeaEmperor.main ||
-            __instance.name.Contains(IncubatorEggAnimation_OnHatchAnimationEnd_Patch.TEMPORARY_BABY_MARKER) ||
-            !__instance.TryGetNitroxId(out _) ||
-            SeaEmperorBabies.IsInEgg(__instance))
+        if (__instance.name.Contains(IncubatorEggAnimation_OnHatchAnimationEnd_Patch.TEMPORARY_BABY_MARKER) || !__instance.TryGetNitroxId(out _))
+        {
+            return;
+        }
+        if (!SeaEmperor.main)
+        {
+            __instance.StartCoroutine(WaitForEmperorThenSend(__instance));
+            return;
+        }
+        SendToMotherIfIdle(__instance);
+    }
+
+    private static void SendToMotherIfIdle(SeaEmperorBaby baby)
+    {
+        if (SeaEmperorBabies.IsInEgg(baby))
         {
             return;
         }
 
         // Already on its way (to the mother, or leaving and dropping cure balls)
-        if ((__instance.swimToTarget && __instance.swimToTarget.target) || (__instance.dropEnzymes && __instance.dropEnzymes.enabled))
+        if ((baby.swimToTarget && baby.swimToTarget.target) || (baby.dropEnzymes && baby.dropEnzymes.enabled))
         {
             return;
         }
 
-        SeaEmperorBabies.SendCopyToMother(__instance);
+        SeaEmperorBabies.SendCopyToMother(baby);
+    }
+
+    private static IEnumerator WaitForEmperorThenSend(SeaEmperorBaby baby)
+    {
+        float waited = 0f;
+        while (!SeaEmperor.main)
+        {
+            if (waited >= EMPEROR_WAIT_SECONDS)
+            {
+                yield break;
+            }
+            yield return new WaitForSeconds(1f);
+            waited += 1f;
+        }
+        if (baby)
+        {
+            SendToMotherIfIdle(baby);
+        }
     }
 }

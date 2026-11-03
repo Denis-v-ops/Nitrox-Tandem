@@ -11,9 +11,11 @@ public class PrecursorTeleporterMetadataProcessor : EntityMetadataProcessor<Prec
         Log.Debug($"Received precursor teleporter metadata change for {gameObject.name} with data of {metadata}");
 
         PrecursorTeleporter precursorTeleporter = gameObject.GetComponent<PrecursorTeleporter>();
-        if (precursorTeleporter)
+        // A teleporter only ever opens: closing isn't something the game does (older games and saves sent false for every
+        // loaded teleporter, which faded an open portal out), and opening an open one fades its portal in again (MULTINAUGHTICA_SPEC M2)
+        if (precursorTeleporter && metadata.IsOpen && !precursorTeleporter.isOpen)
         {
-            precursorTeleporter.ToggleDoor(metadata.IsOpen);
+            precursorTeleporter.ToggleDoor(true);
         }
     }
 }

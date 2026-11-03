@@ -4,12 +4,13 @@ using System.Collections.Generic;
 using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Abstract;
 using NitroxClient.Communication.Packets.Processors.Core;
+using NitroxClient.GameLogic.InitialSync;
 using NitroxClient.GameLogic.InitialSync.Abstract;
 using NitroxClient.MonoBehaviours;
 
 namespace NitroxClient.Communication.Packets.Processors;
 
-internal sealed class InitialPlayerSyncProcessor(IEnumerable<IInitialSyncProcessor> processors) : IClientPacketProcessor<InitialPlayerSync>
+internal sealed class InitialPlayerSyncProcessor(IEnumerable<IInitialSyncProcessor> processors, InitialSyncDeferral initialSyncDeferral) : IClientPacketProcessor<InitialPlayerSync>
 {
     private readonly HashSet<Type> alreadyRan = [];
     private readonly HashSet<IInitialSyncProcessor> processors = processors.ToSet();
@@ -53,6 +54,9 @@ internal sealed class InitialPlayerSyncProcessor(IEnumerable<IInitialSyncProcess
         // When the player finishes loading, we can take back his invincibility
         Player.main.liveMixin.invincible = false;
         Player.main.UnfreezeStats();
+
+        // Story packets that came while this game was in the menu, loading or syncing (MULTINAUGHTICA_SPEC M2)
+        initialSyncDeferral.MarkSynced();
 
         context.Send(new PlayerSyncFinished());
     }

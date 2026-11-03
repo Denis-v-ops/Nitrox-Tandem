@@ -7,7 +7,8 @@
 .DESCRIPTION
     1. Alice spawns creatures (a Peeper, then a Stalker) next to both players. The player who doesn't hold the
        creature's simulation lock (server "query") damages it to death with LiveMixin.TakeDamage, the call the knife
-       ends in (the no-damage cheat is off for that call: DamageSystem zeroes all damage while it's on). Both games must
+       ends in, with the local player as dealer (the no-damage cheat is off in both games for that hit: DamageSystem
+       zeroes all damage while it's on, and since M5 the hit is applied in the simulating game). Both games must
        then have a corpse (the object with LiveMixin.IsAlive() false, still dead 5 s later) and the server must no
        longer have the creature (RemoveCreatureCorpse destroys the entity).
     2. Alice spawns an acid mushroom (pickupable); Bob damages it to death. It must be gone in both games and on the
@@ -65,16 +66,22 @@ function New-SpawnedObject {
 }
 
 <#
-    Damages the object to death in that player's game, with the no-damage cheat off for that one call.
+    Damages the object to death in that player's game, with the local player as dealer (as the knife does,
+    Knife_OnToolUseAnim_Patch) and the no-damage cheat off in both games until it died: since MULTINAUGHTICA_SPEC M5 a
+    hit on a creature the player doesn't simulate is applied in the simulating game, whose cheat would zero it.
 #>
 function Invoke-DamageToDeath {
     param([string]$Player, [string]$Id)
-    Invoke-Bridge $Player 'set NoDamageConsoleCommand.main.noDamageCheat false' | Out-Null
+    foreach ($game in $A, $B) { Invoke-Bridge $game 'set NoDamageConsoleCommand.main.noDamageCheat false' | Out-Null }
     try {
-        Invoke-Bridge $Player "call $Id LiveMixin.TakeDamage 10000" | Out-Null
+        Invoke-Bridge $Player "call $Id LiveMixin.TakeDamage 10000 0,0,0 Normal player" | Out-Null
+        Wait-Until { -not (Test-Loaded $Player $Id) -or -not (Test-Alive $Player $Id) } -TimeoutSeconds 5 -IntervalSeconds 0.3 | Out-Null
     }
     finally {
-        Invoke-Bridge $Player 'set NoDamageConsoleCommand.main.noDamageCheat true' | Out-Null
+        foreach ($game in $A, $B) {
+            Invoke-Bridge $game 'set NoDamageConsoleCommand.main.noDamageCheat true' | Out-Null
+            Invoke-Bridge $game 'set Player.main.liveMixin.health 100' | Out-Null
+        }
     }
 }
 
@@ -132,7 +139,8 @@ try {
     }
 
     Step 'Alice dies and respawns' {
-        Invoke-Bridge $A 'call Player.main.liveMixin.Kill' | Out-Null
+        # Heat: any other kill only downs her (COOP_FEATURES_SPEC T1, DownedRules.GoesDown)
+        Invoke-Bridge $A 'call Player.main.liveMixin.Kill Heat' | Out-Null
         $dead = Wait-Until { (Invoke-Bridge $A 'call Player.main.liveMixin.IsAlive') -eq 'false' } -TimeoutSeconds 5 -IntervalSeconds 0.3
         Assert-True ([bool]$dead) "$A died"
         Start-Sleep -Seconds 2

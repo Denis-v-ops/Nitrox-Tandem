@@ -17,7 +17,7 @@ internal sealed class VehicleMovementsProcessor : IClientPacketProcessor<Vehicle
         {
             if (MovementBroadcaster.Instance.Replicators.TryGetValue(movementData.Id, out MovementReplicator movementReplicator))
             {
-                movementReplicator.AddSnapshot(movementData, (float)packet.RealTime);
+                movementReplicator.AddSnapshot(movementData, packet.RealTime);
             }
         }
         return Task.CompletedTask;

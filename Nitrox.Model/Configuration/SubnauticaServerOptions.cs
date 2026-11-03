@@ -110,6 +110,8 @@ public sealed partial class SubnauticaServerOptions
 
     [PropertyDescription("If true, a player can hold on to the outside of a Seamoth the other player pilots and ride along; their air keeps draining")]
     public bool SeamothHitch { get; set; } = true;
+    [PropertyDescription("If true, the fabricators and modification stations of a base or Cyclops also use the items in its lockers, after the player's inventory")]
+    public bool CraftFromLockers { get; set; } = true;
 
     [OptionsValidator]
     public partial class Validator : IValidateOptions<SubnauticaServerOptions>;

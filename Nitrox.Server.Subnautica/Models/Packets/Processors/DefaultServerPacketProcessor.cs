@@ -11,7 +11,10 @@ internal sealed class DefaultServerPacketProcessor(ILogger<DefaultServerPacketPr
     private readonly HashSet<Type> defaultPacketProcessorBlacklist =
     [
         typeof(GameModeChanged),
-        typeof(DropSimulationOwnership)
+        typeof(DropSimulationOwnership),
+        // The server's answer alone: a relayed one would start the partner's craft without the items being taken (M8)
+        typeof(CraftingClaimResponse),
+        typeof(ServerSaving)
     ];
 
     private readonly ILogger<DefaultServerPacketProcessor> logger = logger;

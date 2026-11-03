@@ -54,48 +54,21 @@ public class RadiationLeakEntitySpawner : SyncEntitySpawner<RadiationLeakEntity>
 
     public void RecalculateRadiationRadius(LeakingRadiation leakingRadiation)
     {
-        float realElapsedTime = (float)timeManager.RealTimeElapsed;
-        // We substract the explosion time from the real time because before that, the radius doesn't increment
-        float realExplosionTime = timeManager.AuroraRealExplosionTime;
-        float maxRegisteredLeakFixTime = registeredLeaksFixTime.Max();
-
-        // Note: Only increment radius if leaks were fixed AFTER explosion (before, game code doesn't increase radius)
-        
-        // If leaks aren't all fixed yet we calculate from current real elapsed time
-        float deltaTimeAfterExplosion = realElapsedTime - realExplosionTime;
-        if (maxRegisteredLeakFixTime == -1)
+        // The maths is RadiationRadiusModel (unit-tested, MULTINAUGHTICA_SPEC M2): the radius grows from the explosion while
+        // any leak leaks and shrinks once all are fixed
+        RadiationRadiusModel.Result result = RadiationRadiusModel.Compute((float)timeManager.RealTimeElapsed, timeManager.AuroraRealExplosionTime, registeredLeaksFixTime, TOTAL_LEAKS,
+                                                                          leakingRadiation.kStartRadius, leakingRadiation.kGrowRate, leakingRadiation.kNaturalDissipation,
+                                                                          leakingRadiation.kMaxRadius, leakingRadiation.currentRadius);
+        if (result.AllFixed)
         {
-            if (deltaTimeAfterExplosion > 0)
-            {
-                float radiusIncrement = deltaTimeAfterExplosion * leakingRadiation.kGrowRate;
-                // Calculation lines from LeakingRadiation.Update
-                leakingRadiation.currentRadius = Mathf.Clamp(leakingRadiation.kStartRadius + radiusIncrement, 0f, leakingRadiation.kMaxRadius);
-                leakingRadiation.damagePlayerInRadius.damageRadius = leakingRadiation.currentRadius;
-                leakingRadiation.radiatePlayerInRange.radiateRadius = leakingRadiation.currentRadius;
-            }
-            // If leaks aren't fixed, we won't need to calculate a radius decrement
-            return;
+            leakingRadiation.radiationFixed = true;
         }
-        leakingRadiation.radiationFixed = true;
-
-        // If all leaks are fixed we calculate from the time they were fixed
-        float deltaAliveTime = maxRegisteredLeakFixTime - realExplosionTime;
-        if (deltaAliveTime > 0)
+        if (result.ApplyRadius)
         {
-            float radiusIncrement = deltaAliveTime * leakingRadiation.kGrowRate;
-            leakingRadiation.currentRadius = Mathf.Clamp(leakingRadiation.kStartRadius + radiusIncrement, 0f, leakingRadiation.kMaxRadius);
+            leakingRadiation.currentRadius = result.Radius;
+            leakingRadiation.damagePlayerInRadius.damageRadius = result.Radius;
+            leakingRadiation.radiatePlayerInRange.radiateRadius = result.Radius;
         }
-
-        // Now calculate the natural dissipation decrement from the time leaks are fixed
-        // If they were fixed before real explosion time, we calculate from real explosion time
-        float deltaFixedTimeAfterExplosion = realElapsedTime - Mathf.Max(maxRegisteredLeakFixTime, realExplosionTime);
-        if (deltaFixedTimeAfterExplosion > 0)
-        {
-            float radiusDecrement = deltaFixedTimeAfterExplosion * leakingRadiation.kNaturalDissipation;
-            leakingRadiation.currentRadius = Mathf.Clamp(leakingRadiation.currentRadius + radiusDecrement, 0f, leakingRadiation.kMaxRadius);
-        }
-        leakingRadiation.damagePlayerInRadius.damageRadius = leakingRadiation.currentRadius;
-        leakingRadiation.radiatePlayerInRange.radiateRadius = leakingRadiation.currentRadius;
     }
 
     protected override bool SpawnsOwnChildren(RadiationLeakEntity entity) => false;

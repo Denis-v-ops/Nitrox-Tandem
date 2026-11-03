@@ -68,6 +68,12 @@ public partial class TimeManager
 
     public void AttemptNtpSync()
     {
+        // Called for every TimeChange while this game has no NTP correction: one round at a time, a failed one is
+        // tried again with a later TimeChange
+        if (ntpSyncer.IsRunning)
+        {
+            return;
+        }
         ntpSyncer.Setup((onlineMode, correction) =>
         {
             if (onlineMode)

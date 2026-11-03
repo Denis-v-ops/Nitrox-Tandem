@@ -9,8 +9,12 @@ internal sealed class SubRootChangedPacketProcessor(EntityRegistry entityRegistr
 
     public async Task Process(AuthProcessorContext context, SubRootChanged packet)
     {
-        entityRegistry.ReparentEntity(context.Sender.GameObjectId, packet.SubRootId.OrNull());
-        context.Sender.SubRootId = packet.SubRootId;
+        // "No sub root" at the end of a respawn in the escape pod must not take the player out of it (PlayerParentRules)
+        if (!PlayerParentRules.KeepsEscapePodParent(packet.SubRootId, PlayerParentRules.GetParent(entityRegistry, context.Sender.GameObjectId)))
+        {
+            entityRegistry.ReparentEntity(context.Sender.GameObjectId, packet.SubRootId.OrNull());
+            context.Sender.SubRootId = packet.SubRootId;
+        }
         await context.SendToOthersAsync(packet);
     }
 }

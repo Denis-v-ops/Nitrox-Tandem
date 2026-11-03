@@ -15,7 +15,8 @@ together, and the workflows we use. Claude Code loads it through `CLAUDE.md`. Ot
   [docs/fork/TESTING.md](docs/fork/TESTING.md) (how to test with two players). New co-op features (shared story
   gates, rescue window, partner signal, cozy home, and more) are specified in
   [docs/fork/COOP_FEATURES_SPEC.md](docs/fork/COOP_FEATURES_SPEC.md); its §2 design principles apply to every
-  player-facing change.
+  player-facing change. Fixes and features taken over from the MultiNaughtica fork (M1–M9, game-rig tests deferred to
+  one final pass) are in [docs/fork/MULTINAUGHTICA_SPEC.md](docs/fork/MULTINAUGHTICA_SPEC.md).
 
 ## 2. Remotes and branches
 

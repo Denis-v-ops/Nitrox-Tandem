@@ -16,14 +16,17 @@ internal sealed class BuildingManager
     private readonly IPacketSender packetSender;
     private readonly EntityRegistry entityRegistry;
     private readonly WorldEntityManager worldEntityManager;
+    private readonly SimulationOwnershipData simulationOwnershipData;
     private readonly IOptions<SubnauticaServerOptions> options;
     private readonly ILogger<BuildingManager> logger;
 
-    public BuildingManager(IPacketSender packetSender, EntityRegistry entityRegistry, WorldEntityManager worldEntityManager, IOptions<SubnauticaServerOptions> options, ILogger<BuildingManager> logger)
+    public BuildingManager(IPacketSender packetSender, EntityRegistry entityRegistry, WorldEntityManager worldEntityManager, SimulationOwnershipData simulationOwnershipData,
+                           IOptions<SubnauticaServerOptions> options, ILogger<BuildingManager> logger)
     {
         this.packetSender = packetSender;
         this.entityRegistry = entityRegistry;
         this.worldEntityManager = worldEntityManager;
+        this.simulationOwnershipData = simulationOwnershipData;
         this.options = options;
         this.logger = logger;
     }
@@ -119,8 +122,11 @@ internal sealed class BuildingManager
                 }
                 else
                 {
-                    entityRegistry.RemoveEntity(entity.Id);
+                    // Not only the registry: its cell entry goes too, as for any destroyed entity (MULTINAUGHTICA_SPEC M1)
+                    worldEntityManager.TryDestroyEntity(entity.Id, out _);
                 }
+                // The deconstructing player's lock would otherwise stay on a removed entity
+                simulationOwnershipData.RevokeOwnerOfId(entity.Id);
             }
 
             // In any case we'll broadcast the packet

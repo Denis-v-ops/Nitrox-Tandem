@@ -161,6 +161,7 @@ function Get-BridgeEntities {
 $script:KnownNoise = @(
     @{ Kind = 'TECHTYPE'; Pattern = '^EscapePod server: SmallStorage$'; Why = "The pod's locker carries the pod's TechTag in game; the server records SmallStorage" },
     @{ Kind = 'POSITION'; Pattern = '\(MapRoomEntity\)$'; Why = 'The server records a scanner room by base cell only, its transform stays zero' },
+    @{ Kind = 'POSITION'; Pattern = '\(ModuleEntity\)$'; Why = "A base module's transform on the server is local to its base, the game's is world (the games are still compared with each other)" },
     @{ Kind = 'GHOST'; Pattern = '^MapRoomCamera not on the server \(active, parent - '; Why = 'Docked scanner room drones are stored in the room (MapRoomMetadata.DockedCameraIds, FIX_SPEC S2), not as entities of their own' },
     @{ Kind = 'TECHTYPE'; Pattern = '^(\w+) server: \1Undiscovered$'; Why = "Eggs of unknown creatures: the game's TechTag says GasopodEgg, the item (Pickupable.GetTechType, what the server records) GasopodEggUndiscovered" }
 )
@@ -194,6 +195,9 @@ function Test-MetadataEqual {
     # The escape pod's hatch use (COOP_FEATURES_SPEC R1b): a game reports only its own player's, the server keeps everyone's.
     $A = $A -replace '"PlayersWith(Bottom|Top)HatchUsed":\[[^\]]*\]', '"PlayersWith$1HatchUsed":#'
     $B = $B -replace '"PlayersWith(Bottom|Top)HatchUsed":\[[^\]]*\]', '"PlayersWith$1HatchUsed":#'
+    # A vector's Normalized is derived from X, Y and Z, and the game writes it in its own culture ("[0,47, ...]")
+    $A = $A -replace '"Normalized":"[^"]*"', '"Normalized":#'
+    $B = $B -replace '"Normalized":"[^"]*"', '"Normalized":#'
     if ($A -eq $B) { return $true }
     if (($A -replace $number, '#') -ne ($B -replace $number, '#')) { return $false }
     $numbersA = [regex]::Matches($A, $number)
