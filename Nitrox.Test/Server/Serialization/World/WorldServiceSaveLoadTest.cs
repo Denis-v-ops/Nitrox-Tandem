@@ -185,6 +185,49 @@ public class WorldServiceSaveLoadTest
     }
 
     [TestMethod]
+    public void EscapePodHatchUseSurvivesSaveAndLoad()
+    {
+        // COOP_FEATURES_SPEC R1b (upstream #2859): who has opened each pod hatch once, so the first-use cinematic plays once per player
+        EscapePodMetadata metadata = new(true, false, ["Alice", "Bob"], ["Bob"]);
+        EscapePodEntity pod = new(new NitroxVector3(-112, 0, -50), new NitroxId(), metadata);
+
+        EntityRegistry loaded = SaveLoadRoundTrip.AssertSurvivesSaveAndLoad(pod);
+
+        EscapePodMetadata loadedMetadata = loaded.GetEntityById<EscapePodEntity>(pod.Id).Value.Metadata.Should().BeOfType<EscapePodMetadata>().Subject;
+        loadedMetadata.PlayersWithBottomHatchUsed.Should().Equal(metadata.PlayersWithBottomHatchUsed);
+        loadedMetadata.PlayersWithTopHatchUsed.Should().Equal(metadata.PlayersWithTopHatchUsed);
+    }
+
+    [TestMethod]
+    public void EscapePodSavedBeforeR1b_LoadsWithNoHatchUse()
+    {
+        // A save written before R1b has only the repair flags in the pod's metadata: it must load, with nobody's hatch use
+        EscapePodEntity pod = new(new NitroxVector3(-112, 0, -50), new NitroxId(), new EscapePodMetadata(true, true, [], []));
+        string file = Path.Combine(Path.GetTempPath(), $"NitroxTest_{Guid.NewGuid():N}.json");
+        try
+        {
+            ServerJsonSerializer serializer = new(new SaveLoadRoundTrip.ThrowOnErrorLogger<ServerJsonSerializer>());
+            serializer.Serialize(file, new List<Entity> { pod });
+            string json = File.ReadAllText(file);
+            json.Should().Contain("\"PlayersWithBottomHatchUsed\":[]");
+            File.WriteAllText(file, json.Replace(",\"PlayersWithBottomHatchUsed\":[]", "").Replace(",\"PlayersWithTopHatchUsed\":[]", ""));
+            File.ReadAllText(file).Should().NotContain("HatchUsed", "this is what an old save looks like");
+
+            List<Entity> loaded = serializer.Deserialize<List<Entity>>(file);
+
+            EscapePodMetadata metadata = loaded.Should().ContainSingle().Which.Metadata.Should().BeOfType<EscapePodMetadata>().Subject;
+            metadata.PodRepaired.Should().BeTrue();
+            metadata.RadioRepaired.Should().BeTrue();
+            metadata.PlayersWithBottomHatchUsed.Should().BeEmpty();
+            metadata.PlayersWithTopHatchUsed.Should().BeEmpty();
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [TestMethod]
     public void DestroyedCyclopsIsNotSaved()
     {
         // WorldEntityManager.GetPersistentGlobalRootEntities skips Cyclops wrecks on purpose.

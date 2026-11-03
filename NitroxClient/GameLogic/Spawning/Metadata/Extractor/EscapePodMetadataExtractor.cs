@@ -11,8 +11,9 @@ public class EscapePodMetadataExtractor(LocalPlayer localPlayer) : EntityMetadat
         return new EscapePodMetadata(
             entity.liveMixin.IsFullHealth(),
             radio.liveMixin.IsFullHealth(),
-            entity.bottomHatchUsed && localPlayer.SessionId.HasValue ? [localPlayer.SessionId.Value] : [],
-            entity.topHatchUsed && localPlayer.SessionId.HasValue ? [localPlayer.SessionId.Value] : []
+            // Only the local player's own use: the server adds it to the others' (EntityMetadataUpdateProcessor)
+            entity.bottomHatchUsed ? [localPlayer.PlayerName] : [],
+            entity.topHatchUsed ? [localPlayer.PlayerName] : []
         );
     }
 }

@@ -1,4 +1,3 @@
-using Nitrox.Model.Core;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using NitroxClient.GameLogic.Spawning.Metadata.Processor.Abstract;
 using UnityEngine;
@@ -40,10 +39,10 @@ public class EscapePodMetadataProcessor : EntityMetadataProcessor<EscapePodMetad
     /// <summary>
     /// Applies repaired state without animations and minimal audio playback
     /// </summary>
-    public static void ProcessInitialSyncMetadata(EscapePod pod, Radio radio, EscapePodMetadata metadata, SessionId localSessionId)
+    public static void ProcessInitialSyncMetadata(EscapePod pod, Radio radio, EscapePodMetadata metadata, string localPlayerName)
     {
-        bool bottomHatchUsedByLocalPlayer = metadata.PlayersWithBottomHatchUsed.Contains(localSessionId);
-        bool topHatchUsedByLocalPlayer = metadata.PlayersWithTopHatchUsed.Contains(localSessionId);
+        bool bottomHatchUsedByLocalPlayer = metadata.PlayersWithBottomHatchUsed.Contains(localPlayerName);
+        bool topHatchUsedByLocalPlayer = metadata.PlayersWithTopHatchUsed.Contains(localPlayerName);
         pod.bottomHatchUsed = bottomHatchUsedByLocalPlayer;
         pod.topHatchUsed = topHatchUsedByLocalPlayer;
 
