@@ -40,9 +40,25 @@ public class StoryGatesTest
     }
 
     [TestMethod]
-    public void OtherGates_UseTheGenericTexts()
+    public void DisableGun_BothUseTheTerminal()
     {
         StoryGateStatus status = new(StoryGateKind.DISABLE_GUN, ["Alice"], ["Bob"], false);
+        StoryGates.FormatStatus(status, "Alice", english).Should().Be("Waiting for Bob to use the terminal too");
+        StoryGates.FormatStatus(status, "Bob", english).Should().Be("Alice is at the gun terminal: use it together to disable the gun");
+    }
+
+    [TestMethod]
+    public void RocketLaunch_BothPressLaunchAboard()
+    {
+        StoryGateStatus status = new(StoryGateKind.ROCKET_LAUNCH, ["Alice"], ["Bob"], false);
+        StoryGates.FormatStatus(status, "Alice", english).Should().Be("Waiting for Bob to board the cockpit and press launch");
+        StoryGates.FormatStatus(status, "Bob", english).Should().Be("Alice is ready for launch: board the rocket's cockpit and press launch too");
+    }
+
+    [TestMethod]
+    public void OtherGates_UseTheGenericTexts()
+    {
+        StoryGateStatus status = new(StoryGateKind.SUNBEAM_RADIO, ["Alice"], ["Bob"], false);
         StoryGates.FormatStatus(status, "Alice", english).Should().Be("Waiting for Bob…");
         StoryGates.FormatStatus(status, "Bob", english).Should().Be("Alice is waiting for you");
     }

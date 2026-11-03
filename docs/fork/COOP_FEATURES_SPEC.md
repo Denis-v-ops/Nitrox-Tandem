@@ -375,7 +375,7 @@ other, solo with a roster → locked naming the absent player until they're onli
 admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProcessor` removed. Windowless:
 `G4-DriveCoreTogether.ps1` (radio part below in G4).
 
-### G1: Disabling the gun
+### G1: Disabling the gun — done 2026-11-03 (branch `feat/4-g1-g2-gun-rocket`)
 - **Gate:** a Prefix on `PrecursorDisableGunTerminal.OnHandClick` (`game:` 110-135), **only when `playerCured`**. The
   "access denied" path for an uncured player stays ungated. Clear ready on `OnTerminalAreaExit` (`game:` 191).
 - **Why a hold is needed:** once `gunDisabled` is true, the terminal never opens again (`game:` 178). Without the gate, the
@@ -386,7 +386,33 @@ admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProc
   - L3: both teleport to the terminal and use it; both cinematics start together; both have `gunDisabled`.
 - **Size:** S.
 
-### G2: Rocket launch together
+**Done 2026-11-03** (branch `feat/4-g1-g2-gun-rocket`, with G2):
+- **Rule: `ALL_READY`, no area** (`StoryGateRules.For`). Each player clicks their own terminal, so each game holds its
+  own click and plays its own cinematic on `StoryGateStart`. `ONE_READY_ALL_PRESENT` was rejected: a game that holds
+  nothing ignores the start, so the partner would get no cinematic. No server box is needed: the game only takes the
+  click while the player is inside `PrecursorDisableGunTerminalArea` (`opened`, `game:PrecursorDisableGunTerminal.cs:112`,
+  set by `OnTerminalAreaEnter`), and leaving it withdraws the click on the game side.
+- **Hook:** `PrecursorDisableGunTerminal_OnHandClick_Patch` Prefix. It only holds a click the game would act on as
+  cured: `playerCured && opened && usingPlayer == null && cinematicModeCount <= 0` (the same checks as `game:` 112-116).
+  Everything else, including the uncured "access denied" click, runs as before. On start the held click runs again
+  (`IsPassing`). `PrecursorDisableGunTerminal_OnTerminalAreaExit_Patch` calls `Cancel(DISABLE_GUN)` on every exit,
+  not only in the game's `!gunDisabled` branch.
+- **Both end with the gun disabled:** each game's `OnPlayerCinematicModeEnd` calls `DisableGun` →
+  `gunDeactivate.Trigger()`. The second trigger is a no-op: `StoryGoalScheduler_Schedule_Patch` drops a goal that is
+  already scheduled or complete (read in `game:Story/StoryGoal.cs:14-17`, `StoryGoalManager.cs:69-71`). S3's sync of
+  the goal still sets `gunDisabled` on the partner.
+- **Texts (en/de):** `Nitrox_StoryGateGunWait` ("Waiting for *name* to use the terminal too") and
+  `Nitrox_StoryGateGunJoin` ("*name* is at the gun terminal: use it together to disable the gun").
+- **Findings:** both cinematics started 0.2 s after the second click on both games (windowless). The terminal area's
+  trigger sits at (361.9, -69.7, 1082.4); teleporting in and out fires it (enter and exit).
+- **Not covered / (H):** a cured player whose partner isn't cured waits for good: the partner's click is the "access
+  denied" path, which isn't held and sends no ready. That's story-correct (the gun only goes down for a cured player),
+  and the partner's cure already reaches both games through the synced goal. The admin `storygate release disable_gun`
+  is the way out. Not checked windowed (the message on screen, the partner's body in the animation, which comes with
+  R1b).
+- **Verified:** see G2.
+
+### G2: Rocket launch together — done 2026-11-03 (branch `feat/4-g1-g2-gun-rocket`)
 - **Gate:** a Prefix on `LaunchRocket.OnHandClick` (`game:` 352), *before* `SetLaunchStarted`.
   - Don't gate inside our transpiled `BroadcastRocketLaunch`: `launchStarted` is already true there, and
     `NitroxClient/GameLogic/Rockets.cs:38-41` returns early, so the first player to click would never launch.
@@ -395,11 +421,58 @@ admin release (now and next ask). All six L2 tests fail with `StoryGateReadyProc
   behind while the other player watches the credits.
 - **Design:** "ready" = clicked launch while aboard. The server checks aboard from the player's position. Add a real
   `RocketLaunch` processor so it's no longer relayed before everyone is ready.
-- **Note:** the transpiler instruction count in `PatchesTranspilerTest` changes.
+- **Note:** the transpiler instruction count in `PatchesTranspilerTest` would change if the gate went into the transpiler; it went into a Prefix, so it stays -8.
 - **Tests:**
   - L2: no relay before both are ready; aboard check from positions.
   - L3: both aboard, both get `launchStarted`. Needs a fixture with a built rocket.
 - **Size:** S–M.
+
+**Done 2026-11-03** (branch `feat/4-g1-g2-gun-rocket`, with G1):
+- **Rule: `ALL_READY` plus the rocket's cockpit as the area**, not `ONE_READY_ALL_PRESENT`. Each player presses launch
+  aboard, and each game launches its own player from its own held click. The partner no longer depends on the relayed
+  `RocketLaunch` and its 5.55 m check in `Rockets.RocketLaunch`, which is the "left behind" failure itself. The area
+  makes "ready" mean "aboard": a click only counts while the server's position of its player is in the cockpit box,
+  so a player who presses launch and climbs down again isn't launched later from wherever they stand.
+- **The area moves with the rocket:** `StoryGateService` adds `StoryGateRules.RocketCockpit(position, rotation)` of the
+  server's `RocketBase` vehicle entity to the rule at each evaluation (the most built rocket if there are several, (H)).
+  Without a rocket entity the rule stays plain `ALL_READY`. Offset measured in game: rocket at (-60.0, -0.05, 404.85),
+  no rotation, its `AtmosphereVolume` at (-60.0, 35.1, 404.9), the launch lever at (-60.2, 38.8, 404.8), so the
+  cockpit is 35.2 m straight up; the box is ±7 m across and ±6 m up and down. The server's record of the rocket
+  matched the game's position (-60.0, -0.05, 404.85): the finished rocket is kinematic and doesn't drift.
+- **Hook:** a Prefix on `LaunchRocket.OnHandClick`, in the existing `LaunchRocket_OnHandClick_Patch` next to its
+  transpiler (unchanged, the delta in `PatchesTranspilerTest` stays -8). It only holds a click that would launch:
+  `IsRocketReady() && !launchStarted && (gunDisabled || forcedRocketReady)` (`game:LaunchRocket.cs:352-357`); the gun
+  warning and a rocket that isn't ready behave as before. On start the held click runs again; a player who isn't aboard
+  any more (`Rockets.IsAboard`, the old check moved into its own method) stays behind instead of starting a launch
+  without them.
+- **Server `RocketLaunchProcessor`:** relays `RocketLaunch` only once the `ROCKET_LAUNCH` gate has started since the
+  server started (or the gates are off); otherwise it's dropped with a warning. `StoryGateService.HasStarted` remembers
+  each gate's start in memory (a launch can't be taken back). The partner's game ignores the relayed launch, since it
+  already launched (`launchStarted`).
+- **Texts (en/de):** `Nitrox_StoryGateRocketWait` ("Waiting for *name* to board the cockpit and press launch") and
+  `Nitrox_StoryGateRocketJoin` ("*name* is ready for launch: board the rocket's cockpit and press launch too").
+- **Fixture, windowless:** `spawn rocketbase` (synced as a vehicle by `NitroxConsole.SpawnVehicle`), the platform builds
+  itself, then four times the real `RocketConstructor.StartRocketConstruction` with `nocost` (the synced path; with
+  `Rocket.timeToConstruct` set to 2 s on the builder's game). The partner's game builds the stages from the rocket's
+  metadata. `forcerocketready` on both games stands in for the preflight checks. About 2 min.
+- **Not covered / (H):** the preflight checks weren't driven (`forcerocketready`), and neither the launch cinematic's
+  end nor the credits were watched (the games are stopped seconds after the launch). Two rockets in one world: the
+  most built one counts. Not checked windowed (the message on screen).
+- **Verified (G1 + G2):** L1 `StoryGatesTest` (the gun's and the rocket's texts). L2 `GunAndRocketGateTest`: gun
+  gate waits for both clicks and a withdrawn click doesn't count; a `RocketLaunch` isn't relayed before the gate
+  starts; both clicks aboard start it, then the launch is relayed; a click from below the cockpit doesn't count and a
+  click whose player climbed down is dropped (positions); gates off relays at once; the cockpit box. Windowless
+  `tools/scenarios/G1G2-GunAndRocketTogether.ps1` PASS (29 checks): Alice's terminal click is held (no cinematic, gun
+  active, server `WAITING ... waiting for Bob`), walking out withdraws it, her second click waits again; Bob's click
+  starts both cinematics 0.2–0.3 s after it on both games, both end with `gunDisabled` and `Goal_Disable_Gun`; the
+  rocket is built on both games, Alice's launch in the cockpit is held on both (server `ROCKET_LAUNCH ... in the rocket
+  cockpit ... waiting for Bob`) while Bob stands on the platform 35 m below, Bob comes aboard and presses launch and
+  both games start the launch 0.2 s later, both in the launch cinematic. **Negative control** (the two terminal
+  patches, the launch Prefix and the server processor as on `coop`): 6 checks fail, 4 in G1 (Alice's cinematic starts
+  alone at her click, the server waits for nobody, twice) and 2 in G2 (Alice launches alone while Bob is below and
+  stays behind, the server waits for nobody). The later "both started" checks pass there too, because each player's
+  own click still runs the game's own code; they aren't the discriminating ones. L2 under the same build:
+  `RocketLaunch_IsNotRelayed_BeforeTheGateStarts` fails (the default processor relays it).
 
 ### G3: Sea Emperor, hatching and the cure — 3a and 3b done 2026-11-03 (branch `feat/4-g3-sea-emperor`); 3c not built (the partner gets no cure ball)
 
@@ -2233,3 +2306,4 @@ prices, "keeping it scary").
 | 2026-11-03 | Wave 3 merge | Merged S16 + S16b/c (leviathan sync), B3, T1 + D3, P1 + P2 and the T4 fix; re-ran the affected scenarios windowless on the merged build: T1 73, B3 38, P2 33, S1 62, S2-MapRoom 38, S16 14 (incl. the roam case), S14 65/66 and D4 94/95 (the target-pick flakes above). **P1 failed 6 of 33** after the merge: S16's new out-of-cell hand-over skipped P1's keep-with-holder rule; fixed, P1 then 33/33. Build green, 505 tests pass. **T1 explosions (decided 2026-11-03):** a crashfish explosion or fire puts the player down (rescuable); only the Cyclops' destruction, heat/lava and drowning kill outright. §2, §2.2, T1 and §11 updated | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave3`, `wave3-fixes` |
 | 2026-11-03 | B1 (warpers, bleeders) | Done: only the game that simulates a warper spawner (utility whitelist) spawns its warper, registers it and marks it spawned; the other games link it to their spawner; the warp-out is sent when it starts and played everywhere. Bleeders on the movement whitelist. Findings: a late warp-out packet, and a duplicate warper when the server sent one back to its own game (ghosts). Bleeder attach on the partner stays open (FIX_SPEC S15d, M: the body collider is a trigger), warp ball too (S15c) | L2 `WarperSpawnerTest` (2, fail without the whitelist); windowless `B1-WarpersAndBleeders.ps1` PASS (48 and 42 checks), negative control 17 of 40 FAIL. Full test suite green. Not checked: the warp-out effect in the partner's game |
 | 2026-11-03 | G3 | 3a + 3b done, 3c not built: the Sea Emperor's platform waits until both players stand in its trigger box (measured: 50 x 15 x 70 m turned 151 degrees; `StoryGateArea` got an optional yaw), each game starts its own platform; the incubator hatches once both used it (carrier hatches, partner confirms and hears the soundscape and music). 3c: the partner's game never gets a cure ball (its copies of the babies never visit the mother: `SeaEmperorBaby_Start_Patch` skips any baby with a parent, and spawned entities sit under their cell root), so a "both click" gate would deadlock; findings and a plan (fix the baby chain windowed, then gate; fallback: a presence gate) in G3. Bridge `sounds` records 2D one-shots. README row | L1 area/rules/texts; L2 `StoryGateTest` Sea Emperor and hatching; windowless `G3-SeaEmperorTogether.ps1` PASS (31 checks, incl. S12 in game: cured offline, rejoins cured); negative control 14 of 26 fail. Windowed not run |
+| 2026-11-03 | G1 + G2 | Done: the gun terminal and the rocket launch wait for both players' clicks (`ALL_READY`), each game plays its own cinematic / launches its own player from its held click. Gun: Prefix on `PrecursorDisableGunTerminal.OnHandClick` only when cured (denied path ungated), `Cancel` on every `OnTerminalAreaExit`. Rocket: Prefix on `LaunchRocket.OnHandClick` before `SetLaunchStarted` (transpiler unchanged, delta -8); the rule gets the cockpit box of the server's `RocketBase` entity (measured 35.2 m above the rocket's root, ±7/±6/±7 m), so a click only counts while aboard; new server `RocketLaunchProcessor` relays the launch only after the gate started. Texts `Nitrox_StoryGateGun*`, `Nitrox_StoryGateRocket*` (en/de) | L1 `StoryGatesTest`; L2 `GunAndRocketGateTest` (6 tests; the no-relay test fails without the processor); windowless `G1G2-GunAndRocketTogether.ps1` PASS 29, negative control 6 FAIL (4 G1, 2 G2). Not driven: preflight checks (`forcerocketready`), the credits; not checked windowed |

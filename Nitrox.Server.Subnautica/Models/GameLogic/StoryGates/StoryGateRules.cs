@@ -60,8 +60,8 @@ internal sealed record StoryGateArea(string Name, NitroxVector3 Min, NitroxVecto
 internal sealed record StoryGateDefinition(StoryGateKind Kind, StoryGateRule Rule, TimeSpan ReadyTimeout, StoryGateArea? Area = null);
 
 /// <summary>
-///     The rule of each gate. G1–G3 change their own line here when they hook their moment (e.g. G2 adds the rocket's
-///     area so that "ready" means "aboard").
+///     The rule of each gate. G1–G3 change their own line here when they hook their moment. The rocket's cockpit moves
+///     with the rocket, so <see cref="StoryGateService" /> adds <see cref="RocketCockpit" /> to the rocket launch's rule.
 /// </summary>
 internal static class StoryGateRules
 {
@@ -79,7 +79,27 @@ internal static class StoryGateRules
     /// </summary>
     public static readonly StoryGateArea AquariumPlatform = StoryGateArea.Box("aquarium platform", new NitroxVector3(315.89f, -1470.5f, -438.566f), new NitroxVector3(50, 15, 70), 151);
 
+    /// <summary>
+    ///     Where the rocket's cockpit is relative to the rocket's own position (the launch platform's root): the centre of
+    ///     its <c>AtmosphereVolume</c>, from which the game side measures "aboard" (<c>Rockets.RocketLaunch</c>, 5.55 m).
+    ///     Read in game through the dev bridge (2026-11-03): rocket at (-60.0, -0.05, 404.85) with no rotation, its
+    ///     AtmosphereVolume at (-60.0, 35.1, 404.9), the launch lever at (-60.2, 38.8, 404.8). Straight up, so the
+    ///     rocket's yaw doesn't move it (it's still applied).
+    /// </summary>
+    public static readonly NitroxVector3 RocketCockpitOffset = new(0, 35.2f, 0);
+
+    /// <summary>Half the size of the cockpit box: the game's 5.55 m radius plus room for position lag.</summary>
+    public static readonly NitroxVector3 RocketCockpitHalfSize = new(7, 6, 7);
+
     private static readonly TimeSpan clickTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>The box around the cockpit of a rocket standing at <paramref name="rocketPosition" />.</summary>
+    public static StoryGateArea RocketCockpit(NitroxVector3 rocketPosition, NitroxQuaternion rocketRotation)
+    {
+        System.Numerics.Vector3 offset = System.Numerics.Vector3.Transform((System.Numerics.Vector3)RocketCockpitOffset, (System.Numerics.Quaternion)rocketRotation);
+        NitroxVector3 centre = rocketPosition + (NitroxVector3)offset;
+        return new StoryGateArea("rocket cockpit", centre - RocketCockpitHalfSize, centre + RocketCockpitHalfSize);
+    }
 
     public static StoryGateDefinition For(StoryGateKind kind) =>
         kind switch
@@ -90,6 +110,12 @@ internal static class StoryGateRules
             StoryGateKind.DRIVE_CORE => new(kind, StoryGateRule.ONE_READY_ALL_PRESENT, TimeSpan.FromSeconds(5), DriveCoreRoom),
             // G3a: a player on the platform renews the ready every second (SeaEmperorPlatformGate); the Emperor comes once both are on it.
             StoryGateKind.SEA_EMPEROR => new(kind, StoryGateRule.ONE_READY_ALL_PRESENT, TimeSpan.FromSeconds(5), AquariumPlatform),
+            // G1: each player clicks the terminal (the game only takes the click inside the terminal's area) and gets their
+            // own cinematic. Leaving the terminal's area withdraws the click on the game side.
+            StoryGateKind.DISABLE_GUN => new(kind, StoryGateRule.ALL_READY, clickTimeout),
+            // G2: each player presses launch in the cockpit, so each game launches its own player. The service adds the
+            // cockpit's area (RocketCockpit), so a click only counts while its player is still aboard.
+            StoryGateKind.ROCKET_LAUNCH => new(kind, StoryGateRule.ALL_READY, clickTimeout),
             _ => new(kind, StoryGateRule.ALL_READY, clickTimeout)
         };
 }

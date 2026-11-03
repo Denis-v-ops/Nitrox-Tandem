@@ -130,25 +130,29 @@ public class StoryGates(IPacketSender packetSender, LocalPlayer localPlayer)
         }
         if (status.ReadyNames?.Contains(localName, comparer) == true)
         {
-            string template = status.Kind switch
+            string template = translate(status.Kind switch
             {
-                StoryGateKind.DRIVE_CORE => translate("Nitrox_StoryGateDriveCoreWait"),
-                StoryGateKind.SEA_EMPEROR => translate("Nitrox_StoryGateSeaEmperorWait"),
-                StoryGateKind.HATCHING => translate("Nitrox_StoryGateHatchingWait"),
-                _ => translate("Nitrox_StoryGateWaitingFor")
-            };
+                StoryGateKind.DRIVE_CORE => "Nitrox_StoryGateDriveCoreWait",
+                StoryGateKind.DISABLE_GUN => "Nitrox_StoryGateGunWait",
+                StoryGateKind.ROCKET_LAUNCH => "Nitrox_StoryGateRocketWait",
+                StoryGateKind.SEA_EMPEROR => "Nitrox_StoryGateSeaEmperorWait",
+                StoryGateKind.HATCHING => "Nitrox_StoryGateHatchingWait",
+                _ => "Nitrox_StoryGateWaitingFor"
+            });
             return template.Replace("{PLAYERS}", missing);
         }
         if (status.MissingNames?.Contains(localName, comparer) == true)
         {
             string ready = string.Join(", ", status.ReadyNames ?? []);
-            string template = status.Kind switch
+            string template = translate(status.Kind switch
             {
-                StoryGateKind.DRIVE_CORE => translate("Nitrox_StoryGateDriveCoreJoin"),
-                StoryGateKind.SEA_EMPEROR => translate("Nitrox_StoryGateSeaEmperorJoin"),
-                StoryGateKind.HATCHING => translate("Nitrox_StoryGateHatchingJoin"),
-                _ => translate("Nitrox_StoryGatePartnerReady")
-            };
+                StoryGateKind.DRIVE_CORE => "Nitrox_StoryGateDriveCoreJoin",
+                StoryGateKind.DISABLE_GUN => "Nitrox_StoryGateGunJoin",
+                StoryGateKind.ROCKET_LAUNCH => "Nitrox_StoryGateRocketJoin",
+                StoryGateKind.SEA_EMPEROR => "Nitrox_StoryGateSeaEmperorJoin",
+                StoryGateKind.HATCHING => "Nitrox_StoryGateHatchingJoin",
+                _ => "Nitrox_StoryGatePartnerReady"
+            });
             return template.Replace("{PLAYERS}", ready);
         }
         return "";

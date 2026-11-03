@@ -145,5 +145,9 @@
     "Nitrox_StoryGateHatchingJoin": "{PLAYERS} is ready to hatch the eggs: use the incubator too",
     "Nitrox_StoryGateHatchingWait": "Waiting for {PLAYERS} to use the incubator too…",
     "Nitrox_StoryGateSeaEmperorJoin": "{PLAYERS} is waiting for you on the aquarium platform",
-    "Nitrox_StoryGateSeaEmperorWait": "Waiting for {PLAYERS} to join you on the platform…"
+    "Nitrox_StoryGateSeaEmperorWait": "Waiting for {PLAYERS} to join you on the platform…",
+    "Nitrox_StoryGateGunWait": "Waiting for {PLAYERS} to use the terminal too",
+    "Nitrox_StoryGateGunJoin": "{PLAYERS} is at the gun terminal: use it together to disable the gun",
+    "Nitrox_StoryGateRocketWait": "Waiting for {PLAYERS} to board the cockpit and press launch",
+    "Nitrox_StoryGateRocketJoin": "{PLAYERS} is ready for launch: board the rocket's cockpit and press launch too"
 }

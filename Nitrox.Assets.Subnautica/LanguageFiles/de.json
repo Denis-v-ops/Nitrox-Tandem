@@ -143,5 +143,9 @@
     "Nitrox_StoryGateHatchingJoin": "{PLAYERS} ist bereit, die Eier auszubrüten: benutze den Inkubator auch",
     "Nitrox_StoryGateHatchingWait": "Warte, bis {PLAYERS} den Inkubator auch benutzt…",
     "Nitrox_StoryGateSeaEmperorJoin": "{PLAYERS} wartet auf der Plattform im Aquarium auf dich",
-    "Nitrox_StoryGateSeaEmperorWait": "Warte, bis {PLAYERS} zu dir auf die Plattform kommt…"
+    "Nitrox_StoryGateSeaEmperorWait": "Warte, bis {PLAYERS} zu dir auf die Plattform kommt…",
+    "Nitrox_StoryGateGunWait": "Warte, bis auch {PLAYERS} das Terminal benutzt",
+    "Nitrox_StoryGateGunJoin": "{PLAYERS} steht am Terminal der Waffe: benutzt es gemeinsam, um die Waffe abzuschalten",
+    "Nitrox_StoryGateRocketWait": "Warte, bis {PLAYERS} im Cockpit ist und auf Start drückt",
+    "Nitrox_StoryGateRocketJoin": "{PLAYERS} ist startbereit: steig ins Cockpit der Rakete und drück auch auf Start"
 }
