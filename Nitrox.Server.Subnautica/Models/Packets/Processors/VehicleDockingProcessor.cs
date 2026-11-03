@@ -1,4 +1,5 @@
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
+using Nitrox.Server.Subnautica.Models.GameLogic;
 using Nitrox.Server.Subnautica.Models.GameLogic.Entities;
 using Nitrox.Server.Subnautica.Models.Packets.Core;
 
@@ -8,12 +9,14 @@ sealed class VehicleDockingProcessor : IAuthPacketProcessor<VehicleDocking>
 {
     private readonly IPacketSender packetSender;
     private readonly EntityRegistry entityRegistry;
+    private readonly HitchService hitchService;
     private readonly ILogger<VehicleDockingProcessor> logger;
 
-    public VehicleDockingProcessor(IPacketSender packetSender, EntityRegistry entityRegistry, ILogger<VehicleDockingProcessor> logger)
+    public VehicleDockingProcessor(IPacketSender packetSender, EntityRegistry entityRegistry, HitchService hitchService, ILogger<VehicleDockingProcessor> logger)
     {
         this.packetSender = packetSender;
         this.entityRegistry = entityRegistry;
+        this.hitchService = hitchService;
         this.logger = logger;
     }
 
@@ -34,5 +37,7 @@ sealed class VehicleDockingProcessor : IAuthPacketProcessor<VehicleDocking>
         entityRegistry.ReparentEntity(vehicleEntity, dockEntity);
 
         await context.SendToOthersAsync(packet);
+        // COOP_FEATURES_SPEC T5: whoever holds on to it lets go when it starts docking
+        await hitchService.ReleaseVehicleAsync(packet.VehicleId, "it docks");
     }
 }

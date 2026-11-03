@@ -121,6 +121,16 @@ public class RemotePlayer : INitroxPlayer
     /// </summary>
     public bool IsPoseLocked => IsDowned || InCinematic;
 
+    /// <summary>
+    ///     The body hangs on a Seamoth's hitch handle (COOP_FEATURES_SPEC T5, <see cref="SetHitched" />).
+    /// </summary>
+    public bool IsHitched { get; private set; }
+
+    /// <summary>
+    ///     The Seamoth the body hangs on while <see cref="IsHitched" />.
+    /// </summary>
+    public SeaMoth? HitchedVehicle { get; private set; }
+
     public RemotePlayer(PlayerContext playerContext, PlayerModelManager playerModelManager, PlayerVitalsManager playerVitalsManager, FMODWhitelist fmodWhitelist)
     {
         PlayerContext = playerContext;
@@ -217,6 +227,13 @@ public class RemotePlayer : INitroxPlayer
         // Skip position updates during cinematics - the cinematic controller handles positioning
         if (InCinematic && !cinematicFollowsMovement)
         {
+            return;
+        }
+
+        // The Seamoth carries a hitched body (T5); the partner's movement only says where they look
+        if (IsHitched)
+        {
+            AnimationController.AimingRotation = aimingRotation;
             return;
         }
 
@@ -357,6 +374,10 @@ public class RemotePlayer : INitroxPlayer
 
     public void SetVehicle(Vehicle newVehicle)
     {
+        if (newVehicle && IsHitched)
+        {
+            SetHitched(null);
+        }
         if (Vehicle != newVehicle)
         {
             if (Vehicle)
@@ -419,6 +440,45 @@ public class RemotePlayer : INitroxPlayer
     }
 
     /// <summary>
+    ///     Hangs the body on the Seamoth's hitch handle, or takes it off (COOP_FEATURES_SPEC T5). Hanging, it moves with the
+    ///     Seamoth as this game has it, so the ride shows no extra lag on the pilot's screen: only the Seamoth's own
+    ///     replication in the other games. Kinematic like a pilot's body; its trigger collider can't push the Seamoth.
+    ///     Movement packets don't move it (<see cref="UpdatePosition" />). Not a cinematic: the animator keeps running
+    ///     (swimming in place) and the simulation-lock backstop that clears cinematics doesn't touch it.
+    /// </summary>
+    /// <param name="releasePosition">Where the partner let go, as their game had it; null keeps the body where it is.</param>
+    public void SetHitched(SeaMoth? seamoth, Vector3? releasePosition = null)
+    {
+        if (!Body)
+        {
+            return;
+        }
+        if (seamoth)
+        {
+            SetVehicle(null);
+            IsHitched = true;
+            HitchedVehicle = seamoth;
+            Attach(SeamothHitch.EnsureHandle(seamoth));
+            UWE.Utils.SetIsKinematicAndUpdateInterpolation(RigidBody, true, true);
+            AnimationController.Velocity = Vector3.zero;
+            return;
+        }
+        if (!IsHitched)
+        {
+            return;
+        }
+        IsHitched = false;
+        HitchedVehicle = null;
+        Detach();
+        if (releasePosition.HasValue)
+        {
+            Body.transform.position = releasePosition.Value;
+        }
+        UWE.Utils.SetIsKinematicAndUpdateInterpolation(RigidBody, false, true);
+        RigidBody.velocity = Vector3.zero;
+    }
+
+    /// <summary>
     ///     Lays the body down or lets it get up (COOP_FEATURES_SPEC T1). Its position still follows the player's movement
     ///     packets: a downed player can be pushed out of a vehicle, and the rescuer has to find the body where it is.
     /// </summary>
@@ -444,6 +504,7 @@ public class RemotePlayer : INitroxPlayer
     /// </summary>
     public void ResetStates()
     {
+        SetHitched(null);
         SetPilotingChair(null);
         SetVehicle(null);
         SetSubRoot(null);

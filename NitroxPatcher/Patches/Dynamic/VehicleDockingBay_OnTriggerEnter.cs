@@ -34,6 +34,8 @@ public sealed partial class VehicleDockingBay_OnTriggerEnter : NitroxPatch, IDyn
         {
             Vehicles.EngagePlayerMovementSuppressor(interpolatingVehicle);
             Resolve<IPacketSender>().Send(new VehicleDocking(vehicleId, dockId, Resolve<IMultiplayerSession>().Reservation.SessionId));
+            // COOP_FEATURES_SPEC T5: a partner holding on lets go here, not inside the bay
+            Resolve<SeamothHitch>().OnVehicleDocking(vehicleId);
         }
     }
 }

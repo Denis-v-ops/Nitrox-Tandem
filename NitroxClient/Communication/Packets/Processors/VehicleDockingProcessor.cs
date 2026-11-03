@@ -11,10 +11,11 @@ using UnityEngine;
 
 namespace NitroxClient.Communication.Packets.Processors;
 
-internal sealed class VehicleDockingProcessor(Vehicles vehicles, PlayerManager playerManager) : IClientPacketProcessor<VehicleDocking>
+internal sealed class VehicleDockingProcessor(Vehicles vehicles, PlayerManager playerManager, SeamothHitch seamothHitch) : IClientPacketProcessor<VehicleDocking>
 {
     private readonly Vehicles vehicles = vehicles;
     private readonly PlayerManager playerManager = playerManager;
+    private readonly SeamothHitch seamothHitch = seamothHitch;
 
     public Task Process(ClientProcessorContext context, VehicleDocking packet)
     {
@@ -29,6 +30,9 @@ internal sealed class VehicleDockingProcessor(Vehicles vehicles, PlayerManager p
             Log.Error($"[{nameof(VehicleDockingProcessor)}] could not find VehicleDockingBay component on {packet.DockId}");
             return Task.CompletedTask;
         }
+
+        // COOP_FEATURES_SPEC T5: whoever holds on lets go before the Seamoth is pulled into the bay
+        seamothHitch.OnVehicleDocking(packet.VehicleId);
 
         if (vehicle.TryGetComponent(out VehicleMovementReplicator vehicleMovementReplicator))
         {

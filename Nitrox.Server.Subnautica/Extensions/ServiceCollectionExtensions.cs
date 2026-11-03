@@ -169,6 +169,7 @@ internal static partial class ServiceCollectionExtensions
                     .AddSingleton<SleepManager>()
                     .AddSingleton<PartnerInteractions>()
                     .AddHostedSingletonService<RescueService>()
+                    .AddSingleton<HitchService>()
                     .AddSingleton<StoryGateService>()
                     .AddSingleton<StoryManager>()
                     .AddSingleton<StoryScheduler>()

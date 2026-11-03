@@ -20,4 +20,7 @@ public class CoopSettings
 
     /// <summary>If true, a partner's biome and location PDA lines complete silently.</summary>
     public bool PartnerDiscoveriesSilent;
+
+    /// <summary>If true, a player can hold on to the outside of a Seamoth the partner pilots (COOP_FEATURES_SPEC T5).</summary>
+    public bool SeamothHitch;
 }

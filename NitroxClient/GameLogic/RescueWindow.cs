@@ -28,17 +28,19 @@ public sealed class RescueWindow
     private readonly LocalPlayer localPlayer;
     private readonly IPacketSender packetSender;
     private readonly PlayerManager playerManager;
+    private readonly SeamothHitch seamothHitch;
     private readonly Dictionary<SessionId, float> partnerWindowEnds = [];
     private bool controllerWasEnabled;
     private float pendingSince;
     private float windowEndsAt;
     private bool allowingKill;
 
-    public RescueWindow(LocalPlayer localPlayer, IPacketSender packetSender, PlayerManager playerManager)
+    public RescueWindow(LocalPlayer localPlayer, IPacketSender packetSender, PlayerManager playerManager, SeamothHitch seamothHitch)
     {
         this.localPlayer = localPlayer;
         this.packetSender = packetSender;
         this.playerManager = playerManager;
+        this.seamothHitch = seamothHitch;
         playerManager.OnRemove += (sessionId, _) => partnerWindowEnds.Remove(sessionId);
         // Static for the patches: a new session starts up
         SetUp();
@@ -272,6 +274,9 @@ public sealed class RescueWindow
     private void GoDown()
     {
         Player player = Player.main;
+        // A downed hitcher lets go of the Seamoth (COOP_FEATURES_SPEC T5), first: it gives the motor and quick slots back,
+        // so the lock below is the one a revive undoes
+        seamothHitch.Release("went down");
         LiveMixin liveMixin = player.liveMixin;
         liveMixin.health = 1f;
         liveMixin.tempDamage = 0f;

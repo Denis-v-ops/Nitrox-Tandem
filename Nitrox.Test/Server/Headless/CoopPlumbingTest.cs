@@ -27,6 +27,7 @@ public class CoopPlumbingTest
         settings.PartnerSignalInterference.Should().BeTrue();
         settings.SignalInterferenceDepth.Should().Be(300);
         settings.PartnerDiscoveriesSilent.Should().BeTrue();
+        settings.SeamothHitch.Should().BeTrue();
 
         bob.Send(new PlayerStats(bob.SessionId, 45, 45, 80, 50, 90, 0.1f, true));
         PlayerStats relayed = await alice.WaitForAsync<PlayerStats>(stats => stats.SessionId == bob.SessionId);

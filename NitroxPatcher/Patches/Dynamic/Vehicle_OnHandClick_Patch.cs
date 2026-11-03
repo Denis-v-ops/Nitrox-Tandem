@@ -19,6 +19,12 @@ public sealed partial class Vehicle_OnHandClick_Patch : NitroxPatch, IDynamicPat
             return true;
         }
 
+        // COOP_FEATURES_SPEC T5: a click on the hull of a Seamoth a partner pilots asks to hold on to it
+        if (Resolve<SeamothHitch>().TryClick(__instance))
+        {
+            return false;
+        }
+
         if (!__instance.TryGetIdOrWarn(out NitroxId id))
         {
             return true;

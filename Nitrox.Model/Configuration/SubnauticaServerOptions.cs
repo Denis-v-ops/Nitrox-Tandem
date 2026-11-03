@@ -108,6 +108,9 @@ public sealed partial class SubnauticaServerOptions
     [PropertyDescription("If true, a player hears the PDA's biome and location lines only when they get there themselves")]
     public bool PartnerDiscoveriesSilent { get; set; } = true;
 
+    [PropertyDescription("If true, a player can hold on to the outside of a Seamoth the other player pilots and ride along; their air keeps draining")]
+    public bool SeamothHitch { get; set; } = true;
+
     [OptionsValidator]
     public partial class Validator : IValidateOptions<SubnauticaServerOptions>;
 }

@@ -183,6 +183,7 @@ namespace NitroxClient.MonoBehaviours
             gameObject.AddComponent<PlayerDeathBroadcaster>();
             gameObject.AddComponent<PlayerStatsBroadcaster>();
             gameObject.AddComponent<RescueWindowHud>();
+            gameObject.AddComponent<SeamothHitchDriver>();
             gameObject.AddComponent<EntityPositionBroadcaster>();
             gameObject.AddComponent<BuildingHandler>();
             gameObject.AddComponent<MovementBroadcaster>();
