@@ -909,6 +909,196 @@ These runs used a world a few hundred seconds old. Snapshot times were floats of
 step by 15.6 ms after 36 h of play: [MULTINAUGHTICA_SPEC.md](MULTINAUGHTICA_SPEC.md) M6 (doubles, and this scenario
 in a world aged 40 h: `M6-AgedWorldMovement.ps1`, `S13-CyclopsMovement.ps1 -AgeWorldSeconds`).
 
+## S16: Leviathans: the partner sees one elsewhere, or not at all
+
+**Report** (a player on r/SubnauticaNitrox, upstream Nitrox): "Leviathans aren't synced, so when I see one my friend
+doesn't, or sees it in a different place." S14 and COOP_FEATURES_SPEC D4 only tested bites with both players next to the
+creature. The suggested workaround, server option `CreateFullEntityCache`, can't help (see the verdict below).
+
+**How it was measured** (2026-11-02, branch `fix/s16-leviathan-sync`, game 83031, windowless): L3
+`tools/scenarios/S16-LeviathanSync.ps1` finds a natural leviathan, makes both players invisible to creatures
+(`NoAggression`, so it patrols), keeps both cameras on it (`hold <id> <s> None`) and records it in both games every frame
+(`record`, now also tracking `active`, `remote` = moved by packets, and `lod`). `S13Analysis.Compare` gives the lag and the
+error of the watching game's copy against the simulating game's: *mean/max error* is without a time shift, i.e. what a
+player sees. A *snap* is a one-frame step over 1 m (a Reaper moves 0.2 m per frame at 25 m/s and 120 fps). Runs 1–3 on
+`coop` (baseline), 4–7 with the fix below; replication itself is the same code in all of them.
+
+Facts read in game (asset values): Reaper, Ghost (Lost River juvenile, same `GhostLeviathan` class) and Reefback have
+`LargeWorldEntity.CellLevel` VeryFar, VeryFar and Far. VeryFar entities load in a box of about ±512 m per axis around a
+player (clipmap level 3: 8 cells of 128 m), so a game keeps a Reaper loaded much further away than it renders it.
+Reaper: `SwimRandom` every 2 s at 15 m/s, `StayAtLeashPosition` every 1 s at 25 m/s, leash 60 m. Ghost: every 4 s at 10
+m/s, leash 55 m. Reefback: every 5 s at 1 m/s, leash 100 m.
+
+| Case | Reaper (Crash Zone) | Ghost juvenile (Lost River) | Reefback (control) |
+|---|---|---|---|
+| **1. Both near, A simulates** (60 s; ghost/reefback 40 s) | Agrees within 2.6–3.1 m on average, at most 7.3–17.8 m; lag 114–206 ms; about 6 snaps a minute, the largest 6.7–16.6 m (runs 1–4) | 2.0 m mean, 5.6 m max, lag 212 ms, 2 snaps (5.2 m) | 0.8 m mean, 5.8 m max, 1 snap (5.7 m) |
+| **2. B simulates, A watches** | 2.7–4.3 m mean, 8.3–26.7 m max, 5–16 snaps a minute up to 10.7 m | 1.3 m mean, 8.4 m max | — |
+| **3. Hand-over** (the simulator leaves 1 km) | The lock moves to the one who stays within 0.5 s (the poll interval); largest step there 0.12–0.16 m; it keeps swimming (10–14 m/s). Run 1's 9.8 m "jump" was a snap 0.6 s *before* the hand-over | within 0.5 s, 0.09 m, keeps swimming | within 0.5 s, 0.12 m |
+| **4. Late arrival** (A near for 30 s, B arrives from 1 km) | B's game spawns it 0.5–1.6 s after arriving, **1.7, 18.4, 34.2 and 23.2 m** from where A sees it, then snaps to A's path at the next packet (up to 36 m max error in the first 20 s). A coming back to B: 7.8–7.9 m | 8.2 m; 6.2 m the other way; up to 21 m in the first 20 s | 1.3 m |
+| **5. Roaming** (its leash moved 600 m along x in the simulator's game; the simulator 150 m behind the start, the partner at the goal) | **Before:** the lock stayed with the simulator the whole time. Its game kept running the Reaper 750–780 m away (outside its loaded area) as an `OutOfCellEntity`, at level of detail Minimal and without terrain colliders there, while the partner next to it only watched. **After:** the lock moves to the partner when it is 556–579 m (per axis) from the simulator, and back when it swims home to its real leash | not run (cave) | not run |
+| **6. Void ghosts** (Crater Edge, both players together at x 1900, y −300) | — | Each game spawns its **own** `GhostLeviathanVoid` (no NitroxId; 2 per game after about 50 s, at different places), each hunts only its own `Player.main`. The partner never sees the ghosts that hunt the other player. Only 2 "Couldn't find an id" warnings in a run, no log spam | — |
+| **7. Rejoin** of the watching player | **Not run:** an instant-launched game can't rejoin without restarting everything (S7). From code it is case 4: the rejoining game spawns it at the server's record | | |
+
+The watching game never lost a leviathan (no `active = False`, no destroy, no vanishing) in any of these cases.
+
+**Root causes:**
+- *Fixed (confirmed: L2 + in game, case 5):* **the lock stays with a player who no longer has the creature's cell
+  loaded.** It moved only when that player's *own* cells unloaded (`EntitySimulation.FillWithRemovedCells`), which misses a
+  creature that swims out of them first (`WorldEntityManager.EntitySwitchedCells` re-registers it and spawns it for
+  players who gain it, but never touches the lock). Then either:
+  - its batch isn't loaded in the simulating game: `LargeWorldEntity_UpdateCell_Patch` keeps it as an `OutOfCellEntity`
+    (`PlayerSeeOutOfCellEntity`), so the server counts it as seen and that game runs it from far away (seen in case 5); or
+  - its batch is loaded but the cell is asleep: the game deactivates it (`EntityCell.AddEntity` → waiter queue, read in
+    83031), sends no packet, and the partner's copy stops where the last packet sent it. *From code, not provoked in game*;
+    a stalker chasing the partner out of a level 0 cell (±56 m) is the likely place to see it.
+  Not leviathan-specific: every simulated creature (and thrown item) leaves its simulator this way. **Gap left by the
+  fix:** the server only learns of the crossing from a position packet, i.e. the next `GoTo` (1–5 s). In the asleep-cell
+  branch the game deactivates the creature at its next `UpdateCell` (each entity about every 100 frames), which can come
+  first; then the server keeps the old cell and owner, and the partner gets no spawn (S16f).
+- *Confirmed (code + measurements), fixed in S16b below:* **the watching game runs its own copy and is only corrected when it is
+  more than 5 m off.** `EntityPositionBroadcaster` sends a creature's pose only when its AI calls `SplineFollowing.GoTo`
+  (Reaper every 1–2 s, Ghost 4 s, Reefback 5 s), never on a timer. The watching game feeds that target into its own
+  `SplineFollowing`/`Locomotion` (`RemotelyControlled.UpdateKnownSplineUser`) and teleports only beyond 5 m
+  (`TeleportIfTooFar`), to a pose that is already 100–300 ms old. So the copies drift apart up to 5 m between packets and
+  then snap 5–17 m, often backwards along the path; even the 1 m/s Reefback snapped 5.7 m. The rotation is applied only
+  with a snap.
+- *Confirmed, fixed in S16b/c below:* **the server's record is as old as the last `GoTo`**, 5–11 m behind the Reaper in case 4, so a
+  late arrival (or a rejoin) spawns it up to 34 m away, then sees it snap at the next packet.
+- *Confirmed (game code + in game), not fixed (#2461):* **void ghosts are local.** `VoidGhostLeviathansSpawner` (a scene
+  object in every game) instantiates `GhostLeviatanVoid` for `Player.main` alone, outside Nitrox's entity system, and the
+  ghost destroys itself beyond 180 m of `Player.main`. Danger is at parity (each player is hunted by their own ghosts in
+  their own game), but what each player sees differs completely.
+
+**`CreateFullEntityCache` verdict:** no effect on any of this. `WorldService.CreateFullEntityCacheIfRequested` only runs
+`WorldEntityManager.LoadAllUnspawnedEntitiesAsync` at server start, i.e. the same per-batch generation
+(`LoadUnspawnedEntitiesAsync`) that `CellVisibilityChangedProcessor` otherwise awaits the first time anyone sees a cell of
+that batch. Positions, locks and broadcasts never read it. At most it saves the first visitor a moment of batch
+generation; leviathans spawned within 0.5–1.6 s of arriving without it.
+
+**Fix** (S, server only, no protocol or save change):
+- `EntitySimulation.TryHandOverFromBlindOwner`, called by `EntityTransformUpdatesProcessor` for each applied update: if
+  the sender holds a transient lock on a cell entity whose cell they don't have loaded and another player does, the lock
+  goes to that player (`SimulationOwnershipChange` to all). If nobody else has the cell loaded, the sender keeps it.
+- `EntitySimulation.GetPlayerSimulatedEntities` (a player loads a cell): a transient lock held by a player who doesn't
+  have that cell loaded is taken over by the player who does.
+- "Has its cell loaded", not `Player.CanSee`: `CanSee` also counts out-of-cell entities, which is exactly the case seen in
+  game. Exclusive locks (a piloted vehicle) and global roots are never moved.
+
+**Verification:**
+- L2 `CreatureLeavesSimulatorTest` (4): a creature swimming into a cell only the partner has goes to the partner and the
+  old owner's late updates are ignored; the same while the old owner keeps it out of cell; nobody else there → the owner
+  keeps it until a partner loads that cell, who then takes it over; a partner loading a cell the owner still has gets
+  nothing. **Negative controls:** on `coop` the first two fail (no `SimulationOwnershipChange`); with "can see" instead of
+  "has the cell loaded" the out-of-cell test fails.
+- L3 `S16-LeviathanSync.ps1`, Reaper: run 3 (`coop`) is the in-game negative control for case 5 (lock kept 750–780 m
+  away); runs 4 and 5 (fix): the lock moves to the partner at 556–579 m and back. The other cases are measurements:
+  the error thresholds (5 m mean, 15 m max, 15 m spawn) were over on some runs because of the snaps and stale spawns
+  above (planned, not fixed), so they are now printed as "info" and only fail with `-Strict`. PASS means what S16
+  fixed: the lock follows the leviathan, no jump at a hand-over, the partner keeps it. That last script change came
+  after the runs and was only parse-checked; with it, runs 4–7 would have passed except run 4's roam (the older roam
+  checks, rewritten for run 5).
+- `dotnet test`: 404 tests, 13 skipped, all others pass except one known flake per run (two runs: `DroppedOutOfSightTest`,
+  which fails 2 of 8 times on `coop` too, and `ThreadSafeList/SetTest.ReadAndWriteSimultaneous`).
+
+**Not verified:** the asleep-cell freeze in game (from code only), a Reaper *chasing* a player (`-Chase`, not run), the
+Sea Dragon (none found within 250 m of the one Inactive Lava Zone spot tried), the Grand Reef adult ghosts (none found at two
+spots), latency, a rejoin (case 7), windowed games. Level of detail: even with the camera on it, the leviathan was at
+Full or Medium (Minimal for the far simulator in case 5), as a windowed game at that distance would have it;
+`Locomotion` ignores the level of detail and `SplineFollowing` only steps less often.
+
+**Risks:**
+- A creature patrolling along the edge between two players' loaded areas can change hands repeatedly; each hand-over
+  restarts its current action in the new owner's game. Seen once each way in runs 4–5 (out and back), no back-and-forth.
+- The hand-over moves the entity's own lock only, not its simulated children (`GetSimulatableChildren`, e.g. creatures
+  riding a Reefback); `FillWithRemovedCells` moves those, the new paths don't. Not seen in game.
+
+### S16b/S16c: creatures where the partner sees them (done)
+
+Branch `fix/s16bc-creature-replication` (on top of the S16 probe branch).
+
+**Design:**
+- **Packet:** new `CreatureMovements` (pose, velocity, angular velocity per creature, plus the sender's
+  `TimeManager.RealTimeElapsed`), unreliable sequenced on the movement channel like `VehicleMovements`, at most 5
+  creatures per packet (about 370 bytes, under LiteNetLib's 508-byte starting MTU; L1 checks it). It replaces the
+  `SplineTransformUpdate` that was sent only from `SplineFollowing.GoTo` (patch removed).
+- **Rate** (`CreatureMovementPolicy`, pure and unit-tested), from the simulating game, for living creatures only (corpses
+  keep their own physics as before):
+  - leviathan class (cell level Far/VeryFar: Reaper, ghosts, Reefback, Sea Dragon) a partner may have loaded: every 0.1 s;
+  - other creatures within 30 m of a partner: every 0.2 s; within the partner's load range for their cell level: 0.5 s;
+  - nobody else in range, or resting: every 2 s if it moved (keeps the server's record and cell fresh, like the old
+    1–5 s `GoTo` packets did; the S16 hand-over runs off these too).
+  "May have it loaded" is the per-axis distance to the partner's body against a range per cell level (100/180/340/620
+  m, the game's ±64 m doubling per level plus a margin). A creature that just stopped is sent once more.
+- **Server** (`CreatureMovementsProcessor`): as `EntityTransformUpdatesProcessor`: only the lock holder's poses count,
+  the record and cell follow (S16c), each other player gets the poses of the creatures they can see, and the S16
+  hand-over runs.
+- **Watching game** (`RemotelyControlled.UpdateCreatureMovement`): dead reckoning instead of a buffered interpolation
+  like S13's `MovementReplicator`, which shows a replication delay behind: 0.13 s plus latency is 2–5 m at a Reaper's
+  15–25 m/s, more than the old mean error. The copy's target is the latest pose carried forward by its velocity and
+  angular velocity for the time since it was taken (at most 1 s); in `FixedUpdate` its body gets the creature's
+  velocity plus the error / 0.25 s (rotation / 0.2 s), so it keeps a real velocity for physics and
+  `AnimateByVelocity` (the swim animation; animator `speed` 1 on the watched Reaper). Teleport only beyond 15 m (a new
+  copy after a stale record, or one that slept). Its own movement can't fight it: `Locomotion` and `WorldForces` are
+  off while poses come in, the swim path idles; both are restored when this game takes over (or not, for a dead
+  creature). The pose's age is counted on the physics clock from the frame's start, so the catch-up steps after a long
+  frame don't overshoot (they did by 3.4 m with the wall clock, and by 2–3 m when a packet was handled after a hitch in
+  the same frame).
+
+**Before/after** (L3 `S16-LeviathanSync.ps1 -Strict`, windowless, Crash Zone Reaper and a Reefback; before = the S16
+probe's runs above, same code path for replication; after = runs 2, 4 and 5 on this branch; errors are what a player
+sees, without a time shift; a *snap* is a step beyond what the original moved meanwhile, over one or two frames; the before snaps were raw one-frame steps, but the original moved only about 0.2 m per frame there, so they are the same quantity):
+
+| Case | Before (S16 probe) | After |
+|---|---|---|
+| Reaper, both near, A simulates (60 s) | 2.6–3.1 m mean, max 7.3–17.8 m, about 6 snaps a minute up to 16.6 m | **0.32–0.37 m mean**, max 1.9–2.6 m outside frames over 100 ms (3.6 m including a forced 350 ms frame), **no snap** (largest step beyond the original 0.7 m) |
+| Reaper, B simulates, A watches | 2.7–4.3 m mean, max 8.3–26.7 m, 5–16 snaps a minute up to 10.7 m | **0.37–0.51 m mean**, max 2.0–2.3 m; once 5.1 m (below), **no snap** (0.9 m) |
+| Reaper, late arrival | spawned 1.7–34.2 m off, up to 36 m in the first 20 s | **spawned 0.6–1.5 m off** (0.5–1.1 s after arriving), 0.36–0.41 m mean, max 1.7–2.3 m, no snap |
+| Reaper, hand-over (S16) | lock in 0.5 s, step 0.09–0.16 m | lock in 0.5 s, step 0.12–0.47 m, keeps swimming |
+| Reefback, both near / late arrival | 0.8 m mean, max 5.8 m, a 5.7 m snap / spawned 1.3 m off | 0.007–0.05 m mean, max 0.6 m (a natural and a forced 350 ms frame included) / spawned 0.1–0.3 m off, 0.005 m mean |
+
+**Bandwidth** (counters `EntityPositionBroadcaster.CreaturePacketsSent`/`CreatureMovementsSent`, read in each
+measurement window): the simulating game sent 36–64 creature poses a second in 9–23 packets, about 2–5 KB/s of
+upload, while it simulated 41–216 moving entities (around the Reaper and the Reefback; 10 of those poses a second are the Reaper's).
+The server forwards only what the partner can see. The old `GoTo` packets (one per creature every 1–5 s) weren't measured.
+
+**Verification:**
+- L1 `CreatureMovementPolicyTest` (8): tiers, load ranges, resting and just-stopped creatures, period, and a full packet
+  fits the smallest MTU.
+- L2 `CreatureMovementsTest` (2): poses reach the partner who sees the creature with the sender's time, not a player 1
+  km away; the record follows and a late arrival spawns it at the latest pose (S16c); poses from a player without the
+  lock are ignored. `CreatureLeavesSimulatorTest` now moves the creature with `CreatureMovements`. **Negative control:**
+  without the server processor, 5 of these 6 tests fail.
+- L3 as in the table; the scenario now checks the snap (1.5 m), the max error outside frames over 100 ms and forces a
+  350 ms frame on the watching game in `ab`/`ba`, and prints the send rate. Run 1 (the wall-clock age, a natural 353 ms frame) and run 3 (age
+  from a packet handled mid-hitch) are the negative controls for the two clock fixes (snaps of 3.4 m and 2.2–3.0 m).
+- Regressions: `S14-CreatureAggro.ps1` and `D4-ThreatParity.ps1` (see the log row).
+
+**Seen, not fixed:** in the final run's `ba`, for about 1 s the copy stayed 4 m above the original (5.1 m apart, 0.09 m
+over the 5 m check), held by what is probably the seabed in the watching game: the simulating player was a few hundred
+metres away, where its game may lack terrain colliders (S16 case 5 saw that at 750 m). The copy can't follow through
+terrain it collides with. A 350 ms frame on the watching game still shows the creature where it was when that frame
+began, up to 5 m behind at the end of it (every object stands still during such a frame); the next frame catches up.
+
+**Not verified:** case 5 (`roam`, the creature swimming out of the simulator's cells) wasn't run on this branch: it now relies on the 2 s far-tier poses reaching `CreatureMovementsProcessor` instead of the 1–5 s `GoTo` packets; the L2 `CreatureLeavesSimulatorTest` covers its server half with `CreatureMovements`. Packet loss and latency (localhost; a lost pose is replaced by the next one 0.1–0.5 s later, and the
+copy keeps extrapolating for up to 1 s), two PCs (clock sync: an error in `RealTimeElapsed` shifts the copy by speed ×
+error), many players, a Reaper chasing or grabbing (`-Chase` not run; S14's Reaper case bit), walking creatures (Sea
+Treader, crabs; from code they take the same path), creatures in alien containment, windowed games.
+
+**Risks:**
+- Upload grows with the creatures near a partner: about 70 bytes per pose. A school of 30 fish within 30 m of a partner
+  is 150 poses a second (about 10 KB/s). The tier distances are guesses for "the partner can see it".
+- `Locomotion` is off on copies: anything in the game that reads it there (none found) would see it disabled.
+
+**Planned (not built):**
+
+| Item | What | Size |
+|---|---|---|
+| S16b Smooth creature replication | **Done** (above): poses every 0.1–2 s by tier, dead reckoning on the watching game | M |
+| S16c Fresh spawn position | **Done** with S16b: the record is at most one send period old | S |
+| S16d Shared void ghosts (#2461) | One game (the first player in the void, the lock holder) spawns them as entities (`EntitySpawnedByClient`, lock), the others get them as remote copies; `GhostLeviatanVoid.UpdateVoidBehaviour` and the spawner must consider every player in the void (nearest player as target and for the 180 m despawn, spawn count per group of players), and the despawn must be synced. Its bites on the partner then need S14's relay or the synced-creature path | M–L |
+| S16e Leash changes | `Creature.leashPosition` only comes from spawn metadata (`StayAtLeashPositionMetadata`, Reaper, Sea Dragon, Ghost); game code that moves it (e.g. `OnDrop`) isn't synced, and `EntitySwitchedCells` re-sends the metadata, which resets a moved leash (from code; probably why a leash also moved in the partner's game in run 4 didn't hold). Low impact | XS–S |
+| S16f Put to sleep without a packet | When `LargeWorldEntity_UpdateCell_Patch.EntityUpdated` deactivates an entity this game simulates (asleep cell), send its final pose (an `EntityTransformUpdates` with its position), so the server re-cells it and the S16 hand-over runs. Needs an in-game check (a stalker chasing the partner 60+ m from its simulator) | S |
+
 ---
 
 ## After the top 10 (Tier 1, in rough order)
@@ -1001,3 +1191,5 @@ See ISSUE_TRIAGE.md for the full verify list.
 | 2026-11-02 | Tooling: windowless games, parallel rigs | `dual-client.ps1 -Windowless` (Unity `-batchmode`, started without the launcher; `$env:NITROX_WINDOWLESS` reaches scenario restarts, `run-suite.ps1 -Windowless`) and `-Rig 1..9` (port 11000+n, `--data-path` data folder, own game folder of junctions + 270 MB copies; `tools/rig.ps1`, per-rig `game-lock.ps1`, `bridge.ps1 -Rig`). Instant launch takes `--instantlaunch-port`. Debug-only game changes for batch mode: `BehaviourLOD_CheckVisibility_Patch` (camera-frustum visibility, since `Renderer.isVisible` is always false), sound muted, bridge `screenshot` renders the main camera. `-Stop` waits and stops only the recorded processes; scenario helpers no longer wait for every Subnautica process to exit. | Measured: CPU 0.35–0.4 cores vs 1.5, GPU 0.3 % vs 9 %, RAM and VRAM unchanged (`-nographics` ignored), so RAM fits one two-player rig on the dev PC. S3 PASS windowless on rig 1; rigs 1 and 2 ran at once; LOD patch checked on creatures; screenshot checked; `dotnet build` clean, `dotnet test` 317 pass, 13 skipped. **S13 windowless: 3 runs, 2–5 of 63 path checks fail** when the observing game drops to 9–25 fps for seconds; not compared with a windowed S13 on the merged build, so S13 stays windowed. Other scenarios not run windowless. Details: TESTING.md "Windowless games and parallel rigs". |
 | 2026-11-02 | S15 (new) | From COOP_FEATURES_SPEC D4's probe: creature attacks other than a bite (Crabsquid EMP, Mesmer hypnosis, lava rock and warp ball, Bleeder, Crabsnake grab) reach only the simulating player. Items with causes and fix ideas, no code. The vehicle bite gap D4 found is fixed in D4 (`feat/1-d4-threat-parity`) | L3 `D4-ThreatParity.ps1` windowless (EMP, Mesmer, Bleeder, Crabsnake in game; ranged attacks from code) |
 | 2026-11-02 | S6 (suite, windowless) | Branch `fix/s6-docking-suite`. The wave-1 suite's S6 failure (Seamoth docked 1 of 5 times, windowless, `coop` @ `75b83cc8`) is a **windowless difference, not a regression**: the Cyclops bay needs its door animator in the state `opened` (`requiresAnimationStateForDocking`, read in game), and `PlayerCinematicController.EndCinematicMode` leaves it on `CullCompletely`, which freezes the state machine in batch mode (nothing renders), so after the first dock/undock cinematic it stayed in the launch state. New Debug, batch-mode-only `PlayerCinematicController_EndCinematicMode_Patch` sets `AlwaysAnimate` instead. S6 now waits for the doors to open and prints the bay's state (animator, docked/nearby vehicle, lock) when a docking try fails. No code from the wave-1 merges sets animator culling. | Before the fix, on `coop` @ `c1bf740c` windowless (`-Cycles 3 -DockEvery 1`): dock 1 docked, dock 2 failed 3 tries with the bay animator `CullCompletely` in the launch state; on those same games, switching it to `AlwaysAnimate` through the bridge took it to `opened` and the next try docked. After the fix: **S6-InteriorStateHolds PASS windowless (14 checks, 45 hatch cycles, 5 of 5 docks and undocks)**, no errors in Alice's Nitrox client log during the run. `dotnet build` clean, `dotnet test` 387 pass, 13 skipped. Not verified: S6 windowed on this build; the partner's cinematics (`RemotePlayerCinematicController` also ends on `CullCompletely`, so Bob docking after Alice undocked may still fail windowless); other cinematic-gated paths (moon pool). |
+| 2026-11-02 | S16 (new) | Branch `fix/s16-leviathan-sync`. Probe of "leviathans aren't synced": L3 `S16-LeviathanSync.ps1` (natural Reaper, Lost River ghost, Reefback; bridge `record` now also tracks `active`, `remote`, `lod`). **Fixed:** a creature that swims out of its simulating player's loaded cells now goes to a player who has its cell loaded (`EntitySimulation.TryHandOverFromBlindOwner` from `EntityTransformUpdatesProcessor`, and a takeover when a player loads its cell); before, the simulator kept it, even 780 m away as an out-of-cell entity. **Measured, planned as S16b–f:** the partner's copy drifts up to 5 m and then snaps 5–17 m (packets only on `SplineFollowing.GoTo`, correction only beyond 5 m); a late arrival spawns a Reaper up to 34 m off (stale server record); void ghosts are per game (#2461). `CreateFullEntityCache` changes none of this | L2 `CreatureLeavesSimulatorTest` (4; two fail on `coop`, the out-of-cell one fails with "can see" instead of "has the cell"); L3 windowless: 3 baseline + 4 fixed runs, case 5 lock kept 750–780 m away before, moved at 556–579 m after; `dotnet test` 390 of 391 pass in each of two runs, 13 skipped (the failure was a known flake each time: `DroppedOutOfSightTest`, also flaky on `coop`, then `ReadAndWriteSimultaneous`). Not run: rejoin, chase, Sea Dragon, asleep-cell freeze in game |
+| 2026-11-03 | S16b/S16c | Branch `fix/s16bc-creature-replication` (on `fix/s16-leviathan-sync`). New unreliable packet `CreatureMovements` (pose, velocity, angular velocity, sender time; ≤ 5 per packet) sent by `EntityPositionBroadcaster` at `CreatureMovementPolicy`'s rate (leviathans near a partner 0.1 s, other creatures 0.2/0.5 s, nobody near 2 s); server `CreatureMovementsProcessor` keeps the record and relays to players who see it; the watching game's `RemotelyControlled` dead-reckons the copy (velocity + error/0.25 s, physics clock from the frame's start, `Locomotion`/`WorldForces` off meanwhile). Removed: `SplineTransformUpdate` and `SplineFollowing_GoTo_Patch`. Scenario: snap = step beyond the original's movement, max error outside long frames, forced 350 ms frame, send counters. | L1 `CreatureMovementPolicyTest` (8), L2 `CreatureMovementsTest` (2) + `CreatureLeavesSimulatorTest` on the new packet; 5 of 6 fail without the server processor. `dotnet test` 400 of 401 pass, 13 skipped (the failure: known flake `ReadAndWriteSimultaneous`). **L3 windowless, Reaper:** mean error 2.6–4.3 m -> 0.32–0.51 m, snaps up to 16.6 m -> none (largest step beyond the original 0.9 m), late-arrival spawn up to 34 m -> 0.6–1.9 m; final run 18 of 19 `-Strict` checks (`ba` max error 5.09 m for 1 s, the copy held 4 m above the original, probably by terrain the far simulating game lacks). **Reefback:** PASS, 0.005–0.05 m mean, spawn 0.1–0.3 m. Upload 2–5 KB/s with 41–216 moving entities simulated. Two clock bugs found and fixed in game (overshoot after a long frame; age of a packet handled mid-hitch), and an NRE for poses reaching an inactive copy (`Awake` not yet run), which had aborted the rest of those packets. **S14 PASS (65), D4 PASS (95)** on the final build (an earlier S14 run, with the NRE, failed 4 checks: it picked up the previous case's stalker, and a crash fish went for a stalker). Not verified: latency/loss, two PCs, `-Chase`, walkers, containment, windowed |

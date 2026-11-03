@@ -35,7 +35,12 @@ public sealed class GiveItemAction(IPacketSender packetSender, Entities entities
     /// </summary>
     public override int Priority => -10;
 
-    public override bool IsAvailable(PartnerHandTarget partner) => !partner.IsDowned;
+    /// <summary>
+    ///     Not while the partner pilots the Cyclops or sits in a vehicle: a pilot can't take anything, and a crew member
+    ///     behind the helm aims past the pilot's body at the helm screen (COOP_FEATURES_SPEC T4). Offering a give there
+    ///     opened the PDA on every click meant for the screen.
+    /// </summary>
+    public override bool IsAvailable(PartnerHandTarget partner) => !partner.IsDowned && !partner.Partner.PilotingChair && !partner.Partner.Vehicle;
 
     public override string GetText(PartnerHandTarget partner)
     {

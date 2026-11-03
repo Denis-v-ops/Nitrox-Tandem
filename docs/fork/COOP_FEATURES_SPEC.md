@@ -249,9 +249,9 @@ only reads:
 conflicts with this spec's planned edits to `RemotePlayer`, `AnimationController` and the escape pod. Record the list
 in R1b. **Done 2026-11-02:** no textual conflicts; the coupling and the decision are in R1b ("A2 trial merge").
 
-**New save-format tags:** `EntityMetadata` uses up to 94 (S1 = 92, S5b = 93, S10 = 94). This spec reserves **95**
-(`CuddlefishMetadata`, P1) and **96–99** for later features. Any new entity or metadata type needs a `SaveLoadRoundTrip` test.
-B3 stores power as metadata on existing power-source entities; pick its tag from 96–99.
+**New save-format tags:** `EntityMetadata` uses up to 96 (S1 = 92, S5b = 93, S10 = 94, P1 `CuddlefishMetadata` = 95,
+B3 `PowerSourceMetadata` = 96, both taken). This spec reserves **97–99** for later features. Any new entity or
+metadata type needs a `SaveLoadRoundTrip` test.
 
 **Options this spec adds** (defaults follow the decisions in §1):
 
@@ -503,7 +503,7 @@ gun terminal) comes with R1b, where the object has a Nitrox entity. The enzyme b
 
 ## 6. Teamwork survival
 
-### T1: Rescue window
+### T1: Rescue window — done 2026-11-02 (branch `feat/3-t1-d3-rescue`)
 **Goal:** at 0 health you go **down** instead of dying. Your partner has `RescueWindowSeconds` (default 60) to revive you:
 - a **first aid kit** gives 50 health (`kFirstAidKitHealth`), after a 2 s hold;
 - **holding the interact key** for 6 s gives about 20 health.
@@ -594,6 +594,79 @@ Oxygen keeps draining while down. Drowning, explosions and lava still kill.
   - Hold to revive with the bridge's `hold <partnerId> 6` (added in A0); `use` only clicks once.
 
 **Size:** L.
+
+**Done (2026-11-02, branch `feat/3-t1-d3-rescue`, with D3):**
+- **The kill hook:** a Prefix on `LiveMixin.Kill` (added to the existing `LiveMixin_Kill_Patch`) for `Player.main.liveMixin`
+  asks `RescueWindow.TryGoDown`; the decision is `DownedRules.GoesDown` (pure). Kills go through when the player is
+  already down (drowning, the timer), has less than 1 unit of air (`DownedRules.OUT_OF_AIR`; the game starts suffocating
+  at exactly 0, `Utils.NearlyEqual` with a 0 operand is only true for 0), `currentSub.subDestroyed`, `DamageType.Heat`
+  (what `TemperatureDamage` deals for hot water and lava contact), or `RescueWindowSeconds` is 0. Everything else goes
+  down, `Explosive` (crashfish) and `Fire` (base fires, geysers) included: of the explosions only the Cyclops
+  destruction kills outright. **Heat while down:** `invincible` would ignore lava, so `LiveMixin_TakeDamage_Patch` turns
+  heat damage on a downed local player into the kill.
+- **Down:** health 1, `tempDamage` 0, `invincible`; a pilot is pushed out with `ToNormalMode` (fallback as
+  `Vehicle.OnKill`, which also leaves the Cyclops helm); input locked as `Player.OnKill` does (PDA closed and ignored,
+  quick slots ignored, `playerController.inputEnabled` false and `SetEnabled(false)`), the camera stays free; no
+  `FreezeStats`. `Player.IsFreeToInteract` gets a Postfix (health 1 is alive, so it wasn't blocked by itself), which
+  stops `GUIHand` targets, tools and held items. **Fade:** `Player.Update` → `SuffocationUpdate` writes overlay 0 every
+  frame, so the pulse (0.35 to 0.75 over 2.5 s) is written in `LateUpdate` as `max(pulse, 1 - suffocationProgress)`.
+  **Countdown:** `HandReticle` `Use` text, written every `Update` (`HandReticle.LateUpdate` clears its texts): "You're
+  down · 42 s until a partner has to reach you" (en, de).
+- **Verified in the game code:** `SuffocationDie` kills only if `IsAlive` (health > 0, so health 1 lets drowning kill);
+  `Kill` ignores `invincible` (only `TakeDamage` checks it); `TakeDamage` sets health before calling `Kill`, and a kill
+  during a cinematic comes later from `ManagedUpdate` as `Kill()` (type `Normal`, also caught).
+- **The server owns the window** (`RescueService`, a hosted service ticking every 0.25 s, plus `RescueRules`). The game
+  can't decide the window in the Prefix (it doesn't know the escalation), so it always goes down and sends
+  `PlayerDowned`; the server answers `PlayerDowned(player, window)` to everyone, or `PlayerRescueExpired` at once (3rd
+  down, option 0, nobody else up). On `PlayerRescueExpired` the game turns `invincible` off and calls `Kill`: vanilla
+  death and Nitrox's death beacon run unchanged. A game dying while down (drowned, lava) sends `PlayerRescueExpired`
+  itself so the others stop showing the distress call; `PlayerDeathEvent` clears the window too. Safety nets in the game:
+  no answer in 10 s, or 10 s past the window's end, and it dies.
+- **Revive:** `ReviveAction` (priority 100) on T2's `PartnerHandTarget`: 6 s by hand → 20 health; 2 s when the rescuer
+  **carries** a first aid kit → 50 health. **(H) answered, the spec changed here:** a first aid kit can't be held in
+  hand: it isn't a hand item (`InventoryItem.isBindable` false, seen in game), so it never gets a quick slot and the game
+  uses it from the inventory. Any kit in the rescuer's inventory counts. The server checks the pair with
+  `PartnerInteractions` (`TargetMayBeDowned`, so a downed rescuer is refused), that the target is down and that the kit
+  is a `FirstAidKit` `InventoryItemEntity` of the rescuer, destroys it and sends `EntityDestroyed` to everyone (the
+  rescuer's game removes it from the inventory through `Pickupable.OnDestroy`), then `PlayerRevived(target, rescuer,
+  health)`. **Priority:** revive outranks buddy breathing, so T2's "downed partner" branch is now unreachable (after a
+  revive the partner is low on air and buddy breathing is offered); T3's give was already off for a downed partner.
+- **Escalation** (`RescueEscalation`): `DownsSinceRest` counts downs that got a window or were refused by the
+  escalation (not "nobody to help"); 1st full, 2nd half, 3rd none. Reset by a completed sleep (`SleepManager` keeps the
+  sleepers from the start of the sleep and resets them after `SleepComplete`) or lazily at the next down when
+  `LastDownedAt` is 15 min (of `ActiveTime`) ago. Admin command `rescue status` / `rescue rest <player>`.
+- **Timer persistence:** `DownedUntil` stays a time of `ActiveTime`; every tick moves an offline downed player's
+  `DownedUntil` on by the time that passed, so the window pauses while they're away and also across a restart (saved,
+  and `ActiveTime` doesn't run while the server is down). On join the server sends the joiner every downed partner's
+  window and, if the joiner quit while down, `PlayerDowned(joiner, left)` to everyone; the joiner's game goes down
+  again. Nobody else up after the join, or the last player who is up leaves: the windows end, except while the server
+  shuts down (`ApplicationStopping`), when everyone leaves in any order. **Verified for a restart** only with the downed
+  player leaving first (L2); a restart with both online relies on that shutdown guard, which no test drives (the L2
+  harness disconnects the players before it stops the host).
+- **The downed body (partner's game):** `DownedPose` on the body triggers `player_death` and stops the animator
+  (`speed` 0) once the `Death` layer's clip reaches normalized time 0.9 (if it was already left, `Play` at 0.9 first);
+  revived: `speed` 1, the clip ends and the body gets up. `RemotePlayer.IsPoseLocked` (only `IsDowned` today) replaces
+  the `UpdatePlayerAnimations = true` assignments, so #2859's cinematic lock folds into that test. **Deviation from A2:**
+  `UpdatePosition` isn't skipped while down: the body must follow a pushed-out pilot and a moved body. Arm writes
+  (`SetArmState`, R2b) aren't blocked: the animator is stopped, and the arms must be right after a revive. The weak pain
+  sound (`pain_no_tank_light`) plays from the body every 4 s through D1's `RemotePlayerSounds.PlayPain`. The held light
+  stays drawn (D6): nothing holsters it.
+- **Tests:** L1 `RescueRulesTest`, `DownedRulesTest`; L2 `RescueWindowTest` (7 tests: the window runs out, revive only
+  from a partner who can reach a downed target, the kit used up for everyone, nobody up / everyone down / the last one
+  up leaves, death and "died while down", escalation 60/30/none with sleep and 15 min resets and the option off, paused
+  while offline and kept across a restart when the downed player left first, with a late joiner told), all 7 fail without the three server processors.
+  L3 windowless `tools/scenarios/T1-RescueWindow.ps1` **PASS (73 checks)**: 500 damage → down (alive, health 1,
+  invincible, input locked, camera free, no interaction, fade 0.50, countdown, more damage ignored, air drains 42 → 39);
+  Bob's game: downed partner, pose held (`quick_death` at 0.903, speed 0, still 2 s later), weak pain sound, distress
+  marker; 3 s hold nothing, 6.5 s hold → 20 health, all unlocked, body moves, marker back; 2nd down 30 s window, kit →
+  50 health, kit gone in Bob's game and on the server; 3rd down → death, respawn, death beacon; D3 at 400 m (below);
+  window runs out → death and beacon; out of air while up → drowned without going down; down with 3 s of air →
+  drowned before the window ended, server and Bob cleared. **Negative control:** the same scenario with the Prefix
+  disabled FAILS (see Log).
+- **Needs a windowed check:** how the fade and the countdown look, the held pose on screen (windowless bodies are
+  `CullUpdateTransforms`), the pain sound's volume. **Not checked in game:** a downed pilot pushed out of a Seamoth or
+  Prawn suit, a rejoin while down (L2 only), lava/heat while down, a sleep reset (L2 only), drops reaching the partner and
+  surviving a restart after a death (vanilla `LoseItems`, still (H)).
 
 ### T2: Buddy breathing — done 2026-11-02 (branch `feat/1-t2-buddy-breathing`)
 - **Today:**
@@ -1138,7 +1211,7 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   (the scenario spawns one with the console, which also leaves it unattached); two game languages at once; the F2
   scenario wasn't re-run with the real rule (its spots are shallow open water).
 
-### D3: Distress call (S, with T1)
+### D3: Distress call (S, with T1) — done 2026-11-02 (branch `feat/3-t1-d3-rescue`)
 - **Goal:** when your partner goes down, their marker becomes a distress signal you can follow, even where the signal
   has faded. It turns the rescue window into a race through the dark. (Decided 2026-11-02: it **pulses through**
   interference.)
@@ -1152,6 +1225,29 @@ These items balance the helps in §6 and §7 (principles 2–4). Most are small:
   - It ends on `PlayerRevived` (back to the normal rule) or on death (Nitrox's death beacon, if
     `MarkDeathPointsWithBeacon` is on).
 - **Tests:** L3, as part of T1: B goes down at 400 m; A's marker turns red, counts down, and moves only every 5 s.
+- **Done (2026-11-02, branch `feat/3-t1-d3-rescue`, with T1):**
+  - `DistressRule` first in `PartnerSignalRules.Rules` (before D2's `LastContactRule` and "faint"), from
+    `PartnerSignalContext.Distress` (the partner has a window in `RescueWindow`). It applies in every mode, Off
+    included, and through interference: `minDist` 3 m (the body is right there), `range` 1 m.
+  - **"Full alpha" is 0.5:** `uGUI_Pings` lerps the icon alpha from `alphaMin` to `alphaMax` (0.5) over `range` beyond
+    `minDist`, so a 1 m range gives the game's maximum from 4 m on. That is the brightest a marker gets.
+  - **(H) answered: no.** `uGUI_Pings` reads `colorIndex` only in `OnAdd` (also when it is enabled again); the colour
+    otherwise changes only through `PingManager.NotifyColor` → `OnColor`. `PartnerSignal` therefore calls
+    `uGUI_Pings.OnColor(id, PingManager.colorOptions[2])` directly, as `PlayerModelManager` colours the marker, and sets
+    `colorIndex` 2 for a re-add; at the end it puts back the old index and the player's colour. `SetColor` is never
+    called (Nitrox would send it as the player's preference).
+  - **Pulse:** every 5 s (the first at once) the marker's `origin` (a static object, as D2's last contact) moves to the
+    body's position; a pulse also counts as contact for D2. **Sound (H answered):** `event:/interface/ping`, the metal
+    detector's short ping (`LootSensor`), not on Nitrox's whitelist, so only the rescuer's game plays it.
+  - Label "<name> · down · 42 s" (`Nitrox_PartnerSignalDistress`, en, de), the server's window counted down locally.
+  - It ends with `PlayerRevived`, `PlayerRescueExpired` or the partner's death; the body keeps the pose until the death
+    arrives.
+  - **Verified:** L1 `PartnerSignalRulesTest` (D3 cases: every mode, distance and interference; rule order; pulse
+    timing; label). L3 in `T1-RescueWindow.ps1`: Alice down at 400 m, Bob at 50 m with the line cut (D2): rule
+    "distress" through the cut, colour index 2, label counting down; Alice moved 30 m: the marker stayed for 3.5 s, then
+    the pulse put it on her; pulses at 3.8, 8.8 and 14.1 s; the ping played with each pulse; after the window ran out
+    the marker went back to the normal rule.
+  - **Needs a windowed check:** the red marker and its brightness on screen, the ping's volume.
 
 ### D4: Threat parity for the rest of the creatures (S probe, then fixes)
 - **Question:** does a creature that A's game simulates actually hurt B? If not, one player is close to immune and no
@@ -1617,8 +1713,8 @@ sets ever reaches them.
 
 ## 10. Pets & aquariums
 
-### P2: Containment eggs survive (#2538) + aquarium check (M)
-- **Likely cause of #2538 (H):**
+### P2: Containment eggs survive (#2538) + aquarium check (M) — done 2026-11-02 (branch `feat/3-p2-containment-eggs`)
+- **Likely cause of #2538 (H, answered below: the mechanism was different):**
   - Containment tanks are global entities, so their simulation lock goes to whoever joined first.
   - Birth, hatching and growing are gated on that lock (`WaterParkCreature_BornAsync_Patch.CanBeBorn`,
     `CreatureEgg_Hatch_Patch`, `WaterParkCreature_ManagedUpdate_Patch`).
@@ -1636,7 +1732,48 @@ sets ever reaches them.
   - L3: an egg ripens (fast-hatch cheat, `game:CreatureEgg.cs:129`) while only the player without the lock is near; it must
     not be lost. Reverting the fix must bring the loss back. B sees the aquarium fish.
 
-### P1: Cuddlefish follows and plays with both (M)
+**Done 2026-11-02** (branch `feat/3-p2-containment-eggs`):
+- **(H) answered: partly wrong.**
+  - Right: a tank (`InteriorPieceEntity`, a global root) gets its lock from whoever built it or joined first. Only that
+    game hatches, breeds and grows (`CanBeBorn`, `CreatureEgg_Hatch_Patch`). The lock moves to the partner on disconnect
+    (L2).
+  - Wrong: "the lock holder is away". Every game runs the egg's timer: `CreatureEgg.UpdateProgress` runs every second
+    through `InvokeRepeating`, and bases are always loaded. Seen windowless: with the holder 200 m away, the egg's
+    progress kept growing in step on both games.
+  - Wrong: "the server is never told". `CreatureEgg.Hatch` calls `liveMixin.Kill()`. Eggs have `destroyOnDeath` and
+    `broadcastKillOnDeath` (read in game), so `LiveMixin_Kill_Patch` sends `EntityDestroyed`.
+  - **Real cause:** a race between the games' once-a-second checks. If the game without the lock reaches progress 1
+    first, it destroys its egg without a creature, and its `EntityDestroyed` removes the egg from the server and from the
+    holder's game before the egg hatches there. No creature anywhere. This fits the reports: "one hatched, the other
+    despawned", and an egg vanishing while both players were at the base.
+  - **Second path:** deconstructing part of a stacked tank creates a new tank (`WaterParkDeconstructed`). Nobody claimed
+    its lock until the next restart, so every game counted as "without the lock" and its eggs were always lost.
+- **Fix:**
+  - `CreatureEgg_Hatch_Patch` is now a skipping Prefix. A game without the tank's lock skips `Hatch` and keeps the ripe
+    egg until the holder's `EntityDestroyed` and creature arrive. `UpdateProgress` keeps calling `Hatch` every second, so
+    if the lock comes to this game, the egg hatches here.
+  - `WaterParkDeconstructedProcessor` claims the split-off tank for the deconstructing player (`TryClaimBuildPieceAsync`,
+    as for a new piece).
+  - The S7 base-lock fallback (`BaseModuleSimulation`) wasn't needed: every tank now has its own holder whenever someone
+    is connected.
+- **Aquarium: verified, works today.** A puts a peeper in (`Inventory.AddOrSwap`). B's aquarium container holds it, and
+  B's track shows the swimming peeper model.
+- **Tests:**
+  - L2 `ContainmentTankLockTest`: the tank's lock goes to the first player and moves to the partner on disconnect; the
+    split-off tank gets a holder. The split test fails without the server fix.
+  - L3 windowless `P2-ContainmentEggs.ps1` on the new fixture `tools/fixtures/p2-containment-base` (a room with a tank and
+    an aquarium): PASS, 33 checks.
+  - **Negative control** with the pre-fix build: 12 of 33 checks fail. The egg is gone from the server and from both
+    games, and no cuddlefish exists.
+- **Not verified, or known trade-offs:**
+  - The split-off tank in game. Stacked tanks weren't built; the server half is covered by L2, and the game half is the
+    same "without the lock" path.
+  - A game without the lock no longer runs `KnownTech.Add`, so the "egg discovered" message may appear only on the
+    holder's game. The tech itself syncs through `KnownTech_NotifyAdd_Patch`. Not checked in game.
+  - Growing up (`WaterParkCreature_ManagedUpdate_Patch`) and breeding: unchanged. A game without the lock removes the baby
+    locally without broadcasting (no `Kill`), and the holder sends the swap. Not tested in game.
+
+### P1: Cuddlefish follows and plays with both (M) — done 2026-11-03 (branch `feat/3-p1-cuddlefish`)
 - **Today:**
   - In the game, the cuddlefish befriends and follows the **local** player (`game:CuteFish.cs:81`,
     `CreatureFollowPlayer.cs:24-38`). It warps to within 40 m of them every 5 s (`CuteFish.cs:99-121`). Tricks only happen
@@ -1658,6 +1795,52 @@ sets ever reaches them.
   - L1: metadata round trip.
   - L2: an exclusive request moves the lock and keeps it after dropping back; handover on disconnect.
   - L3: B plays with it, and it follows B; follow/stay persists across a restart.
+
+**Done 2026-11-03** (branch `feat/3-p1-cuddlefish`):
+- **Findings (seen windowless):**
+  - A released cuddlefish is a **cell entity**, not a global root: `Items.Dropped` records level Medium (its
+    `initialCellLevel`), so the lock follows the cells a player sees. "Whoever joined first" (`EntitySimulation.cs:133-147`)
+    only applies while it's in a tank. The tank-release path (hatch, pick up, drop in the water) gives the same entity as
+    console `spawn cutefish`; the lock goes to the player who dropped it.
+  - The game sets the friend to the local player on every game; on the lock holder's game the friend is that player
+    (read via the bridge), so the friend logic needed no change.
+  - `CuteFish.WarpToPlayer` (`InvokeRepeating`) ran on every game: the partner's copy jumped to the partner while the real
+    one was with the holder.
+  - A follow/stay command changed only the commanding game. After a stay and a long trip, the partner's game took the
+    lock and its copy, still "following", followed the partner: the stay was lost.
+  - The play scene ends by itself windowless (about 6 s); the command needs the right hand button while aiming at it
+    (`bridge hold <id> 0.4 RightHand`, the cuddlefish held still with a kinematic rigidbody).
+  - The lock fell to the partner when the holder outran the cuddlefish (teleport; a fast vehicle can do the same):
+    its cell left the holder's loaded cells before their game warped it to them.
+- **Fix:**
+  - `CuteFishHandTarget.OnHandClick` (play) and the right hand branch of `OnHandHover` (command, farewell) first take an
+    **exclusive** lock (bench pattern, `NitroxClient/GameLogic/Cuddlefish.cs`). When granted, the game starts the
+    position broadcast (a lock granted on request doesn't), and once the hand target is idle again it drops back to a
+    normal lock. A refused request (the partner is playing with it) shows the "deny" hand.
+  - `CuddlefishMetadata` (tag 95): follow/stay, the farewell and the water park state (age, breeding; an entity holds one
+    metadata, so `WaterParkCreatureMetadataExtractor` yields to it and `WaterParkCreature_ResetBreedTime_Patch` sends it).
+    Sent after a command (`PlayCommandAnimation`) and on the farewell setter; the processor sets the fields and, outside a
+    tank, the `followingPlayer` setter (inside a tank the setter would unparent it).
+  - Only the simulating game runs `WarpToPlayer`.
+  - Server (`EntitySimulation.FollowsItsHolder`): a following cuddlefish keeps its holder when its cell leaves their
+    loaded cells; a staying one is an ordinary cell creature.
+  - No "nearest player" handover; no strings added (the deny hand text exists).
+- **Tests:**
+  - L1 `WorldServiceSaveLoadTest.CuddlefishStateSurvivesSaveAndLoad`.
+  - L2 `CuddlefishLockTest` (4): an exclusive request takes the lock, a normal request doesn't, the drop back keeps it,
+    handover on disconnect; stay reaches the partner and survives a restart with the age; out of sight a following
+    cuddlefish stays with its holder (fails without the server change), a staying one goes to the partner.
+  - L3 windowless `P1-CuddlefishBoth.ps1`: PASS (33 checks). **Negative control** on the pre-P1 build: 14 of 33 fail
+    (the lock stays with A after B plays, it follows A, stay not shared or saved, it doesn't stay after the restart).
+    `dotnet test`: 394 pass, 13 skipped.
+- **Not verified, or known limits:**
+  - Windowed: the play scene and command animations, the deny hand, the tricks. The partner still doesn't see the tricks
+    (creature actions aren't synced for it): R1b.
+  - The farewell (needs a ready rocket) and the hatch-to-release path with the fix in place weren't run in game; the
+    release path was probed on the pre-P1 build only.
+  - Far from the cuddlefish, the partner's copy (kept loaded while it follows, cell level Global) stays where they last
+    saw it, until they come back into range and the moves resume.
+  - After a restart, the lock goes to whoever sees it first, not to who played with it last.
 
 ---
 
@@ -1773,16 +1956,46 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
 - **See also:** crafting from base and Cyclops lockers, [MULTINAUGHTICA_SPEC M8](MULTINAUGHTICA_SPEC.md#m8-crafting-from-base-and-cyclops-lockers-ml):
   a granted locker claim re-runs `GhostCrafter.Craft`, so the crafter lock above is taken as for any craft.
 
-#### B3: Base power (L)
-- **Today:** base power isn't synced and refills to full on every load: `InteriorPieceEntitySpawner.cs:81-84` and
-  `ModuleEntitySpawner.cs:36-40` say "TODO: Have synced/restored power" (#1811). Base oxygen depends on each game's own
+#### B3: Base power (L, done 2026-11-02)
+- **Today (before B3):** base power wasn't synced and refilled to full on every load: `InteriorPieceEntitySpawner` and
+  `ModuleEntitySpawner` said "TODO: Have synced/restored power" (#1811). Base oxygen depends on each game's own
   power state (`game:Player.cs:1434`), and S7 lets only the base's lock holder produce. So if the lock holder's game
   thinks the base is unpowered, filtration and the bioreactor stop for both players.
-- **Design:** the base's simulating player sends each power source's charge as metadata, throttled. Spawners apply the
-  stored value instead of filling to max; the other game only mirrors it.
-- **Nuclear reactor (S, H):** every game with the base loaded removes rods and adds depleted ones itself
-  (`game:BaseNuclearReactor.cs:279-331`, no Nitrox patch). Copy the bioreactor fix: only the producer swaps rods.
-- **Tests:** `SaveLoadRoundTrip` of stored power; L3: drain a base at night, restart, power is the same for both.
+- **Done:** new `PowerSourceMetadata(Power)`, **tag 96**, on the solar panel, bioreactor and nuclear reactor entities;
+  thermal plants already carry `ThermalPlantMetadata`, which got an optional `Power` (null in old saves and in the
+  temperature-only updates every nearby game sends). `BasePowerSync` (client) ticks from `PowerSource.UpdateConnectionCallback`
+  (`game:PowerSource.cs`, `InvokeRepeating` once a second): the **producer** (lock holder of the source's base, or of
+  the source itself when it stands alone, a global root of its own) sends a value when it changed by ≥ 1 % of the
+  maximum and the last send is ≥ 5 s old, and at once when the source becomes empty, non-empty or full (that's what
+  turns a base's power, and its air, on or off). The fastest change is a nuclear reactor's 4.2/s of 2500, so a saved
+  value is at most about 6 s or 1 % behind; an idle full base sends nothing. **The other games keep simulating** their
+  copy (generation and consumption are not stopped, so their base never goes dark between updates) and overwrite it
+  with each update. The server (`EntityMetadataUpdateProcessor`) takes power only from the lock holder of
+  `ParentId ?? Id` and merges thermal updates (temperature still a ratchet, power kept when an update has none).
+  Spawners use the stored value (`BasePowerSync.RestoredPower`), full when there is none: **old saves load as before.**
+  The bridge's `diff` ignores `"Power"` values (they move between updates); scenarios check power themselves.
+- **Nuclear reactor (S):** confirmed by code reading that every game with the base loaded removed rods and added
+  depleted ones itself (`game:BaseNuclearReactor.cs` `Update`/`ProducePower`/`AddDepletedRodToEquipmentAsync`, no
+  Nitrox patch; each swap was sent as `EntityDestroyed` + `PickupItem` + `EntitySpawnedByClient`, so each game added its
+  own depleted rod). `BaseNuclearReactor_ProducePower_Patch`, like the S7 bioreactor fix: only the producer runs it;
+  the other games return the requested energy while a rod is active.
+- **Verified (read in game 2026-11-02):** the `PowerSource` sits on the module's own object for the solar panel (max 75),
+  thermal plant (250), bioreactor (500) and nuclear reactor (2500). L1: `BasePowerSyncTest` (stored value, full when
+  none, throttle), `WorldServiceSaveLoadTest` (`SaveLoadRoundTrip` of every kind, a pre-B3 thermal plant JSON without
+  `Power` loads). L2 `BasePowerTest`: the lock holder's value is stored, relayed and in a late joiner's payload after a
+  restart, the partner's is ignored, thermal temperature and power merge (fails with the old processor); a depleted
+  rod's three packets leave one rod in the slot. L3 windowless `B3-BasePowerPersists.ps1` PASS (38 checks): the
+  producer's drained bioreactor reaches the server and the partner, a rod is used up once, the stored charge and the
+  rods are back in both games after a restart. **Negative control** on the unfixed build: 11 checks FAIL (no stored
+  power, the partner's game about 300 apart, 2 depleted rods on the server and in both games, refilled to about 495 of
+  500 after the restart). Not run in game: a thermal plant's or solar panel's sync (same code path; L2 covers the
+  thermal merge), a lock handover between the games, night-time drain. Read, not run: a module on a base exterior
+  stays under the base's transform when spawned (`ModuleEntitySpawner.MoveToGlobalRoot` → `game:LargeWorldEntity.cs`
+  `Start` only reparents an object without a parent), so the client's lock id (`SubRoot`) matches the server's
+  (`ParentId`).
+- **Known gaps:** what a non-producer's game consumes itself (e.g. the partner's fabricator) isn't taken from the shared
+  value (it is overwritten); the reactors' `_toConsume` (energy taken from the current rod/item) is neither synced nor
+  saved, as before; a base saved at 0 power is really unpowered for both players after loading (correct, but new).
 
 #### B4: Aurora fires (M, probe first)
 - **Today (H):** the fire code takes its id from `fire.transform.parent`, which fits the Cyclops layout
@@ -1898,3 +2111,10 @@ prices, "keeping it scary").
 | 2026-11-02 | Wave 1 suite | `tools/run-suite.ps1 -Windowless` on merged `coop` (A0-A2, R1a, B1, B2, D4, D5a, R2a, F1, D1, D6, T2, T4, F2): **29 of 30 PASS**, incl. S13, S14 and every new feature scenario. **FAIL:** `S6-InteriorStateHolds`, Seamoth docking into the Cyclops 1 of 5 (hatch cycles 45/45 fine); under investigation (windowless difference or regression). RAM during the run: free memory fell to 3.3 GB with one rig, so a second parallel rig doesn't fit | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave1` |
 | 2026-11-02 | R2b | Done: nine arm states as `AnimChangeType` values (`using_tool`, `using_tool_alt`, `using_builder`, `using_pda`, `on_surface`, `jump`, `diving`, `diving_land`, `holding_tool`), sent from the local arms animator on change (off after 0.15 s); every arm write on the partner's body through `RemotePlayer.SetArmState` (single entry point for #2859 and T1), which also calls `ArmsController.Reconfigure` on a tool change; server replays them to late joiners except the fall states; join payload pose is the underwater state only. Findings: `jump` is a per-frame state, not a trigger; `using_builder` has no writer in the game; opening the PDA puts the tool away. README row | L1 `ArmStatesTest`; L2 `PartnerArmStatesReplayTest` (fails on the old processor); L3 windowless `R2b-PartnerArms.ps1` PASS (45 checks, incl. a rejoin; tool use driven on the sender's animator); unfixed `coop` FAIL (12 checks). Not verified: real tool input, the look of the poses, a fall onto land (windowed) |
 | 2026-11-02 | B4 | Done, no code change: dousing an Aurora fire already reaches the partner, the server and late joiners and stays out after a restart (Cyclops fire path: `FireDoused` with the parent id, server destroys the batch entity, parsed batches are saved) | L2 `AuroraFireTest` (fails without the server destroy); windowless `B4-AuroraFiresStayOut.ps1` PASS (12 checks) on unchanged `coop`, so no failing negative control. Not covered: half-doused health after a restart, the real extinguisher aim |
+| 2026-11-02 | B3 | Done: base power synced and saved (#1811). `PowerSourceMetadata` (tag 96) for solar panels and reactors, optional `Power` in `ThermalPlantMetadata`; `BasePowerSync` sends the lock holder's value (≥ 1 % change and 5 s, at once on empty/full), the other games keep simulating and take it over; server accepts power only from the lock holder and merges thermal updates; spawners restore the stored value (full when none, so old saves load as before); nuclear reactor rods swapped by the producer only (`BaseNuclearReactor_ProducePower_Patch`); `diff` ignores `"Power"`. README row | L1 `BasePowerSyncTest`, `WorldServiceSaveLoadTest` (round trip, pre-B3 JSON); L2 `BasePowerTest` (fails with the old processor); L3 windowless `B3-BasePowerPersists.ps1` PASS (38 checks); negative control on the unfixed build FAIL (11 checks). Not in game: thermal/solar sync, lock handover, night drain |
+| 2026-11-02 | T1 | Done: at 0 health the player goes down (one `LiveMixin.Kill` Prefix; through when already down, out of air, sub destroyed, heat/lava, option off; heat kills a downed player too); health 1, invincible, pushed out of a vehicle, input locked, camera free, no interaction, pulsing fade, countdown, air keeps draining. The server owns the window (`RescueService`: 60/30/none, reset by a completed sleep or 15 min; nobody up → ends at once; paused while the downed player is offline, kept across a restart (L2: downed player left first; with both online only a shutdown guard, untested); rejoin still down), revive by hand 6 s → 20 or carrying a first aid kit 2 s → 50 (kit destroyed for all), expiry lets vanilla death run. Downed body holds the `player_death` pose, weak pain sound. (H): a first aid kit can't be held in hand (not a hand item), so any kit carried counts. Admin `rescue status|rest`. README row | L1 `RescueRulesTest`, `DownedRulesTest`; L2 `RescueWindowTest` (7 tests, all fail without the server processors); L3 windowless `T1-RescueWindow.ps1` PASS (73 checks); negative control with the Prefix disabled FAIL (35 checks). Full suite green. Not checked: windowed look (fade, countdown, pose), vehicle push-out, lava while down, rejoin while down in game |
+| 2026-11-02 | D3 | Done: `DistressRule` before D2's last contact: full marker alpha (0.5, the game's maximum) at any distance, in every mode and through interference, red via `uGUI_Pings.OnColor` + `colorIndex` 2 ((H): `colorIndex` alone isn't picked up), "<name> · down · 42 s", moved to the real position every 5 s with `event:/interface/ping` ((H) answered); ends on revive, expiry or death. README row | L1 `PartnerSignalRulesTest` (D3 cases); L3 in `T1-RescueWindow.ps1` (400 m with the line cut: pulses at 3.8/8.8/14.1 s, marker stale between pulses, ping per pulse), fails with the T1 Prefix disabled. Windowed look not checked |
+| 2026-11-02 | P2 | Done: (H) partly wrong. The holder being away doesn't matter: every game runs the egg timer. The cause is a race. When the game without the tank's lock ripens the egg first, `Hatch` destroys it without a creature and `LiveMixin.Kill` broadcasts `EntityDestroyed` (eggs are `destroyOnDeath`), so the egg is gone everywhere. A tank split off by deconstruction also had no lock holder. Fix: games without the lock skip `Hatch` and keep the ripe egg; the server claims the split-off tank for the deconstructing player. Aquarium: works, the partner sees the fish. | L2 `ContainmentTankLockTest` (split test fails without the fix). Windowless `P2-ContainmentEggs.ps1` on the new fixture `p2-containment-base`: PASS (33 checks); negative control with the pre-fix build: 12 fail (egg gone everywhere, no creature). Build + tests: 388 pass, 13 skipped, 1 failure that also happens on `coop` without this branch (`DroppedOutOfSightTest`). Not in game: stacked-tank split, the "egg discovered" message for the partner. |
+| 2026-11-03 | P1 | Done: playing with the cuddlefish or giving it a command takes its lock as exclusive (bench pattern) and drops back to a normal lock, so it follows whoever played with it last; `CuddlefishMetadata` (tag 95: follow/stay, farewell, water park state); only the simulating game warps it; a following cuddlefish keeps its holder out of their sight (server). Findings: a released cuddlefish is a cell entity; each game's copy warped to its own player; a stay was lost when the partner's game took the lock. README row | L1 save/load; L2 `CuddlefishLockTest` (out-of-sight test fails without the server change); windowless `P1-CuddlefishBoth.ps1` PASS (33 checks); negative control on the pre-P1 build: 14 fail. `dotnet test` 394 pass. Not in game: farewell, tank release with the fix, anything windowed (animations, tricks: R1b) |
+| 2026-11-03 | Wave 2 suite | `tools/run-suite.ps1 -Windowless` on `coop` @ `72ca17ae` (wave 2 merged: G0, G4, D5b, T3, D2, R2b, B4, S6 fix): 31 of 36 PASS. S1 (one desync reading) and S2-MapRoom (another run's game still held the patcher DLL) passed on re-run. S14 and D4 each missed one creature target-pick check (`sandshark-AB`, `crabsquid-AB`; the crabsquid one also misses on later runs): flaky AI target choice, follow-up. **T4 failed 14 of 56:** T3's Give opened the transfer screen when the crew member aimed past the pilot at the helm screen, so every helm click went nowhere; fixed (no Give while the partner pilots or sits in a vehicle), T4 then 56/56 | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave2` |
+| 2026-11-03 | Wave 3 merge | Merged S16 + S16b/c (leviathan sync), B3, T1 + D3, P1 + P2 and the T4 fix; re-ran the affected scenarios windowless on the merged build: T1 73, B3 38, P2 33, S1 62, S2-MapRoom 38, S16 14 (incl. the roam case), S14 65/66 and D4 94/95 (the target-pick flakes above). **P1 failed 6 of 33** after the merge: S16's new out-of-cell hand-over skipped P1's keep-with-holder rule; fixed, P1 then 33/33. Build green, 505 tests pass. **Open decision (T1):** a crashfish explosion or fire puts the player down (rescuable); only the Cyclops' destruction and heat/lava kill outright, while §2.2 says "explosions still kill" | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave3`, `wave3-fixes` |

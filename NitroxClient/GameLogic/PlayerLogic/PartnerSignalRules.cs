@@ -19,6 +19,7 @@ public enum PartnerSignalMode
 /// </summary>
 /// <param name="LinkCut">Either player is in signal interference (COOP_FEATURES_SPEC D2).</param>
 /// <param name="SecondsSinceContact">While the link is cut: seconds since it was cut.</param>
+/// <param name="Distress">The partner is down and calls for help (COOP_FEATURES_SPEC D3).</param>
 public readonly record struct PartnerSignalContext(
     PartnerSignalMode Mode,
     float Distance,
@@ -27,7 +28,8 @@ public readonly record struct PartnerSignalContext(
     float DefaultMinDist,
     float DefaultRange,
     bool LinkCut = false,
-    float SecondsSinceContact = 0);
+    float SecondsSinceContact = 0,
+    bool Distress = false);
 
 /// <summary>
 ///     How the partner's marker and name tag look. Only fields of the <see cref="PingInstance" /> are changed, never its
@@ -55,10 +57,10 @@ public interface IPartnerSignalRule
 public static class PartnerSignalRules
 {
     /// <summary>
-    ///     Checked in order. "Faint" applies always, so it stays last: COOP_FEATURES_SPEC D2 ("last contact") and D3
-    ///     ("distress") go in front of it.
+    ///     Checked in order. "Faint" applies always, so it stays last: COOP_FEATURES_SPEC D2 ("last contact") goes in front
+    ///     of it, and D3 ("distress") in front of both, because a distress call gets through interference.
     /// </summary>
-    public static readonly List<IPartnerSignalRule> Rules = [new LastContactRule(), new FaintSignalRule()];
+    public static readonly List<IPartnerSignalRule> Rules = [new DistressRule(), new LastContactRule(), new FaintSignalRule()];
 
     /// <summary>
     ///     The name of the object <c>PlayerModelManager.AttachPing</c> creates for a player's marker.
@@ -171,4 +173,54 @@ public sealed class LastContactRule : IPartnerSignalRule
         int seconds = Math.Max(0, (int)secondsSinceContact);
         return seconds < 60 ? (seconds, false) : (seconds / 60, true);
     }
+}
+
+/// <summary>
+///     COOP_FEATURES_SPEC D3, the distress call: while the partner is down, their marker shows at the game's full marker
+///     alpha at any distance, in every mode and through interference (D2). It stays where it was last placed:
+///     <see cref="PartnerSignal" /> moves it to the partner's real position every <see cref="PULSE_SECONDS" />, so it is no
+///     live track.
+/// </summary>
+public sealed class DistressRule : IPartnerSignalRule
+{
+    public const string NAME = "distress";
+
+    public const float PULSE_SECONDS = 5f;
+
+    /// <summary>
+    ///     Closer than this the marker hides: the body is right there.
+    /// </summary>
+    public const float MIN_DIST = 3f;
+
+    /// <summary>
+    ///     <c>uGUI_Pings</c> lerps the alpha from 0 to its maximum (0.5) over <c>range</c> beyond <c>minDist</c>; a short
+    ///     range reaches the maximum a metre past <see cref="MIN_DIST" />.
+    /// </summary>
+    public const float RANGE = 1f;
+
+    /// <summary>
+    ///     The game's own red marker colour (<c>PingManager.colorOptions[2]</c>).
+    /// </summary>
+    public const int COLOR_INDEX = 2;
+
+    public bool TryGetLook(in PartnerSignalContext context, out PartnerSignalLook look)
+    {
+        look = default;
+        if (!context.Distress)
+        {
+            return false;
+        }
+        look = new PartnerSignalLook(NAME, MIN_DIST, RANGE, context.Distance <= context.NameTagRange, Frozen: true);
+        return true;
+    }
+
+    /// <summary>
+    ///     Whether a new pulse is due: the first one at once, then every <see cref="PULSE_SECONDS" />.
+    /// </summary>
+    public static bool IsPulseDue(float? lastPulseTime, float now) => !lastPulseTime.HasValue || now - lastPulseTime.Value >= PULSE_SECONDS || now < lastPulseTime.Value;
+
+    /// <summary>
+    ///     Whole seconds left for the label, rounded up so it reads 1 until the end.
+    /// </summary>
+    public static int SecondsLabel(float secondsLeft) => Math.Max(0, (int)Math.Ceiling(secondsLeft));
 }

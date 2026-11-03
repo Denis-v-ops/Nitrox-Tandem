@@ -54,7 +54,9 @@
                 },
                 i =>
                 {
-                    comeGetMe.Add(new string(Enumerable.Repeat(' ', 10).Select(c => (char)r.Next('A', 'Z')).ToArray()));
+                    // The index makes every item unique: random 10-letter strings alone can (rarely) collide, which would lower the count
+                    string randomSuffix = new(Enumerable.Repeat(' ', 10).Select(c => (char)r.Next('A', 'Z')).ToArray());
+                    comeGetMe.Add($"{i}-{randomSuffix}");
                     Interlocked.Increment(ref addCount);
                 },
                 iterations);
@@ -139,6 +141,10 @@
             readerThread.Start();
             writerThread.Start();
             barrier.Wait();
+            // The reader still has its last read to do after the writer is done. Without waiting for it, the caller
+            // asserts on what the reader recorded before that last read happened.
+            readerThread.Join();
+            writerThread.Join();
         }
     }
 }

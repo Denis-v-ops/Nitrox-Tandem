@@ -49,24 +49,4 @@ public class EntityTransformUpdates : Packet
             return $"[RawTransformUpdate Id:{Id} Position:{Position} Rotation:{Rotation}]";
         }
     }
-
-    [Serializable]
-    public class SplineTransformUpdate : EntityTransformUpdate
-    {
-        public NitroxVector3 DestinationPosition { get; }
-        public NitroxVector3 DestinationDirection { get; }
-        public float Velocity { get; }
-
-        public SplineTransformUpdate(NitroxId id, NitroxVector3 position, NitroxQuaternion rotation, NitroxVector3 destinationPosition, NitroxVector3 destinationDirection, float velocity) : base(id, position, rotation)
-        {
-            DestinationPosition = destinationPosition;
-            DestinationDirection = destinationDirection;
-            Velocity = velocity;
-        }
-
-        public override string ToString()
-        {
-            return $"[SplineTransformUpdate Id:{Id} Position:{Position} Rotation:{Rotation} DestinationPosition:{DestinationPosition} DestinationDirection:{DestinationDirection} Velocity:{Velocity} ]";
-        }
-    }
 }

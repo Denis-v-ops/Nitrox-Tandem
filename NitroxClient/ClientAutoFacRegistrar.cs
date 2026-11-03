@@ -94,6 +94,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<SimulationOwnership>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<ConstructionLocks>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<LockerCrafting>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<Cuddlefish>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<LiveMixinManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<CreatureHealthManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Entities>().InstancePerLifetimeScope();
@@ -102,6 +103,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<EquipmentSlots>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<ItemContainers>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<BaseModuleSimulation>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<BasePowerSync>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Cyclops>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<Rockets>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<MobileVehicleBay>().InstancePerLifetimeScope();
@@ -126,6 +128,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<BulletManager>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<NtpSyncer>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<SignalInterference>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<RescueWindow>().InstancePerLifetimeScope();
             containerBuilder.RegisterAssemblyTypes(currentAssembly)
                             .AssignableTo<PartnerAction>()
                             .As<PartnerAction>()

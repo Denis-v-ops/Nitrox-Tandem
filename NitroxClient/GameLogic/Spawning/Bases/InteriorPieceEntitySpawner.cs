@@ -80,8 +80,8 @@ public class InteriorPieceEntitySpawner : EntitySpawner<InteriorPieceEntity>
 
         if (result.Get().Value.TryGetComponent(out PowerSource powerSource))
         {
-            // TODO: Have synced/restored power
-            powerSource.SetPower(powerSource.maxPower);
+            // The stored charge (COOP_FEATURES_SPEC B3), or full when there's none
+            powerSource.SetPower(BasePowerSync.RestoredPower(entity.Metadata, powerSource.maxPower));
         }
     }
 

@@ -16,5 +16,11 @@ public class ThermalPlantMetadataProcessor : EntityMetadataProcessor<ThermalPlan
 
         // temperature is a ratchet value in the base game (only ever increases), so we never want to apply a lower value here
         thermalPlant.temperature = Mathf.Max(thermalPlant.temperature, metadata.Temperature);
+
+        // Null in temperature-only updates and in saves from before power was synced (COOP_FEATURES_SPEC B3)
+        if (metadata.Power.HasValue && thermalPlant.powerSource)
+        {
+            thermalPlant.powerSource.SetPower(metadata.Power.Value);
+        }
     }
 }
