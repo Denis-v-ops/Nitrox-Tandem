@@ -5,7 +5,8 @@ namespace NitroxPatcher.Patches.Dynamic;
 
 /// <summary>
 ///     A downed player can't interact (COOP_FEATURES_SPEC T1): <c>IsFreeToInteract</c> checks <c>IsAlive</c>, and a downed
-///     player is alive at 1 health. <c>GUIHand</c> asks it before hand targets, tools and held items.
+///     player is alive at 1 health. <c>GUIHand</c> asks it before hand targets, tools and held items. A player holding on
+///     to a Seamoth (COOP_FEATURES_SPEC T5) can't either: no tools while hitched.
 /// </summary>
 public sealed partial class Player_IsFreeToInteract_Patch : NitroxPatch, IDynamicPatch
 {
@@ -13,7 +14,7 @@ public sealed partial class Player_IsFreeToInteract_Patch : NitroxPatch, IDynami
 
     public static void Postfix(ref bool __result)
     {
-        if (__result && RescueWindow.IsLocalPlayerDowned)
+        if (__result && (RescueWindow.IsLocalPlayerDowned || SeamothHitch.IsLocalPlayerHitched))
         {
             __result = false;
         }

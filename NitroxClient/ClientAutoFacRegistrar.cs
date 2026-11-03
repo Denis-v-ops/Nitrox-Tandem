@@ -127,6 +127,7 @@ namespace NitroxClient
             containerBuilder.RegisterType<NtpSyncer>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<SignalInterference>().InstancePerLifetimeScope();
             containerBuilder.RegisterType<RescueWindow>().InstancePerLifetimeScope();
+            containerBuilder.RegisterType<SeamothHitch>().InstancePerLifetimeScope();
             containerBuilder.RegisterAssemblyTypes(currentAssembly)
                             .AssignableTo<PartnerAction>()
                             .As<PartnerAction>()

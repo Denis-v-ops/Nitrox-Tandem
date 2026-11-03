@@ -6,10 +6,11 @@ using Nitrox.Server.Subnautica.Models.Packets.Core;
 
 namespace Nitrox.Server.Subnautica.Models.Packets.Processors;
 
-internal sealed class EntityDestroyedPacketProcessor(EntitySimulation entitySimulation, WorldEntityManager worldEntityManager) : IAuthPacketProcessor<EntityDestroyed>
+internal sealed class EntityDestroyedPacketProcessor(EntitySimulation entitySimulation, WorldEntityManager worldEntityManager, HitchService hitchService) : IAuthPacketProcessor<EntityDestroyed>
 {
     private readonly EntitySimulation entitySimulation = entitySimulation;
     private readonly WorldEntityManager worldEntityManager = worldEntityManager;
+    private readonly HitchService hitchService = hitchService;
 
     public async Task Process(AuthProcessorContext context, EntityDestroyed packet)
     {
@@ -26,6 +27,12 @@ internal sealed class EntityDestroyedPacketProcessor(EntitySimulation entitySimu
             // that aren't loaded anymore, and must forget the destroyed ones (#2046, #2151). The server can't tell which
             // entities are tracked resources (that's a component on the game's prefab).
             await context.SendToOthersAsync(packet);
+
+            if (entity is VehicleEntity)
+            {
+                // COOP_FEATURES_SPEC T5
+                await hitchService.ReleaseVehicleAsync(packet.Id, "it was destroyed");
+            }
         }
     }
 }

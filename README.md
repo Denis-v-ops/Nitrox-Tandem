@@ -84,6 +84,7 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **The story waits for both of you: the rocket launch** | Nobody watches the credits alone: the rocket takes off for both of you at the same moment, and only with both of you aboard | Both get into the cockpit and press launch. Alone you see "Waiting for *name* to board the cockpit and press launch" | Pressing launch only counts while you're in the cockpit; climb down and you have to press it again | The same options; `storygate release rocket_launch` |
 | **See each other sit, sleep and climb** | Your partner sits on benches and chairs, lies down in a bed and climbs the escape pod's hatches in front of you, instead of standing next to them. You can share a bed, one on each side. Each of you gets the escape pod's first-time hatch scene once, also after a rejoin | Use benches, beds and hatches as usual | One player per seat, bed side and pod hatch at a time: while your partner climbs the pod's ladder you see "Another player is interacting with that object" until they're through. You see their body move; the view stays their own | None, always on |
 | **See your partner's tools at work** | When your partner scans, you see the scan beam and hear it; when they build, their builder beams at the piece going up; when they weld or cut, you see the sparks and the cutter's glow, and hear the welder | Nothing to do | Sparks show while they hold the button, even with nothing in front of them. The Seaglide's propeller doesn't spin for you yet | None, always on |
+| **Hitch a ride on the Seamoth** | The Seamoth has one seat, so the second diver holds on to the outside of its hull and rides along. Both of you see the passenger holding on beside its left side | While your partner pilots the Seamoth, swim up to it, look at its hull and press the interact key ("Hold on"). Press **E** (exit) to let go | You're still in the water: your air keeps draining, creatures can still go for you, and you can't use tools while you hold on. You let go when you go down, your partner gets out, or the Seamoth docks or is destroyed. Seamoth only, one passenger | `SeamothHitch` (true) |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -104,7 +105,6 @@ stays lonely, scary and hard, just shared.
 What's planned:
 - **Story moments together:** the cure (each with your own cure scene) waits until both players are there, like
   the drive core, the Sea Emperor, the gun and the rocket launch already do. Playing alone in between is fine.
-- **Teamwork survival:** hitching a ride on the Seamoth.
 - **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner.
 
 ### For developers

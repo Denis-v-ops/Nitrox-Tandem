@@ -1,5 +1,7 @@
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Nitrox.Model.Configuration;
 using Nitrox.Model.Core;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.DataStructures.GameLogic;
@@ -41,7 +43,8 @@ public class EntityDestroyedPacketProcessorTest
         worldEntityManager.TrackEntityInTheWorld(outcrop);
         EntityDestroyed packet = new(outcrop.Id);
 
-        await new EntityDestroyedPacketProcessor(entitySimulation, worldEntityManager).Process(new AuthProcessorContext(breaker, packetSender), packet);
+        HitchService hitchService = new(packetSender, playerManager, entityRegistry, Options.Create(new SubnauticaServerOptions()), NullLogger<HitchService>.Instance);
+        await new EntityDestroyedPacketProcessor(entitySimulation, worldEntityManager, hitchService).Process(new AuthProcessorContext(breaker, packetSender), packet);
 
         entityRegistry.TryGetEntityById(outcrop.Id, out Entity _).Should().BeFalse();
         await packetSender.Received(1).SendPacketToOthersAsync(packet, breaker.SessionId);

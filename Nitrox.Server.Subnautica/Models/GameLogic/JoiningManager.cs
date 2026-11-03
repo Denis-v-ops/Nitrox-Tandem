@@ -30,6 +30,7 @@ internal sealed class JoiningManager(
     EntityRegistry entityRegistry,
     SessionSettings sessionSettings,
     RescueService rescueService,
+    HitchService hitchService,
     IOptions<SubnauticaServerOptions> options,
     ILogger<JoiningManager> logger)
     : ISessionCleaner
@@ -48,6 +49,7 @@ internal sealed class JoiningManager(
     private readonly EntityRegistry entityRegistry = entityRegistry;
     private readonly SessionSettings sessionSettings = sessionSettings;
     private readonly RescueService rescueService = rescueService;
+    private readonly HitchService hitchService = hitchService;
 
     private readonly ThreadSafeQueue<SessionId> joinQueue = new();
     private readonly Lock queueLocker = new(); // Necessary to avoid race conditions between JoinQueueLoop and AddToJoinQueue
@@ -122,6 +124,8 @@ internal sealed class JoiningManager(
                     await ReplayOtherPlayersPoseAsync(player);
                     // Downed partners, and this player's own window if they quit while down (COOP_FEATURES_SPEC T1)
                     await rescueService.PlayerJoinedAsync(player);
+                    // Who holds on to a Seamoth (COOP_FEATURES_SPEC T5)
+                    await hitchService.PlayerJoinedAsync(player);
                 }
             }
             catch (Exception e)
@@ -242,7 +246,8 @@ internal sealed class JoiningManager(
                 RescueWindowSeconds = options.Value.RescueWindowSeconds,
                 PartnerSignalInterference = options.Value.PartnerSignalInterference,
                 SignalInterferenceDepth = options.Value.SignalInterferenceDepth,
-                PartnerDiscoveriesSilent = options.Value.PartnerDiscoveriesSilent
+                PartnerDiscoveriesSilent = options.Value.PartnerDiscoveriesSilent,
+                SeamothHitch = options.Value.SeamothHitch
             }
         );
 
