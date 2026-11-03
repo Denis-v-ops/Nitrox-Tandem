@@ -20,6 +20,11 @@
        on both games (launchStarted false), the server waits for Bob.
     6. Bob comes aboard and presses launch: both games start the launch within 2 s.
 
+    Passed windowless 2026-11-03 (29 checks; both cinematics and both launches 0.2-0.3 s after the second click).
+    Negative control the same day, with the two PrecursorDisableGunTerminal patches, the LaunchRocket Prefix and the
+    server's RocketLaunchProcessor as on coop: 6 checks fail (Alice's cinematic and her launch start alone, the server
+    waits for nobody). The final "both started" checks pass there too (each player's own click runs the game's code).
+
     Starts a fresh world and two games (windowless with $env:NITROX_WINDOWLESS = 1), unless -NoLaunch. Debug build
     (dual-client.ps1 -NoBuild is used, so build first). Stop the games soon after: the launch ends in the credits.
 #>
