@@ -1063,7 +1063,9 @@ fire puts the player down like any other damage (decided 2026-11-03, §11).
     the vehicle is a Seamoth that another online player pilots (`PlayerContext.DrivingVehicle`), nobody holds on to it
     yet, and the sender is within 8 m of it by the server's positions; then `PlayerHitched` to everyone, the hitcher's
     game included. It ends hitches itself and tells everyone: the pilot gets out (`VehicleOnPilotModeChangedProcessor`;
-    this also covers T1's ejected pilot), leaves the game (`ISessionCleaner`), the Seamoth docks
+    T1 ejects a downed pilot with `ToNormalMode`, and `Vehicle.Update` sees the piloting state change on the next frame
+    and calls `OnPilotModeEnd` (`game:Vehicle.cs:990-1001`), which Nitrox relays; the scenario's pilot-out step uses the
+    same `ToNormalMode`), leaves the game (`ISessionCleaner`), the Seamoth docks
     (`VehicleDockingProcessor`) or is destroyed (`EntityDestroyedPacketProcessor`); the hitcher leaving just forgets
     it. The hitcher's own `PlayerUnhitched` is relayed to the others only if the server had them holding on, and sets
     the server's position. A joiner gets one `PlayerHitched` per hitch after the join (`JoiningManager`, after T1's
@@ -1113,7 +1115,9 @@ fire puts the player down like any other damage (decided 2026-11-03, §11).
   E key. A late joiner seeing a hitch in game (L2 only). Creatures going for a hitcher (code-read: the body keeps its
   `EcoTarget`s and the local player is a normal target). Riding through the surface (the hitcher would breathe there
   as any swimmer) or into a base moonpool (code path as the Cyclops bay: `VehicleDockingBay`). Riding while the
-  partner's game holds a stale pilot state (above). Two hitchers (refused: one per Seamoth).
+  partner's game holds a stale pilot state (above). Two hitchers (refused: one per Seamoth). The pilot going down while
+  someone holds on (same `ToNormalMode` path as the pilot-out step, not run with T1). The hitcher dying while holding on
+  (drowned: the game lets go on `!IsAlive` and leaves the motor to the respawn; not run).
 
 ---
 
