@@ -152,5 +152,7 @@
     "Nitrox_StoryGateRocketJoin": "{PLAYERS} is ready for launch: board the rocket's cockpit and press launch too",
     "Nitrox_HitchHoldOn": "Hold on",
     "Nitrox_HitchHoldOnHint": "Ride along outside: your air keeps draining, no tools",
-    "Nitrox_HitchLetGo": "Let go"
+    "Nitrox_HitchLetGo": "Let go",
+    "Nitrox_StoryGateCureJoin": "{PLAYERS} is ready for the cure: take a cure ball too",
+    "Nitrox_StoryGateCureWait": "Waiting for {PLAYERS} to take a cure ball too…"
 }

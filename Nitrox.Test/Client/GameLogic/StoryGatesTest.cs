@@ -40,6 +40,15 @@ public class StoryGatesTest
     }
 
     [TestMethod]
+    public void Cure_AsksThePartnerToTakeABallToo()
+    {
+        StoryGateStatus cure = new(StoryGateKind.CURE, ["Alice"], ["Bob"], false);
+        StoryGates.FormatStatus(cure, "Alice", english).Should().Be("Waiting for Bob to take a cure ball too…");
+        StoryGates.FormatStatus(cure, "Bob", english).Should().Be("Alice is ready for the cure: take a cure ball too");
+        StoryGates.FormatStatus(new StoryGateStatus(StoryGateKind.CURE, ["Alice"], ["Bob"], true), "Alice", english).Should().Be("Waiting for Bob to come online");
+    }
+
+    [TestMethod]
     public void DisableGun_BothUseTheTerminal()
     {
         StoryGateStatus status = new(StoryGateKind.DISABLE_GUN, ["Alice"], ["Bob"], false);

@@ -137,6 +137,7 @@ public class StoryGates(IPacketSender packetSender, LocalPlayer localPlayer)
                 StoryGateKind.ROCKET_LAUNCH => "Nitrox_StoryGateRocketWait",
                 StoryGateKind.SEA_EMPEROR => "Nitrox_StoryGateSeaEmperorWait",
                 StoryGateKind.HATCHING => "Nitrox_StoryGateHatchingWait",
+                StoryGateKind.CURE => "Nitrox_StoryGateCureWait",
                 _ => "Nitrox_StoryGateWaitingFor"
             });
             return template.Replace("{PLAYERS}", missing);
@@ -151,6 +152,7 @@ public class StoryGates(IPacketSender packetSender, LocalPlayer localPlayer)
                 StoryGateKind.ROCKET_LAUNCH => "Nitrox_StoryGateRocketJoin",
                 StoryGateKind.SEA_EMPEROR => "Nitrox_StoryGateSeaEmperorJoin",
                 StoryGateKind.HATCHING => "Nitrox_StoryGateHatchingJoin",
+                StoryGateKind.CURE => "Nitrox_StoryGateCureJoin",
                 _ => "Nitrox_StoryGatePartnerReady"
             });
             return template.Replace("{PLAYERS}", ready);

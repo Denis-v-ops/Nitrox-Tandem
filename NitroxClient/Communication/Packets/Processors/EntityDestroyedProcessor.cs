@@ -55,6 +55,11 @@ public sealed class EntityDestroyedProcessor(Entities entities) : IClientPacketP
             {
                 DestroyWarper(warper);
             }
+            else if (gameObject.TryGetComponent(out SeaEmperorBaby seaEmperorBaby))
+            {
+                // FIX_SPEC S17: the baby teleported away in the game that simulates it (SeaEmperorBaby_Teleport_Patch); same effect here
+                seaEmperorBaby.Teleport();
+            }
             else
             {
                 Entities.DestroyObject(gameObject);

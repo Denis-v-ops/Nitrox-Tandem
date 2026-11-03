@@ -150,5 +150,7 @@
     "Nitrox_StoryGateRocketJoin": "{PLAYERS} ist startbereit: steig ins Cockpit der Rakete und drück auch auf Start",
     "Nitrox_HitchHoldOn": "Festhalten",
     "Nitrox_HitchHoldOnHint": "Draußen mitfahren: deine Luft wird weiter verbraucht, keine Werkzeuge",
-    "Nitrox_HitchLetGo": "Loslassen"
+    "Nitrox_HitchLetGo": "Loslassen",
+    "Nitrox_StoryGateCureJoin": "{PLAYERS} ist bereit für die Heilung: nimm auch eine Heilkugel",
+    "Nitrox_StoryGateCureWait": "Warte, bis {PLAYERS} auch eine Heilkugel nimmt…"
 }

@@ -1076,6 +1076,44 @@ Treader, crabs; from code they take the same path), creatures in alien containme
 | S16e Leash changes | `Creature.leashPosition` only comes from spawn metadata (`StayAtLeashPositionMetadata`, Reaper, Sea Dragon, Ghost); game code that moves it (e.g. `OnDrop`) isn't synced, and `EntitySwitchedCells` re-sends the metadata, which resets a moved leash (from code; probably why a leash also moved in the partner's game in run 4 didn't hold). Low impact | XS–S |
 | S16f Put to sleep without a packet | When `LargeWorldEntity_UpdateCell_Patch.EntityUpdated` deactivates an entity this game simulates (asleep cell), send its final pose (an `EntityTransformUpdates` with its position), so the server re-cells it and the S16 hand-over runs. Needs an in-game check (a stalker chasing the partner 60+ m from its simulator) | S |
 
+## S17: The partner's Sea Emperor babies never visit their mother, so the partner gets no cure ball
+
+Found for COOP_FEATURES_SPEC G3c (2026-11-03); an existing Nitrox bug. Fixed on branch `feat/4-g3c-cure`.
+
+**Cause** (code and bridge reads, windowless):
+- The game that simulates the incubator hatches the five babies as networked entities (`IncubatorEgg_HatchNow_Patch`);
+  the partner's game plays the hatching with temporary babies and gets the networked ones as plain world entities.
+- `SeaEmperorBaby_Start_Patch` sent a baby to its mother only when it had no parent, but `DefaultWorldEntitySpawner`
+  (57-59) parents every spawned world entity to its cell root. So on the partner's game the babies never registered at
+  the mother (`SeaEmperor.main.GetBabies()` empty), never played their visit, never left (`SwimToTeleporter`) and never
+  dropped cure balls (`DropEnzymes`). Each game makes its own balls, without a Nitrox id, so the partner had none and
+  was only cured by the relayed `Infection_Progress5`, without the cure scene.
+- A baby that teleports away at the end (`SeaEmperorBaby.Teleport`) is destroyed without a packet, so the server kept
+  all five and every later load of their cell brought them back.
+
+**Fix:**
+- `SeaEmperorBaby_Start_Patch` skips only babies in an egg (and temporary or non-networked ones);
+  `SeaEmperorBabies.SendCopyToMother` gives a copy the id of the egg it came from (nearest attach point, its index in the
+  incubator; the simulating game uses the same index), keeps it hidden while the local hatching of that egg still plays
+  (that's where the temporary baby is), then sends it to the mother; it also goes, and ends the local hatching, as soon
+  as the simulating game's baby has left its egg (at most 60 s). The visit, the leaving and the ball drops then run in
+  the partner's game; where the babies are still comes from the simulating game, and a copy's visit ends at the latest
+  when the simulating game's baby swims away. Needed because the egg and baby animators cull completely: their events
+  fire only while that player looks (windowed run: a partner facing away never finished the hatching, and the
+  simulating game's teleport removed his copies before they visited).
+- `SeaEmperorBabyCinematicController_SetCinematicMode_Patch`: during a baby's cinematic its copy follows the local
+  animation, not the simulating game's poses (which a still, kinematic baby sends only every 2 s).
+- `SeaEmperorBaby_Teleport_Patch` sends `EntityDestroyed` from the simulating game; the other games play the teleport.
+
+**Verified:** windowless `tools/scenarios/G3c-CureTogether.ps1` (with the cure gate of G3c), PASS (33 checks), with
+only the simulating game's animation links (egg hatch end, visit end) driven through the bridge; the partner's game
+follows by itself. Negative controls: the old patch, 7 of 17 checks fail (the partner's copies get no ids, never swim,
+no visit, no enzymes, no ball); without the follow-the-simulating-game part, 7 of 20 fail. One windowed run, before that
+part, failed 11 of 21 (see above).
+
+**Not verified:** windowed after the fix (the real burps while the partner looks, how the copies look). Details in
+COOP_FEATURES_SPEC G3c.
+
 ---
 
 ## After the top 10 (Tier 1, in rough order)
@@ -1171,3 +1209,4 @@ See ISSUE_TRIAGE.md for the full verify list.
 | 2026-11-02 | S16 (new) | Branch `fix/s16-leviathan-sync`. Probe of "leviathans aren't synced": L3 `S16-LeviathanSync.ps1` (natural Reaper, Lost River ghost, Reefback; bridge `record` now also tracks `active`, `remote`, `lod`). **Fixed:** a creature that swims out of its simulating player's loaded cells now goes to a player who has its cell loaded (`EntitySimulation.TryHandOverFromBlindOwner` from `EntityTransformUpdatesProcessor`, and a takeover when a player loads its cell); before, the simulator kept it, even 780 m away as an out-of-cell entity. **Measured, planned as S16b–f:** the partner's copy drifts up to 5 m and then snaps 5–17 m (packets only on `SplineFollowing.GoTo`, correction only beyond 5 m); a late arrival spawns a Reaper up to 34 m off (stale server record); void ghosts are per game (#2461). `CreateFullEntityCache` changes none of this | L2 `CreatureLeavesSimulatorTest` (4; two fail on `coop`, the out-of-cell one fails with "can see" instead of "has the cell"); L3 windowless: 3 baseline + 4 fixed runs, case 5 lock kept 750–780 m away before, moved at 556–579 m after; `dotnet test` 390 of 391 pass in each of two runs, 13 skipped (the failure was a known flake each time: `DroppedOutOfSightTest`, also flaky on `coop`, then `ReadAndWriteSimultaneous`). Not run: rejoin, chase, Sea Dragon, asleep-cell freeze in game |
 | 2026-11-03 | S16b/S16c | Branch `fix/s16bc-creature-replication` (on `fix/s16-leviathan-sync`). New unreliable packet `CreatureMovements` (pose, velocity, angular velocity, sender time; ≤ 5 per packet) sent by `EntityPositionBroadcaster` at `CreatureMovementPolicy`'s rate (leviathans near a partner 0.1 s, other creatures 0.2/0.5 s, nobody near 2 s); server `CreatureMovementsProcessor` keeps the record and relays to players who see it; the watching game's `RemotelyControlled` dead-reckons the copy (velocity + error/0.25 s, physics clock from the frame's start, `Locomotion`/`WorldForces` off meanwhile). Removed: `SplineTransformUpdate` and `SplineFollowing_GoTo_Patch`. Scenario: snap = step beyond the original's movement, max error outside long frames, forced 350 ms frame, send counters. | L1 `CreatureMovementPolicyTest` (8), L2 `CreatureMovementsTest` (2) + `CreatureLeavesSimulatorTest` on the new packet; 5 of 6 fail without the server processor. `dotnet test` 400 of 401 pass, 13 skipped (the failure: known flake `ReadAndWriteSimultaneous`). **L3 windowless, Reaper:** mean error 2.6–4.3 m -> 0.32–0.51 m, snaps up to 16.6 m -> none (largest step beyond the original 0.9 m), late-arrival spawn up to 34 m -> 0.6–1.9 m; final run 18 of 19 `-Strict` checks (`ba` max error 5.09 m for 1 s, the copy held 4 m above the original, probably by terrain the far simulating game lacks). **Reefback:** PASS, 0.005–0.05 m mean, spawn 0.1–0.3 m. Upload 2–5 KB/s with 41–216 moving entities simulated. Two clock bugs found and fixed in game (overshoot after a long frame; age of a packet handled mid-hitch), and an NRE for poses reaching an inactive copy (`Awake` not yet run), which had aborted the rest of those packets. **S14 PASS (65), D4 PASS (95)** on the final build (an earlier S14 run, with the NRE, failed 4 checks: it picked up the previous case's stalker, and a crash fish went for a stalker). Not verified: latency/loss, two PCs, `-Chase`, walkers, containment, windowed |
 | 2026-11-03 | S15d | Branch `feat/4-s15d-bleeder-attach`. A bleeder simulated by one game latches onto the partner: the body's own (copied) `BleederAttachTarget` takes the touch on its trigger, the suck carries the bleeder as dealer through S14's `CreatureAttackedPlayer`, it lets go when the body is inside, in a vehicle or downed. New `BleederAttachChanged` mirrors the attach on the other games' copies (the latched player's arms fight it, hits kill it for both; a detach of that copy goes back). Fixed the (H): a copy touched in the partner's game marked their attach target occupied for good. README fix table row | L3 windowless `S15d-BleederOnPartner.ps1` PASS (52 checks); negative control 21 of 52 FAIL (on the scenario's first revision; the latch-target check tightened after it only adds failures). Full test suite green (507). No L2 (server only relays). Windowed look, lock hand-over while attached, cannons, base entry: not run |
+| 2026-11-03 | S17 (new) | Branch `feat/4-g3c-cure` (COOP_FEATURES_SPEC G3c): the partner's Sea Emperor babies never visited their mother, so the partner got no cure ball; and teleported babies stayed on the server. Fixed: `SeaEmperorBaby_Start_Patch` skips only babies in an egg, `SeaEmperorBabies` gives copies their egg's id and holds them hidden during the local hatching, `SeaEmperorBabyCinematicController_SetCinematicMode_Patch`, `SeaEmperorBaby_Teleport_Patch` | Windowless `G3c-CureTogether.ps1` PASS (33, only the simulating game driven): on the partner's game ids match, the copies are hidden during the hatching and swim when the simulating game's babies leave their eggs, play the visit by their own animation and end it when those babies leave, the visit starts, all five drop enzymes, one burps, the teleported babies are gone from the partner's game and the server; negative control 7 of 17 fail. One windowed run (before the copies followed the simulating game) failed 11 of 21: the partner faced away, his culled animators never ended the hatching, his copies were teleported away before their visit; the sync negative control reproduces it windowless (7 of 20 fail). Windowed re-check not run |

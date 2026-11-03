@@ -116,6 +116,9 @@ internal static class StoryGateRules
             // G2: each player presses launch in the cockpit, so each game launches its own player. The service adds the
             // cockpit's area (RocketCockpit), so a click only counts while its player is still aboard.
             StoryGateKind.ROCKET_LAUNCH => new(kind, StoryGateRule.ALL_READY, clickTimeout),
+            // G3c: each player takes a cure ball in their own game (the click proves they are at the babies); a player who
+            // swims away from their ball withdraws (CureBallGate).
+            StoryGateKind.CURE => new(kind, StoryGateRule.ALL_READY, clickTimeout),
             _ => new(kind, StoryGateRule.ALL_READY, clickTimeout)
         };
 }

@@ -194,6 +194,15 @@ public class StoryGateStateTest
         StoryGateRules.For(StoryGateKind.HATCHING).Area.Should().BeNull();
     }
 
+    [TestMethod]
+    public void Rules_CureIsAClickOnABall_InEachGame()
+    {
+        StoryGateDefinition cure = StoryGateRules.For(StoryGateKind.CURE);
+        cure.Rule.Should().Be(StoryGateRule.ALL_READY);
+        cure.Area.Should().BeNull("each game has its own balls; the click proves the player is at them");
+        cure.ReadyTimeout.Should().Be(TimeSpan.FromMinutes(2));
+    }
+
     private static List<StoryGatePlayer> Online(params (string Name, NitroxVector3 Position)[] players) =>
         players.Select(player => new StoryGatePlayer(player.Name, player.Position)).ToList();
 

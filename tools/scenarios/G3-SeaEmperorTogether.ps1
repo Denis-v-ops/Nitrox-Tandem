@@ -23,8 +23,8 @@
        enzymes are used up, and both games play the hatching music (Bob's also the hatching soundscape).
     4. (unless -SkipCure) S12: both infected, Bob quits; Alice takes a cure ball (spawned through a baby's own
        DropEnzymes.SpawnCureBall, since the babies' animation events don't fire windowless) and is cured
-       (Infection_Progress5). After a restart Bob rejoins cured. The cure itself isn't gated (see COOP_FEATURES_SPEC G3c:
-       the partner's game never gets a cure ball).
+       (Infection_Progress5) once an admin released the cure gate (G3c: locked while Bob is offline). After a restart Bob
+       rejoins cured. The cure together is G3c-CureTogether.ps1.
 
     Passed windowless 2026-11-03 (31 checks). Negative control the same day, with the platform trigger patch removed and
     Incubator_OnHandClick_Patch as on coop before G3 (-SkipCure): 14 of 26 checks fail (the platform starts for Alice
@@ -178,8 +178,14 @@ try {
             Move-To $A @($at[0], $at[1], ($at[2] + 1.5))
             Start-Sleep -Seconds 2
             Invoke-Bridge $A 'use find:EnzymeBall' | Out-Null
+            # G3c: the cure waits for both; with Bob offline it is locked until an admin releases it
+            Start-Sleep -Seconds 4
+            Assert-True (-not (Test-Goal $A 'Infection_Progress5')) 'Alice''s cure waits while Bob is offline'
+            $status = try { Get-GateStatus } catch { "$_" }
+            Assert-True ($status -match 'CURE[^\n]*LOCKED[^\n]*waiting for Bob') 'the server''s cure gate is locked, waiting for Bob'
+            Invoke-Bridge 'server' 'storygate release cure' | Out-Null
             $cured = Wait-Until { (Test-Goal $A 'Infection_Progress5') -and (Get-Infection $A) -eq 0 } -TimeoutSeconds 60
-            Assert-True ([bool]$cured) "Alice's cure finished: Infection_Progress5 complete, infection $(Get-Infection $A)"
+            Assert-True ([bool]$cured) "after the release Alice's cure finished: Infection_Progress5 complete, infection $(Get-Infection $A)"
         }
 
         Step 'S12: after a restart Bob rejoins cured' {

@@ -2,6 +2,7 @@ using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Abstract;
 using NitroxClient.Communication.Packets.Processors.Core;
 using NitroxClient.GameLogic;
+using NitroxClient.MonoBehaviours;
 using Story;
 
 namespace NitroxClient.Communication.Packets.Processors;
@@ -11,6 +12,16 @@ internal sealed class StoryGoalExecutedClientProcessor(LocalPlayer localPlayer) 
     private readonly LocalPlayer localPlayer = localPlayer;
 
     public Task Process(ClientProcessorContext context, StoryGoalExecuted packet)
+    {
+        // COOP_FEATURES_SPEC G3c: the partner's cure finished while this player's own cure cinematic still plays
+        if (!CureBallGate.TryDeferRelayedCure(packet.Key, () => Apply(packet)))
+        {
+            Apply(packet);
+        }
+        return Task.CompletedTask;
+    }
+
+    private void Apply(StoryGoalExecuted packet)
     {
         // D5a: a biome or location line the partner triggered completes here without its PDA entry and voice line.
         // Before the initial sync, CoopSettings holds the defaults (false), so this falls back to today's behaviour.
@@ -59,6 +70,5 @@ internal sealed class StoryGoalExecutedClientProcessor(LocalPlayer localPlayer) 
                 StoryGoal.Execute(packet.Key, packet.Type.ToUnity());
             }
         }
-        return Task.CompletedTask;
     }
 }

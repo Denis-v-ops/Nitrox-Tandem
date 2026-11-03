@@ -28,6 +28,7 @@ The details, root causes and test results are in [docs/fork/FIX_SPEC.md](docs/fo
 |---|---|---|---|
 | **Story** | When one player disables the alien gun, the partner's game now knows too, so the rocket can launch without relogging | [#2640](https://github.com/SubnauticaNitrox/Nitrox/issues/2640) | In game, plus a negative control (the test fails without the fix) |
 | **Story** | A partner who was offline when the other took the cure no longer stays infected forever | new | Headless server test + negative control |
+| **Story** | The Sea Emperor's babies visit their mother and drop cure balls in the partner's game too, not only in the game of the player who hatched them, and they're gone for good once they teleported away | new | In game (windowless) + negative control |
 | **Cyclops** | Damage points, leaks and fires are saved, shared and survive restarts, so no more phantom explosions or leaks that come back | [#2220](https://github.com/SubnauticaNitrox/Nitrox/issues/2220), [#2230](https://github.com/SubnauticaNitrox/Nitrox/issues/2230) (PR [#2881](https://github.com/SubnauticaNitrox/Nitrox/pull/2881)) | In game |
 | **Bases** | Repaired leaks stay repaired; the flood water level survives restarts | [#2769](https://github.com/SubnauticaNitrox/Nitrox/issues/2769) (PR [#2798](https://github.com/SubnauticaNitrox/Nitrox/pull/2798)), [#2808](https://github.com/SubnauticaNitrox/Nitrox/issues/2808) | In game |
 | **Bases** | Scanner room upgrades and camera drones are kept, with no more multiplying drones; charger and upgrade-slot items are safe during "resync" | [#2696](https://github.com/SubnauticaNitrox/Nitrox/issues/2696), [#2576](https://github.com/SubnauticaNitrox/Nitrox/issues/2576), [#2259](https://github.com/SubnauticaNitrox/Nitrox/issues/2259) | In game (partly) + headless |
@@ -87,6 +88,7 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **See each other sit, sleep and climb** | Your partner sits on benches and chairs, lies down in a bed and climbs the escape pod's hatches in front of you, instead of standing next to them. You can share a bed, one on each side. Each of you gets the escape pod's first-time hatch scene once, also after a rejoin | Use benches, beds and hatches as usual | One player per seat, bed side and pod hatch at a time: while your partner climbs the pod's ladder you see "Another player is interacting with that object" until they're through. You see their body move; the view stays their own | None, always on |
 | **See your partner's tools at work** | When your partner scans, you see the scan beam and hear it; when they build, their builder beams at the piece going up; when they weld or cut, you see the sparks and the cutter's glow, and hear the welder | Nothing to do | Sparks show while they hold the button, even with nothing in front of them. The Seaglide's propeller doesn't spin for you yet | None, always on |
 | **Hitch a ride on the Seamoth** | The Seamoth has one seat, so the second diver holds on to the outside of its hull and rides along. Both of you see the passenger holding on beside its left side | While your partner pilots the Seamoth, swim up to it, look at its hull and press the interact key ("Hold on"). Press **E** (exit) to let go | You're still in the water: your air keeps draining, creatures can still go for you, and you can't use tools while you hold on. You let go when you go down, your partner gets out, or the Seamoth docks or is destroyed. Seamoth only, one passenger | `SeamothHitch` (true) |
+| **The story waits for both of you: the cure** | The Sea Emperor's babies drop cure balls in both of your games, and the cure starts once both of you have taken one: each of you gets your own cure scene, at the same time | Take a cure ball near the babies; until your partner takes one too you see "Waiting for *name* to take a cure ball too…", and your partner sees that you're ready | The first one to take a ball waits by it (swim away and the wait ends). The babies drop balls while you watch them leave, as in single player. While your partner is offline the cure waits for them | The same two options; `storygate release cure` cures one player alone (your partner is then cured too when they come back) |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -105,12 +107,8 @@ stays lonely, scary and hard, just shared.
 - **Each rule gets a switch** in the server's `server.cfg`.
 
 What's planned:
-- **Story moments together:** the cure (each with your own cure scene) waits until both players are there, like
-  the drive core, the Sea Emperor, the gun and the rocket launch already do. Playing alone in between is fine.
-- **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner.
-- **Teamwork survival:** hitching a ride on the Seamoth.
-- **Cozy base life:** seeing each other sit, sleep and use things, seeing the cuddlefish's tricks when it plays with
-  your partner, and the pictures you put in picture frames.
+- **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner, and the pictures you put in
+  picture frames.
 
 ### For developers
 - An agent- and human-friendly guide to the codebase: [AGENTS.md](AGENTS.md).

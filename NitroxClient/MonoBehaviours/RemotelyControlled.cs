@@ -38,6 +38,12 @@ public class RemotelyControlled : MonoBehaviour
     private Locomotion disabledLocomotion;
     private WorldForces disabledWorldForces;
 
+    /// <summary>A pose of the creature arrived from the game that simulates it (also while this component is disabled).</summary>
+    public bool HasCreatureMovement => hasCreatureMovement;
+
+    /// <summary>The creature's velocity in the last pose from the game that simulates it.</summary>
+    public Vector3 CreatureVelocity => creatureVelocity;
+
     public void Awake()
     {
         Initialize();
