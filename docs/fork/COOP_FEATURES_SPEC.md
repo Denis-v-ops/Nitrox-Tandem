@@ -1900,11 +1900,54 @@ creatures it tested; D4 covers the rest) and the partner's body (R2).
   `tools/scenarios/B1-StalkerOneTooth.ps1` (windowless) calls `Stalker.CheckLoseTooth` 40 times with scrap metal in each
   game: the non-simulating game gives the server no tooth, the simulating game's teeth reach both games. Negative
   control: on the unfixed build the non-simulating game dropped 5 teeth (FAIL).
-- **Warpers (M):** each game spawns its own warpers and warp balls (`game:WarperSpawner.cs:31-34`, `game:WarpBall.cs:188`;
-  no Nitrox hooks). Only the player who simulates a `WarperSpawner` spawns its warper and registers it with the server
-  (`EntitySpawnedByClient`); the other game gets it as an entity. Needed before the Lost River.
-- **Bleeders (S, H):** not in `SimulationWhitelist.cs`, so nobody simulates them and they do nothing. Add
-  `TechType.Bleeder` to the movement whitelist; check the attach behaviour with D4's scenario.
+- **Warpers (M, done 2026-11-03, branch `feat/4-b1-warpers-bleeders`):** each game spawned its own warpers
+  (`game:WarperSpawner.cs` `Update` instantiates one whenever it has none and its timer ran out; no Nitrox hooks), so
+  each player met different, id-less warpers. Read in the game code: a `WarperSpawner` is a world entity
+  (`WorldEntities/Creatures/WarperSpawner.prefab`, `TechType.WarperSpawner`; found in game as server-spawned level-1
+  entities with NitroxIds, e.g. 8 within 250 m of -650 -495 -951); its warper (`Warper.prefab`) leaves through
+  `Warper.WarpOut` (`game:WarpOut.cs`: after 10 s without a target, 30 s at most, or 10 damage; `WarperInspectPlayer`:
+  `Player.main` closer than 3 m; the spawner's `OnDisable`), which destroys it 0.73 s later (`EndWarpOut`) and restarts
+  the spawner's 20-23 s timer.
+  - **Built:** `TechType.WarperSpawner` is on the server's utility whitelist, so the player who has its cell gets its
+    lock. `WarperSpawner_Update_Patch` lets only that game run `Update`; the warper it spawns is registered
+    (`EntitySpawnedByClient`, lock to the spawner) and marked as spawned in that game. `WarperEntitySpawner` (other
+    games) links a warper that arrives within 4 m of a spawner without one to that spawner, as in the spawning game, and
+    plays the warp-in. `Warper_WarpOut_Patch`: the game that simulates the warper sends `EntityDestroyed` when the
+    warp-out *starts*; the other games play the same warp-out (`EntityDestroyedProcessor`: `WarpOut` on a living,
+    active copy, else destroy and restart its spawner's timer). A spawner without a NitroxId spawns nothing. No new
+    packet, no save change; warpers are ordinary `WorldEntity` records until they warp out.
+  - **Findings on the way:** sending the warp-out at the end (`EndWarpOut`) left one warper about 5 s longer in one game
+    (likely the lock moved during the animation, (H)). Registering through `Items.Dropped` didn't mark the warper as
+    spawned in its own game: when the server sent it back (its cell visible again, at the edge of the loaded area) that
+    game spawned a second copy with the same id ("Unregistering id ... failed" in the Unity log), whose warp-out then
+    removed the warper from the server while the first copy stayed: ghosts in the diff. Fixed with `MarkAsSpawned`.
+    Every client-spawned entity registered through `Items.Dropped` may have the same gap (not checked).
+  - **Verified:** L2 `WarperSpawnerTest` (2 tests: a server-spawned spawner and bleeder get the first viewer's lock and
+    the partner doesn't take it over; a registered warper reaches the partner once and its `EntityDestroyed` removes it
+    everywhere; both fail without the whitelist lines). Windowless `tools/scenarios/B1-WarpersAndBleeders.ps1`: **PASS**
+    (48 checks with 8 spawners, 42 with 6; every warper has an id, every one is in both games, none in one game only for
+    more than 2.5 s within 100 m, new warpers after warp-outs, the partner's spawner knows each new warper, gone from
+    the server after the warp-out, no warper ghost in the diff). **Negative control** (fix reverted): 17 of 40 checks
+    FAIL (no spawner or bleeder has a lock; 721 and 969 id-less warper sightings, up to 6 and 8 at once in the two
+    games). Full test suite green.
+  - **Not verified / open:** the warp-out animation and effects in the partner's game (seen only as the object being
+    gone within about a second); a warper beyond about 100 m can be in one game only, where the two games' loaded cells
+    differ (seen at 150-166 m, not counted); a warper killed by a player removes its spawner's component in both games
+    (`Warper.OnKill`), but the spawner likely comes back when the cell reloads, as the server still has it (reasoning,
+    not checked; what vanilla does then is (H) too); the warp ball stays local (FIX_SPEC S15c, open); the creatures a
+    warp ball warps in (`WarpBall` + `WarpedInCreature`) exist only in the simulating game (not checked in game, part of
+    S15c); `WarperInspectPlayer` swims to `Player.main` only, so it inspects only its simulating player.
+- **Bleeders (S, done 2026-11-03, same branch):** `TechType.Bleeder` is on the movement whitelist. Bleeders spawn in the
+  game's loot distribution in `MushroomForest_CaveSand`, `SparseReef_Coral`/`DeepWall`, the Bones Field and the Ghost
+  Tree lake (read from `EntityDistributions` in `resources.assets`; found in game near -726 -295 -726, the Sparse Reef
+  vent). Verified in the same scenario: four natural bleeders each have a lock holder, run their AI there
+  (`SwimRandom`/`AvoidObstacles`), move 2-11 m in 6 s and agree between the games; the negative control: no lock
+  holder. A natural attach on the simulating player wasn't seen in 40 s at 3 m (D4's spawned bleeder did attach).
+  **Attaching to the partner stays open (FIX_SPEC S15d, now M):** `AttachAndSuck.OnCollisionEnter` is a collision
+  callback, and the partner's body collider is a trigger (`RemotePlayer.cs`, `isTrigger = true`), so adding a
+  `BleederAttachTarget` to the body would do nothing; it needs a proximity attach in the simulating game, a relay of
+  `SuckBlood` (it passes no dealer, so S14's relay drops it), the detach rules the game checks only for `Player.main`
+  (in a base or vehicle, downed), and a way for the partner to knock it off in their own game.
 
 #### B2: Building and crafting without loss or dupes (S–M, done 2026-11-02)
 - **Non-empty storage (S, done):** when a module's constructed amount reached 0, the server removed the entity and its
@@ -2099,3 +2142,4 @@ prices, "keeping it scary").
 | 2026-11-03 | P1 | Done: playing with the cuddlefish or giving it a command takes its lock as exclusive (bench pattern) and drops back to a normal lock, so it follows whoever played with it last; `CuddlefishMetadata` (tag 95: follow/stay, farewell, water park state); only the simulating game warps it; a following cuddlefish keeps its holder out of their sight (server). Findings: a released cuddlefish is a cell entity; each game's copy warped to its own player; a stay was lost when the partner's game took the lock. README row | L1 save/load; L2 `CuddlefishLockTest` (out-of-sight test fails without the server change); windowless `P1-CuddlefishBoth.ps1` PASS (33 checks); negative control on the pre-P1 build: 14 fail. `dotnet test` 394 pass. Not in game: farewell, tank release with the fix, anything windowed (animations, tricks: R1b) |
 | 2026-11-03 | Wave 2 suite | `tools/run-suite.ps1 -Windowless` on `coop` @ `72ca17ae` (wave 2 merged: G0, G4, D5b, T3, D2, R2b, B4, S6 fix): 31 of 36 PASS. S1 (one desync reading) and S2-MapRoom (another run's game still held the patcher DLL) passed on re-run. S14 and D4 each missed one creature target-pick check (`sandshark-AB`, `crabsquid-AB`; the crabsquid one also misses on later runs): flaky AI target choice, follow-up. **T4 failed 14 of 56:** T3's Give opened the transfer screen when the crew member aimed past the pilot at the helm screen, so every helm click went nowhere; fixed (no Give while the partner pilots or sits in a vehicle), T4 then 56/56 | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave2` |
 | 2026-11-03 | Wave 3 merge | Merged S16 + S16b/c (leviathan sync), B3, T1 + D3, P1 + P2 and the T4 fix; re-ran the affected scenarios windowless on the merged build: T1 73, B3 38, P2 33, S1 62, S2-MapRoom 38, S16 14 (incl. the roam case), S14 65/66 and D4 94/95 (the target-pick flakes above). **P1 failed 6 of 33** after the merge: S16's new out-of-cell hand-over skipped P1's keep-with-holder rule; fixed, P1 then 33/33. Build green, 505 tests pass. **T1 explosions (decided 2026-11-03):** a crashfish explosion or fire puts the player down (rescuable); only the Cyclops' destruction, heat/lava and drowning kill outright. §2, §2.2, T1 and §11 updated | Suite logs in `LOCALAPPDATA/Nitrox/suite-runs/wave3`, `wave3-fixes` |
+| 2026-11-03 | B1 (warpers, bleeders) | Done: only the game that simulates a warper spawner (utility whitelist) spawns its warper, registers it and marks it spawned; the other games link it to their spawner; the warp-out is sent when it starts and played everywhere. Bleeders on the movement whitelist. Findings: a late warp-out packet, and a duplicate warper when the server sent one back to its own game (ghosts). Bleeder attach on the partner stays open (FIX_SPEC S15d, M: the body collider is a trigger), warp ball too (S15c) | L2 `WarperSpawnerTest` (2, fail without the whitelist); windowless `B1-WarpersAndBleeders.ps1` PASS (48 and 42 checks), negative control 17 of 40 FAIL. Full test suite green. Not checked: the warp-out effect in the partner's game |
