@@ -5,6 +5,7 @@ using Nitrox.Model.Core;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities;
+using Nitrox.Model.Subnautica.DataStructures.GameLogic.Entities.Metadata;
 using Nitrox.Server.Subnautica.Models.AppEvents;
 using Nitrox.Server.Subnautica.Models.Packets.Core;
 
@@ -61,7 +62,7 @@ internal sealed class EntitySimulation : ISessionCleaner
         {
             foreach (WorldEntity entity in GetEntitiesOfCell(cell))
             {
-                if (player.CanSee(entity))
+                if (player.CanSee(entity) || FollowsItsHolder(entity))
                 {
                     continue;
                 }
@@ -73,6 +74,17 @@ internal sealed class EntitySimulation : ISessionCleaner
                 yield return entity;
             }
         }
+    }
+
+    /// <summary>
+    ///     COOP_FEATURES_SPEC P1: a cuddlefish that follows a player stays with the player whose game simulates it (who played
+    ///     with it last) when it drops out of their loaded cells, e.g. behind a fast vehicle. Their game keeps it loaded and
+    ///     warps it back to them (<c>CuteFish.WarpToPlayer</c>); otherwise the partner, or nobody, would take it over and it
+    ///     would follow the wrong player or stay behind. A cuddlefish told to stay is an ordinary creature of its cell.
+    /// </summary>
+    private static bool FollowsItsHolder(WorldEntity entity)
+    {
+        return TechType.Cutefish.ToDto().Equals(entity.TechType) && entity.Metadata is not CuddlefishMetadata { FollowingPlayer: false };
     }
 
     private IEnumerable<WorldEntity> GetSimulatableChildren(WorldEntity entity)

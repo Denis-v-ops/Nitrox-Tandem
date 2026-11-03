@@ -21,10 +21,13 @@ public sealed partial class WaterParkCreature_ResetBreedTime_Patch : NitroxPatch
             return;
         }
 
-        Optional<WaterParkCreatureMetadata> metadata = Resolve<WaterParkCreatureMetadataExtractor>().Extract(__instance);
-        if (metadata.HasValue)
+        // A cuddlefish's water park state is part of its CuddlefishMetadata
+        EntityMetadata metadata = __instance.TryGetComponent(out CuteFish cuteFish) ?
+                                      Resolve<CuddlefishMetadataExtractor>().Extract(cuteFish) :
+                                      Resolve<WaterParkCreatureMetadataExtractor>().Extract(__instance);
+        if (metadata != null)
         {
-            Resolve<Entities>().BroadcastMetadataUpdate(creatureId, metadata.Value);
+            Resolve<Entities>().BroadcastMetadataUpdate(creatureId, metadata);
         }
     }
 }
