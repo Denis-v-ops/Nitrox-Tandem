@@ -46,8 +46,17 @@ public sealed partial class Bench_OnHandClick_Patch : NitroxPatch, IDynamicPatch
         {
             skipPrefix = true;
             bench.OnHandClick(context.GuiHand);
-            Resolve<LocalPlayer>().BroadcastBenchChanged(id, BenchChanged.BenchChangeState.SITTING_DOWN);
             skipPrefix = false;
+            // The game can still refuse (in water, no room on either side): then the partner must not see a sit, which since
+            // R1b also holds their copy of this player in place, and the seat goes back to the others
+            if (bench.cinematicController && bench.cinematicController.cinematicModeActive)
+            {
+                Resolve<LocalPlayer>().BroadcastBenchChanged(id, BenchChanged.BenchChangeState.SITTING_DOWN);
+            }
+            else
+            {
+                Resolve<SimulationOwnership>().RequestSimulationLock(id, SimulationLockType.TRANSIENT);
+            }
         }
         else
         {

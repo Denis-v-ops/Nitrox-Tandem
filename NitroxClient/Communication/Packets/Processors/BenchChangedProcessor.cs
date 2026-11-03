@@ -43,7 +43,7 @@ internal sealed class BenchChangedProcessor(PlayerManager remotePlayerManager) :
 
         if (isCinematicActive)
         {
-            remotePlayer.SetInCinematic(benchChanged.BenchId);
+            remotePlayer.SetInCinematic(benchChanged.BenchId, followsMovement: true);
         }
         else
         {

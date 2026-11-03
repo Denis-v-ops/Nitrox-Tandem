@@ -37,6 +37,7 @@ public class RemotePlayer : INitroxPlayer
     private PlayerTool? armsConfiguredFor;
     /// <summary>The partner's own arm states (not a cinematic's) as last received, see <see cref="SetArmState" />.</summary>
     private readonly Dictionary<string, bool> armStates = [];
+    private bool cinematicFollowsMovement;
 
     public PlayerContext PlayerContext { get; }
     public GameObject? Body { get; private set; }
@@ -71,9 +72,14 @@ public class RemotePlayer : INitroxPlayer
     /// <summary>
     ///     A cinematic now poses this body: movement packets neither move it nor drive its animator (<see cref="IsPoseLocked" />).
     /// </summary>
-    public void SetInCinematic(NitroxId entityId)
+    /// <param name="followsMovement">
+    ///     Movement packets still place the body (not its animator): on a bench, where the seated player's game sends where
+    ///     they sit, and this game's copy of the seat's animated target would be wrong (the seat isn't animated here).
+    /// </param>
+    public void SetInCinematic(NitroxId entityId, bool followsMovement = false)
     {
         InCinematicEntityId = entityId;
+        cinematicFollowsMovement = followsMovement;
         // The partner's game stops sending movement during a cinematic (PlayerMovementBroadcaster): the last velocity must
         // not carry the body off the seat or out of the bed
         if (RigidBody && !RigidBody.isKinematic)
@@ -209,7 +215,7 @@ public class RemotePlayer : INitroxPlayer
         Body.SetActive(true);
 
         // Skip position updates during cinematics - the cinematic controller handles positioning
-        if (InCinematic)
+        if (InCinematic && !cinematicFollowsMovement)
         {
             return;
         }
