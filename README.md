@@ -77,6 +77,7 @@ Your partner shows up through the game's own messages and sounds, not a new HUD.
 | **Distress call** | When your partner goes down, their signal turns red and shows the time left ("Alice · down · 42 s"), at any distance and even in caves and the deep. A short ping sounds with each update, and up close you hear them groan | Nothing to do: follow it | It only shows where they were at the last pulse, every 5 s, not a live track. It ends when they're up again or dead | The rescue window's options |
 | **A cuddlefish for both of you** | The cuddlefish follows whoever played with it last, and both of you see it swim with that player. Tell it to stay and it stays for both of you, also after a restart | Play with it or give it a command (follow/stay) as usual; to have it follow you, play with it | One cuddlefish follows one player at a time. While your partner is playing with it, you can't. For now you only see its tricks when it plays with you | None, always on |
 | **Context pings** | Point and ping, and the marker says why: at a creature that hunts you it's a red "Danger!" (15 s); at something to pick up, break or drill it shows that item's icon (10 s); anywhere else it's a "Come here" beacon that stays until your partner gets there (at most 30 s). Each game writes the text in its own language | **Middle mouse button**: ping what you look at. **H**: always "Come here". Both can be changed in the key bindings | Pings fade with the signal: when either of you is in a cave or the deep, a ping only shows within about 50 m of whoever sent it (this starts working with the planned "the deep cuts the line"). Up to 3 pings each, 250 m range | `PartnerSignalInterference` (true) |
+| **See each other sit, sleep and climb** | Your partner sits on benches and chairs, lies down in a bed and climbs the escape pod's hatches in front of you, instead of standing next to them. You can share a bed, one on each side. Each of you gets the escape pod's first-time hatch scene once, also after a rejoin | Use benches, beds and hatches as usual | One player per seat, bed side and pod hatch at a time: while your partner climbs the pod's ladder you see "Another player is interacting with that object" until they're through. You see their body move; the view stays their own | None, always on |
 
 ### For players
 - **One-key bug reports:** press **F4**, or type `/report <what happened>` in chat. Logs, the server log and a save
@@ -98,8 +99,7 @@ What's planned:
 - **Story moments together:** disabling the gun, the Sea Emperor and the cure, and the rocket launch wait until both
   players are there, like the drive core already does. Playing alone in between is fine.
 - **Teamwork survival:** hitching a ride on the Seamoth.
-- **Cozy base life:** seeing each other sit, sleep and use things, and seeing the cuddlefish's tricks when it plays with
-  your partner.
+- **Cozy base life:** seeing the cuddlefish's tricks when it plays with your partner.
 
 ### For developers
 - An agent- and human-friendly guide to the codebase: [AGENTS.md](AGENTS.md).
