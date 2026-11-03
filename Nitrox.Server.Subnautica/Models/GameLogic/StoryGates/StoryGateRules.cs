@@ -90,6 +90,9 @@ internal static class StoryGateRules
             StoryGateKind.DRIVE_CORE => new(kind, StoryGateRule.ONE_READY_ALL_PRESENT, TimeSpan.FromSeconds(5), DriveCoreRoom),
             // G3a: a player on the platform renews the ready every second (SeaEmperorPlatformGate); the Emperor comes once both are on it.
             StoryGateKind.SEA_EMPEROR => new(kind, StoryGateRule.ONE_READY_ALL_PRESENT, TimeSpan.FromSeconds(5), AquariumPlatform),
+            // G3c: each player takes a cure ball in their own game (the click proves they are at the babies); a player who
+            // swims away from their ball withdraws (CureBallGate).
+            StoryGateKind.CURE => new(kind, StoryGateRule.ALL_READY, clickTimeout),
             _ => new(kind, StoryGateRule.ALL_READY, clickTimeout)
         };
 }

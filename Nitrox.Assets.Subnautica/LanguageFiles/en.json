@@ -145,5 +145,7 @@
     "Nitrox_StoryGateHatchingJoin": "{PLAYERS} is ready to hatch the eggs: use the incubator too",
     "Nitrox_StoryGateHatchingWait": "Waiting for {PLAYERS} to use the incubator too…",
     "Nitrox_StoryGateSeaEmperorJoin": "{PLAYERS} is waiting for you on the aquarium platform",
-    "Nitrox_StoryGateSeaEmperorWait": "Waiting for {PLAYERS} to join you on the platform…"
+    "Nitrox_StoryGateSeaEmperorWait": "Waiting for {PLAYERS} to join you on the platform…",
+    "Nitrox_StoryGateCureJoin": "{PLAYERS} is ready for the cure: take a cure ball too",
+    "Nitrox_StoryGateCureWait": "Waiting for {PLAYERS} to take a cure ball too…"
 }

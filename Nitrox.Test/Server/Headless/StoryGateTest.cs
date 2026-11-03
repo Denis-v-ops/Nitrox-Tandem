@@ -169,6 +169,42 @@ public class StoryGateTest
     }
 
     [TestMethod]
+    public async Task Cure_StartsWhenBothTookABall_ALonePlayerIsLockedUntilReleased()
+    {
+        await using ServerHarness server = await ServerHarness.StartAsync("L2-StoryGateCure");
+        FakePlayer alice = await server.JoinAsync("Alice");
+        FakePlayer bob = await server.JoinAsync("Bob");
+
+        // G3c: Alice takes a ball in her game; nothing starts until Bob took one in his.
+        alice.Send(new StoryGateReady(StoryGateKind.CURE, true));
+        foreach (FakePlayer player in new[] { alice, bob })
+        {
+            StoryGateStatus waiting = await player.WaitForAsync<StoryGateStatus>(status => status.Kind == StoryGateKind.CURE);
+            waiting.Locked.Should().BeFalse();
+            waiting.ReadyNames.Should().Equal("Alice");
+            waiting.MissingNames.Should().Equal("Bob");
+        }
+        alice.ReceivedOf<StoryGateStart>().Should().BeEmpty();
+
+        bob.Send(new StoryGateReady(StoryGateKind.CURE, true));
+        await alice.WaitForAsync<StoryGateStart>(start => start.Kind == StoryGateKind.CURE);
+        await bob.WaitForAsync<StoryGateStart>(start => start.Kind == StoryGateKind.CURE);
+
+        // FIX_SPEC S12 with the gate: Bob is offline for good; Alice's ball waits for him until an admin releases the cure.
+        bob.Dispose();
+        await ServerHarness.WaitUntilAsync(() => server.Get<PlayerManager>().GetConnectedPlayers().Count() == 1, "Bob left");
+        alice.ClearReceived();
+        alice.Send(new StoryGateReady(StoryGateKind.CURE, true));
+        StoryGateStatus locked = await alice.WaitForAsync<StoryGateStatus>(status => status.Kind == StoryGateKind.CURE);
+        locked.Locked.Should().BeTrue();
+        locked.MissingNames.Should().Equal("Bob");
+        alice.ReceivedOf<StoryGateStart>().Should().BeEmpty();
+
+        alice.Send(new ServerCommand("storygate release cure"));
+        await alice.WaitForAsync<StoryGateStart>(start => start.Kind == StoryGateKind.CURE);
+    }
+
+    [TestMethod]
     public async Task OptionOff_StartsAtOnce()
     {
         await using ServerHarness server = await ServerHarness.StartAsync("L2-StoryGateOff");

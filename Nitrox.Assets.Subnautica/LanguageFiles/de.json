@@ -143,5 +143,7 @@
     "Nitrox_StoryGateHatchingJoin": "{PLAYERS} ist bereit, die Eier auszubrüten: benutze den Inkubator auch",
     "Nitrox_StoryGateHatchingWait": "Warte, bis {PLAYERS} den Inkubator auch benutzt…",
     "Nitrox_StoryGateSeaEmperorJoin": "{PLAYERS} wartet auf der Plattform im Aquarium auf dich",
-    "Nitrox_StoryGateSeaEmperorWait": "Warte, bis {PLAYERS} zu dir auf die Plattform kommt…"
+    "Nitrox_StoryGateSeaEmperorWait": "Warte, bis {PLAYERS} zu dir auf die Plattform kommt…",
+    "Nitrox_StoryGateCureJoin": "{PLAYERS} ist bereit für die Heilung: nimm auch eine Heilkugel",
+    "Nitrox_StoryGateCureWait": "Warte, bis {PLAYERS} auch eine Heilkugel nimmt…"
 }
