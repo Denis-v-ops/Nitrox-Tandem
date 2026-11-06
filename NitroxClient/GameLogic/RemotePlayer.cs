@@ -15,6 +15,7 @@ using Nitrox.Model.GameLogic.FMOD;
 using Nitrox.Model.GameLogic.PlayerAnimation;
 using Nitrox.Model.Subnautica.DataStructures.GameLogic;
 using Nitrox.Model.Subnautica.MultiplayerSession;
+using RootMotion.FinalIK;
 using UnityEngine;
 using UWE;
 
@@ -30,6 +31,12 @@ public class RemotePlayer : INitroxPlayer
 
     private static readonly int animatorPlayerIn = Animator.StringToHash("player_in");
 
+    /// <summary>
+    ///     How far in front of the partner's eyes the arms aim a held tool. The local player's <c>LookTarget</c> sits 4 m in
+    ///     front of its camera (measured in game: camera at x -42.35, LookTarget at x -46.35, looking along -x).
+    /// </summary>
+    private const float LOOK_TARGET_DISTANCE = 4f;
+
     private readonly PlayerModelManager playerModelManager;
     private readonly PlayerVitalsManager playerVitalsManager;
     private readonly FMODWhitelist fmodWhitelist;
@@ -38,6 +45,8 @@ public class RemotePlayer : INitroxPlayer
     /// <summary>The partner's own arm states (not a cinematic's) as last received, see <see cref="SetArmState" />.</summary>
     private readonly Dictionary<string, bool> armStates = [];
     private bool cinematicFollowsMovement;
+    /// <summary>Where the arms aim a held tool, a child of <see cref="Body" /> (COOP_FEATURES_SPEC R2d, <see cref="SetupLookTarget" />).</summary>
+    private Transform lookTarget = null!;
 
     public PlayerContext PlayerContext { get; }
     public GameObject? Body { get; private set; }
@@ -162,6 +171,7 @@ public class RemotePlayer : INitroxPlayer
 
         AnimationController = PlayerModel.AddComponent<AnimationController>();
         AnimationController.IsPoseLocked = () => IsPoseLocked;
+        SetupLookTarget();
 
         Transform inventoryTransform = new GameObject("Inventory").transform;
         inventoryTransform.SetParent(Body.transform);
@@ -236,6 +246,7 @@ public class RemotePlayer : INitroxPlayer
         if (IsHitched)
         {
             AnimationController.AimingRotation = aimingRotation;
+            AimArms(aimingRotation, Body.transform.rotation);
             return;
         }
 
@@ -257,6 +268,7 @@ public class RemotePlayer : INitroxPlayer
             aimingRotation = vehicleAngle * aimingRotation;
         }
 
+        AimArms(aimingRotation, bodyRotation);
         RigidBody.velocity = AnimationController.Velocity;
         RigidBody.angularVelocity = MovementHelper.GetCorrectedAngularVelocity(bodyRotation, Vector3.zero, Body, Time.fixedDeltaTime);
     }
@@ -276,6 +288,8 @@ public class RemotePlayer : INitroxPlayer
 
         Pawn.Handle.transform.localPosition = localPosition;
         Pawn.Handle.transform.localRotation = localRotation;
+        // The Cyclops movement carries the body's turn only, not where the partner looks up or down: aim straight ahead
+        lookTarget.localPosition = Vector3.forward * LOOK_TARGET_DISTANCE;
     }
 
     public void SetPilotingChair(PilotingChair newPilotingChair)
@@ -680,6 +694,37 @@ public class RemotePlayer : INitroxPlayer
 
         Partner.PartnerHandTarget.AddTo(this);
         BodyBleederTarget.AddTo(this);
+    }
+
+    /// <summary>
+    ///     Gives the body its own point to aim a held tool at (COOP_FEATURES_SPEC R2d). A tool such as the scanner turns on
+    ///     the arms' aim IK (<c>ArmsController.Reconfigure</c>, the tool's <c>ikAimRightArm</c>/<c>ikAimLeftArm</c>), whose
+    ///     target is <c>ArmsController.lookTargetTransform</c>: the player's <c>LookTarget</c>, a child of its camera rig. That
+    ///     rig isn't part of the body this one is copied from, so the copy kept the <i>local</i> player's target, and the
+    ///     partner's arm turned with this game's camera (and bent behind their head when one looked at them).
+    ///     <see cref="AimArms" /> places the new target where the partner looks.
+    /// </summary>
+    private void SetupLookTarget()
+    {
+        lookTarget = new GameObject("RemoteLookTarget").transform;
+        lookTarget.SetParent(Body!.transform, false);
+        lookTarget.localPosition = Vector3.forward * LOOK_TARGET_DISTANCE;
+        ArmsController.lookTargetTransform = lookTarget;
+        foreach (AimIK aimIK in PlayerModel.GetComponentsInChildren<AimIK>(true))
+        {
+            aimIK.solver.target = lookTarget;
+        }
+    }
+
+    /// <summary>
+    ///     Puts the arms' aim target <see cref="LOOK_TARGET_DISTANCE" /> along where the partner looks. It is a child of the
+    ///     body, placed relative to the rotation the body is turning to, so it moves with the body between movement packets.
+    /// </summary>
+    /// <param name="aimingRotation">Where the partner looks, in world space.</param>
+    /// <param name="bodyRotation">The body's rotation in world space that goes with it.</param>
+    private void AimArms(Quaternion aimingRotation, Quaternion bodyRotation)
+    {
+        lookTarget.localPosition = Quaternion.Inverse(bodyRotation) * (aimingRotation * Vector3.forward) * LOOK_TARGET_DISTANCE;
     }
 
     /// <summary>
