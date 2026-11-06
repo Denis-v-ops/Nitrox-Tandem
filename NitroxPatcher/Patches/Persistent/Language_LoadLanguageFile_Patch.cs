@@ -15,7 +15,7 @@ public class Language_LoadLanguageFile_Patch : NitroxPatch, IPersistentPatch
 
     private static readonly Dictionary<string, Tuple<string, string>> languageToIsoCode = new(); // First Tuple item is region specific (en-US), second isn't (en)
 
-    public static void Postfix(string language, Dictionary<string, string> ___strings)
+    public static void Postfix(Language __instance, string language, Dictionary<string, string> ___strings)
     {
         if (!TryLoadLanguageFile("en", ___strings)) //Loading english as fallback for missing files or keys
         {
@@ -31,7 +31,15 @@ public class Language_LoadLanguageFile_Patch : NitroxPatch, IPersistentPatch
             }
         }
 
-        Language.main.ParseMetaData();
+        // The game has parsed its own texts already and removed their <delay>/<duration> marks, so parsing everything
+        // again would lose the subtitle timing of the voice lines (subtitles ran ahead of the voice). Parse for our keys
+        // and keep the game's.
+        Dictionary<string, Language.MetaData> gameMetadata = __instance.metadata;
+        __instance.ParseMetaData();
+        foreach (KeyValuePair<string, Language.MetaData> entry in gameMetadata)
+        {
+            __instance.metadata[entry.Key] = entry.Value;
+        }
     }
 
     private static bool TryLoadLanguageFile(string fileName, IDictionary<string, string> strings)
@@ -85,6 +93,6 @@ public class Language_LoadLanguageFile_Patch : NitroxPatch, IPersistentPatch
             languageToIsoCode.Add("Spanish (Latin America)", new Tuple<string, string>("es-419", "es"));
         }
 
-        PatchPostfix(harmony, TARGET_METHOD, ((Action<string, Dictionary<string, string>>)Postfix).Method);
+        PatchPostfix(harmony, TARGET_METHOD, ((Action<Language, string, Dictionary<string, string>>)Postfix).Method);
     }
 }
